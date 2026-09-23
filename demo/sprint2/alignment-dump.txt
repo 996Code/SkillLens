@@ -1,0 +1,33 @@
+{
+    "alignment_id": 1,
+    "skeleton": [
+        {
+            "signature": "click:\u8bf7\u8f93\u5165",
+            "session_window_seqs": {
+                "426c3da9-ad81-4cd5-99da-40b396e42492": 6,
+                "f007da25-aad7-438d-be16-c05a5e3a75e7": 1
+            }
+        },
+        {
+            "signature": "click:\u4fdd\u5b58|GET:/codeBack/tableConfig/getTableConfigByFormConfigId,POST:/codeBack/formConfig/saveFormConfig,POST:/codeBack/tableConfig/saveTableConfig",
+            "session_window_seqs": {
+                "426c3da9-ad81-4cd5-99da-40b396e42492": 7,
+                "f007da25-aad7-438d-be16-c05a5e3a75e7": 2
+            }
+        }
+    ],
+    "param_variables": [],
+    "input_variables": [
+        {
+            "name": "\u8bf7\u8f93\u5165",
+            "values": {
+                "426c3da9-ad81-4cd5-99da-40b396e42492": "wenbenshurukuang2321",
+                "f007da25-aad7-438d-be16-c05a5e3a75e7": "jilian1111"
+            },
+            "positions": {
+                "426c3da9-ad81-4cd5-99da-40b396e42492": 1,
+                "f007da25-aad7-438d-be16-c05a5e3a75e7": 0
+            }
+        }
+    ]
+}
