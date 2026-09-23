@@ -82,6 +82,17 @@ class Alignment(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
+class FieldChange(Base):
+    __tablename__ = "field_change"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    api_template: Mapped[str] = mapped_column(String(500))
+    before_seq: Mapped[int] = mapped_column()
+    after_seq: Mapped[int] = mapped_column()
+    changes: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
 class LlmCallLog(Base):
     __tablename__ = "llm_call_log"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
