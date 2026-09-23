@@ -3,8 +3,9 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.ingestion.fieldchange import extract_field_changes
+from app.learning.outcome import generate_assertions, verify_against_session
 from app.learning.skill import induce_skill
-from app.models import FieldChange, RecordingSession, Skill
+from app.models import FieldChange, OutcomeAssertion, RecordingSession, Skill
 
 router = APIRouter()
 
@@ -54,3 +55,27 @@ async def list_skills(db: Session = Depends(get_db)) -> list:
              "description": r.description, "status": r.status,
              "confidence": r.confidence, "evidence_count": r.evidence_count,
              "notes": r.notes} for r in rows]
+
+
+@router.post("/skills/{skill_id}/assertions")
+async def create_assertions(skill_id: int, db: Session = Depends(get_db)) -> dict:
+    if not db.get(Skill, skill_id):
+        raise HTTPException(status_code=404, detail="skill not found")
+    rows = generate_assertions(db, skill_id)
+    return {"assertions": len(rows)}
+
+
+@router.post("/assertions/{assertion_id}/verify")
+async def verify_assertion(assertion_id: int, db: Session = Depends(get_db)) -> dict:
+    if not db.get(OutcomeAssertion, assertion_id):
+        raise HTTPException(status_code=404, detail="assertion not found")
+    return verify_against_session(db, assertion_id)
+
+
+@router.get("/skills/{skill_id}/assertions")
+async def list_assertions(skill_id: int, db: Session = Depends(get_db)) -> list:
+    if not db.get(Skill, skill_id):
+        raise HTTPException(status_code=404, detail="skill not found")
+    rows = db.query(OutcomeAssertion).filter(OutcomeAssertion.skill_id == skill_id).all()
+    return [{"id": r.id, "skill_id": r.skill_id, "layer": r.layer, "kind": r.kind,
+             "api_template": r.api_template, "payload": r.payload} for r in rows]

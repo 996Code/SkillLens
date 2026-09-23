@@ -121,3 +121,14 @@ class LlmCallLog(Base):
     completion_tokens: Mapped[int | None] = mapped_column(nullable=True)
     latency_ms: Mapped[int] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class OutcomeAssertion(Base):
+    __tablename__ = "outcome_assertion"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    skill_id: Mapped[int] = mapped_column(index=True)
+    layer: Mapped[int] = mapped_column()
+    kind: Mapped[str] = mapped_column(String(30))
+    api_template: Mapped[str] = mapped_column(String(500))
+    payload: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
