@@ -39,8 +39,8 @@ async def ingest_events(session_id: str, events: list[RawEventIn],
     if not db.get(RecordingSession, session_id):
         raise HTTPException(status_code=404, detail="session not found")
     try:
-        db.add_all([RawEvent(session_id=session_id, seq=e.seq, ts=e.ts,
-                             kind=e.kind, payload=e.payload) for e in events])
+        db.add_all(RawEvent(session_id=session_id, seq=e.seq, page_id=e.page_id,
+                            ts=e.ts, kind=e.kind, payload=e.payload) for e in events)
         db.commit()
     except IntegrityError:
         db.rollback()

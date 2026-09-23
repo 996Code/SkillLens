@@ -22,9 +22,12 @@ class RecordingSession(Base):
 
 class RawEvent(Base):
     __tablename__ = "raw_event"
-    __table_args__ = (UniqueConstraint("session_id", "seq"),)
+    __table_args__ = (
+        UniqueConstraint("session_id", "page_id", "seq", name="uq_raw_event_session_page_seq"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(String(36), index=True)
+    page_id: Mapped[str] = mapped_column(String(40), default="")
     seq: Mapped[int] = mapped_column()
     ts: Mapped[int] = mapped_column(BigInteger)
     kind: Mapped[str] = mapped_column(String(20))
