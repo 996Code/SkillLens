@@ -30,3 +30,16 @@ class RawEvent(Base):
     kind: Mapped[str] = mapped_column(String(20))
     payload: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class SemanticAction(Base):
+    __tablename__ = "semantic_action"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    window_seq: Mapped[int] = mapped_column()
+    anchor_seq: Mapped[int] = mapped_column()
+    anchor_type: Mapped[str] = mapped_column(String(20))
+    target: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    api_calls: Mapped[list] = mapped_column(JSON)
+    state_signals: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
