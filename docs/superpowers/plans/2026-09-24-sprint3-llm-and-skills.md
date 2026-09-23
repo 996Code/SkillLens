@@ -963,7 +963,7 @@ git add server/ && git commit -m "feat: Outcome 层2/3 断言生成与跨 sessio
 
 `server/app/ingestion/alignment.py` 删除未使用的 `ref_sid, _ = sig_lists[0]` 行（保留 `ref = sig_lists[0][1]` 语义，改为 `ref = sig_lists[0][1]`）。
 
-确认 `server/.env.example` 存在且全部是占位值（真实 key 绝不入库：`git grep "sk-WGc7" || true` 必须无输出）。
+确认 `server/.env.example` 存在且全部是占位值（真实 key 绝不入库：全历史扫描真实 key 前缀必须无输出）。
 
 - [ ] **Step 2: 测试 + Commit**
 
