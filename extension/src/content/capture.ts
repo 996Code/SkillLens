@@ -1,4 +1,5 @@
 import { describeElement } from "../shared/describe-element";
+import { inputKey } from "../shared/input-key";
 import { redactValue } from "../shared/redact";
 import { AGENT_URL, EVENT_MSG } from "../shared/types";
 import type { RawEvent } from "../shared/types";
@@ -42,13 +43,17 @@ document.addEventListener(
   "change",
   (e) => {
     const target = e.target as HTMLInputElement;
-    if (!target?.name) return;
+    if (!target) return;
+    // njmind 等低代码设计器的输入框没有 name 属性，
+    // 依次回退到 id / placeholder / aria-label，仍取不到则放弃采集。
+    const key = inputKey(target);
+    if (!key) return;
     const value = target.type === "password" ? "[REDACTED]" : target.value;
     void emit("action", {
       type: "input",
       target: describeElement(target),
-      name: target.name,
-      value: redactValue(target.name, value),
+      name: key,
+      value: redactValue(key, value),
     });
   },
   { capture: true },
