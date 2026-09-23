@@ -1,6 +1,7 @@
 import { putEvent, takeEvents } from "../store/idb";
 import { AGENT_URL, EVENT_MSG } from "../shared/types";
 import type { RawEvent } from "../shared/types";
+import { assignSession } from "../shared/assign-session";
 import { getRecordingState, startRecording, stopRecording } from "./session";
 
 // chrome.storage.session 默认 accessLevel 为 TRUSTED_CONTEXTS（仅扩展页面可读），
@@ -36,9 +37,16 @@ async function flush(): Promise<void> {
 async function doFlush(): Promise<void> {
   const rows = await takeEvents(BATCH);
   if (rows.length === 0) return;
+  // 上报前回填活跃 session：T7 后 CS 发来的事件 __session_id 恒为 ""，
+  // 有活跃 session 则回填后上报；无 session（断连期未录制）则写回缓冲，
+  // 不丢弃、不计入重试（等待下次 flush 时机）。
+  const state = await getRecordingState();
+  const { assigned, deferred } = assignSession(rows.map((r) => r.event), state.sessionId);
+  for (const e of deferred) await putEvent(e);
+  if (assigned.length === 0) return;
   // 同一 session 的事件分组上报（POC：一个 content script 一个 session）
   const bySession = new Map<string, RawEvent[]>();
-  for (const { event } of rows) {
+  for (const event of assigned) {
     const sid = event.payload.__session_id as string;
     const list = bySession.get(sid) ?? [];
     list.push(event);
