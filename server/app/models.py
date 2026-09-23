@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, JSON, String, UniqueConstraint
+from sqlalchemy import BigInteger, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -79,4 +79,18 @@ class Alignment(Base):
     skeleton: Mapped[list] = mapped_column(JSON)
     param_variables: Mapped[list] = mapped_column(JSON)
     input_variables: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class LlmCallLog(Base):
+    __tablename__ = "llm_call_log"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    purpose: Mapped[str] = mapped_column(String(50))
+    provider: Mapped[str] = mapped_column(String(30))
+    model: Mapped[str] = mapped_column(String(100))
+    prompt: Mapped[str] = mapped_column(Text)
+    response: Mapped[str] = mapped_column(Text)
+    prompt_tokens: Mapped[int | None] = mapped_column(nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(nullable=True)
+    latency_ms: Mapped[int] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
