@@ -35,7 +35,10 @@ export async function takeEvents(batch: number): Promise<{ id: number; event: Ra
   const tx = db.transaction(STORE, "readwrite");
   const store = tx.objectStore(STORE);
   for (const row of out) store.delete(row.id);
-  await new Promise<void>((r) => (tx.oncomplete = () => r()));
+  await new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
   db.close();
   return out;
 }

@@ -19,7 +19,10 @@ async function ensureSession(): Promise<void> {
 
 async function emit(kind: RawEvent["kind"], payload: Record<string, unknown>): Promise<void> {
   await ensureSession();
-  const event: RawEvent = { seq: seq++, ts: Date.now(), kind, payload };
+  const event: RawEvent = {
+    seq: seq++, ts: Date.now(), kind,
+    payload: { ...payload, __session_id: sessionId },
+  };
   await putEvent(event);
   chrome.runtime.sendMessage({ type: "events-pending" }).catch(() => {});
 }
