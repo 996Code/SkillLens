@@ -1,0 +1,214 @@
+[
+    {
+        "window_seq": 0,
+        "anchor_seq": 0,
+        "anchor_type": "click",
+        "target": {
+            "tag": "div",
+            "role": "",
+            "label": "\u6807\u7b7e\u9875",
+            "text": "\u6807\u7b7e\u9875",
+            "path": "div>div>div>span>div"
+        },
+        "api_calls": [],
+        "state_signals": []
+    },
+    {
+        "window_seq": 1,
+        "anchor_seq": 1,
+        "anchor_type": "click",
+        "target": {
+            "tag": "div",
+            "role": "",
+            "label": "\u7ec4\u5408\u5b57\u6bb5",
+            "text": "\u7ec4\u5408\u5b57\u6bb5",
+            "path": "div>div>div>span>div"
+        },
+        "api_calls": [
+            {
+                "seq": 2,
+                "method": "GET",
+                "template": "/codeBack/bpm/model/getModelTaskKeyListWithFinish",
+                "status": 200,
+                "duration": 129,
+                "params": []
+            },
+            {
+                "seq": 3,
+                "method": "POST",
+                "template": "/codeBack/role/list",
+                "status": 200,
+                "duration": 67,
+                "params": []
+            }
+        ],
+        "state_signals": [
+            {
+                "api": "/codeBack/bpm/model/getModelTaskKeyListWithFinish",
+                "field": "code",
+                "value": 200
+            }
+        ]
+    },
+    {
+        "window_seq": 2,
+        "anchor_seq": 4,
+        "anchor_type": "click",
+        "target": {
+            "tag": "input",
+            "role": "input",
+            "label": "\u70b9\u51fb\u9009\u62e9\u7279\u6b8a\u5b57\u7b26",
+            "text": "",
+            "path": "div>div>div>div>input"
+        },
+        "api_calls": [
+            {
+                "seq": 5,
+                "method": "GET",
+                "template": "/codeBack/list/data/get-table-list",
+                "status": 200,
+                "duration": 4644,
+                "params": []
+            },
+            {
+                "seq": 6,
+                "method": "GET",
+                "template": "/framework/base-data/dict-type/select-list",
+                "status": 200,
+                "duration": 73,
+                "params": []
+            }
+        ],
+        "state_signals": [
+            {
+                "api": "/framework/base-data/dict-type/select-list",
+                "field": "code",
+                "value": 200
+            }
+        ]
+    },
+    {
+        "window_seq": 3,
+        "anchor_seq": 8,
+        "anchor_type": "click",
+        "target": {
+            "tag": "span",
+            "role": "",
+            "label": "\u63d2\u5165",
+            "text": "\u63d2\u5165",
+            "path": "div>div>div>button>span"
+        },
+        "api_calls": [],
+        "state_signals": []
+    },
+    {
+        "window_seq": 4,
+        "anchor_seq": 9,
+        "anchor_type": "click",
+        "target": {
+            "tag": "input",
+            "role": "input",
+            "label": "\u8bf7\u8f93\u5165",
+            "text": "",
+            "path": "div>div>div>div>input"
+        },
+        "api_calls": [],
+        "state_signals": []
+    },
+    {
+        "window_seq": 5,
+        "anchor_seq": 11,
+        "anchor_type": "click",
+        "target": {
+            "tag": "div",
+            "role": "",
+            "label": "",
+            "text": "",
+            "path": "div>div>div>div>div"
+        },
+        "api_calls": [
+            {
+                "seq": 12,
+                "method": "GET",
+                "template": "/codeBack/list/data/get-table-list",
+                "status": 200,
+                "duration": 8108,
+                "params": []
+            }
+        ],
+        "state_signals": []
+    },
+    {
+        "window_seq": 6,
+        "anchor_seq": 13,
+        "anchor_type": "click",
+        "target": {
+            "tag": "div",
+            "role": "",
+            "label": "\u6210\u5458",
+            "text": "\u6210\u5458",
+            "path": "div>div>div>span>div"
+        },
+        "api_calls": [],
+        "state_signals": []
+    },
+    {
+        "window_seq": 7,
+        "anchor_seq": 14,
+        "anchor_type": "click",
+        "target": {
+            "tag": "input",
+            "role": "input",
+            "label": "\u8bf7\u8f93\u5165",
+            "text": "",
+            "path": "div>div>div>div>input"
+        },
+        "api_calls": [],
+        "state_signals": []
+    },
+    {
+        "window_seq": 8,
+        "anchor_seq": 16,
+        "anchor_type": "click",
+        "target": {
+            "tag": "span",
+            "role": "",
+            "label": "\u4fdd\u5b58",
+            "text": "\u4fdd\u5b58",
+            "path": "div>div>div>button>span"
+        },
+        "api_calls": [
+            {
+                "seq": 17,
+                "method": "POST",
+                "template": "/codeBack/formConfig/saveFormConfig",
+                "status": 200,
+                "duration": 580,
+                "params": []
+            },
+            {
+                "seq": 18,
+                "method": "GET",
+                "template": "/codeBack/tableConfig/getTableConfigByFormConfigId",
+                "status": 200,
+                "duration": 55,
+                "params": []
+            },
+            {
+                "seq": 19,
+                "method": "POST",
+                "template": "/codeBack/tableConfig/saveTableConfig",
+                "status": 200,
+                "duration": 581,
+                "params": []
+            }
+        ],
+        "state_signals": [
+            {
+                "api": "/codeBack/tableConfig/saveTableConfig",
+                "field": "code",
+                "value": 200
+            }
+        ]
+    }
+]
