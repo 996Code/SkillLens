@@ -203,9 +203,11 @@ skill:
 
 **Outcome Model（MVP 只做两层证据）**：
 
-- 层 2 UI State Change（`待审批 → 已审批`）；
+- 层 2 UI State Change（`待审批 → 已审批`）；两个来源：(a) **字段级 Before/After diff**——同一 API 模板在同一/相邻窗口的连续 reqBody 做确定性 diff，产出 `字段: A→B`（Sprint 3，纯 server 端）；(b) 插件侧锚点前后轻量状态快照（表单值/状态标签文本）→ Sprint 4 采集增强（与 Replay 的 Before/After 快照共用一套 schema）；
 - 层 3 Runtime Outcome（`POST /approve → 200` + `GET /order/{id} → status=APPROVED`）。
 - 层 4 历史不变量、层 5 多结果一致性 → Phase 2。
+
+> 2026-09-24 用户补充裁定：字段级 Before/After 正式纳入范围（"存下来之前是什么、之后是什么"）——它是 Outcome 断言与 Change Intelligence 判断 Expected/Missing/Unexpected 的直接原料。
 
 **Evidence Graph**：节点 = 实体/页面/动作/API/状态，边带 `evidence_count / confidence / sources / first_seen / last_seen`。MVP 用关系表表达（`evidence_edge`），不引入图数据库。
 
@@ -289,7 +291,7 @@ SkillLens/
 | 0 | 仓库骨架 + 插件 POC：在 njmind 上采到 UI/Action/Network 原始事件并落库 | — | raw_event 表里能看到一次完整表单操作的原始事件 |
 | 1 | Ingestion：脱敏 + URL 模板化 + Transaction Window | 演示 1：一次"提交表单"被切成语义窗口 | semantic_action 正确关联 click ↔ POST ↔ 状态变化 |
 | 2 | 多 Episode 对齐 + 变量识别 + LLM Gateway + Skill 归纳 | — | 3 次不同输入的演示归并为 1 个 Skill，变量正确识别 |
-| 3 | Outcome Model（层 2/3 断言）+ Evidence Graph 基础表 | 演示 2：Skill 卡片展示（含证据计数与置信度） | 断言能在原始 Episode 上回放验证通过 |
+| 3 | LLM Gateway（llm_call_log 全量落库）+ Skill 归纳（LLM 命名 + 确定性回查防幻觉降级）+ 字段级 Before/After（reqBody 跨窗口 diff）+ Outcome 层 2/3 断言 | 演示 2：Skill 卡片展示（含证据计数与置信度） | 两次演示的 alignment 产出 1 个 learned 状态的 Skill（LLM 产物全部通过确定性回查）；字段变化能被 diff 出（字段: A→B） |
 | 4 | Replay Runner：语义定位 + 换参数回放 + PASS/FAIL + 影子模式标记 | — | 换一组参数自动回放，正确判定 PASS；破坏一个断言能判 FAIL |
 | 5 | Expected Delta 生成（人工确认）+ Observed Delta + 四分类报告 | 演示 3：njmind 改一个需求 → 输出报告 | 四分类中 Missing 和 Unexpected 至少各能被真实构造触发一次 |
 | 6 | 端到端打磨 + 演示数据固化 + 私有化部署脚本（Docker Compose） | 压轴演示：完整闭环 | 从装插件到出报告 ≤ 30 分钟，全程可复现 |
