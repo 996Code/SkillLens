@@ -1,7 +1,6 @@
-import { putEvent } from "../store/idb";
 import { describeElement } from "../shared/describe-element";
 import { redactValue } from "../shared/redact";
-import { AGENT_URL } from "../shared/types";
+import { AGENT_URL, EVENT_MSG } from "../shared/types";
 import type { RawEvent } from "../shared/types";
 
 let seq = 0;
@@ -23,8 +22,10 @@ async function emit(kind: RawEvent["kind"], payload: Record<string, unknown>): P
     seq: seq++, ts: Date.now(), kind,
     payload: { ...payload, __session_id: sessionId },
   };
-  await putEvent(event);
-  chrome.runtime.sendMessage({ type: "events-pending" }).catch(() => {});
+  // MV3：content script 与 service worker 不共享 IndexedDB（CS 写的是页面源 DB，
+  // SW 读的是扩展源 DB），因此事件经 runtime 消息转发给 SW 落库。
+  // fire-and-forget：SW 休眠等异常由 catch 吞掉，事件由 alarms 定时兜底补传。
+  chrome.runtime.sendMessage({ type: EVENT_MSG, event }).catch(() => {});
 }
 
 document.addEventListener(
