@@ -2,7 +2,7 @@
 
 日期：2026-09-24
 环境：uvicorn 8710（加载 server/.env 真实 LLM）+ SQLite；被学习系统数据：Sprint 2 的两次演示（alignment_id=1）
-LLM：qwen3.7-plus（OpenAI 兼容协议，经 996code.top 网关）
+LLM：qwen3.7-plus（OpenAI 兼容协议，经用户自建第三方网关，配置存 server/.env）
 
 ## 验收结论：7/7 通过
 
