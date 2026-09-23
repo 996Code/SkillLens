@@ -1,0 +1,1 @@
+[{"id":1,"alignment_id":1,"name":"SaveFormAndTableConfig","description":"输入并保存表单与表格的配置信息","status":"learned","confidence":0.7,"evidence_count":2,"notes":""}]skill_naming|openai-compat|qwen3.7-plus|116|732|13890
