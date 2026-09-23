@@ -28,23 +28,19 @@ async function flush(): Promise<void> {
   if (flushing) return;
   flushing = true;
   try {
-    await doFlush();
+    // 上报前回填活跃 session：T7 后 CS 发来的事件 __session_id 恒为 ""，
+    // 有活跃 session 则回填后上报；无 session（断连期未录制）则写回缓冲，
+    // 不丢弃、不计入重试（等待下次 flush 时机）。
+    const state = await getRecordingState();
+    await doFlush(state.sessionId);
   } finally {
     flushing = false;
   }
 }
 
-async function doFlush(): Promise<void> {
-  const rows = await takeEvents(BATCH);
-  if (rows.length === 0) return;
-  // 上报前回填活跃 session：T7 后 CS 发来的事件 __session_id 恒为 ""，
-  // 有活跃 session 则回填后上报；无 session（断连期未录制）则写回缓冲，
-  // 不丢弃、不计入重试（等待下次 flush 时机）。
-  const state = await getRecordingState();
-  const { assigned, deferred } = assignSession(rows.map((r) => r.event), state.sessionId);
-  for (const e of deferred) await putEvent(e);
-  if (assigned.length === 0) return;
-  // 同一 session 的事件分组上报（POC：一个 content script 一个 session）
+// 同一 session 的事件分组上报（POC：一个 content script 一个 session）。
+// 返回成功上报的事件数；失败事件按重试计数回退，超限丢弃。
+async function uploadGrouped(assigned: RawEvent[]): Promise<number> {
   const bySession = new Map<string, RawEvent[]>();
   for (const event of assigned) {
     const sid = event.payload.__session_id as string;
@@ -52,6 +48,7 @@ async function doFlush(): Promise<void> {
     list.push(event);
     bySession.set(sid, list);
   }
+  let ok = 0;
   for (const [sid, events] of bySession) {
     try {
       const resp = await fetch(`${AGENT_URL}/sessions/${sid}/events`, {
@@ -61,6 +58,7 @@ async function doFlush(): Promise<void> {
       });
       if (!resp.ok) throw new Error(`status ${resp.status}`);
       for (const e of events) retries.delete(eventKey(e));
+      ok += events.length;
     } catch (err) {
       console.warn("skilllens upload failed, requeue", err);
       for (const e of events) {
@@ -76,6 +74,33 @@ async function doFlush(): Promise<void> {
       }
     }
   }
+  return ok;
+}
+
+async function doFlush(sid: string | null): Promise<void> {
+  const rows = await takeEvents(BATCH);
+  if (rows.length === 0) return;
+  const { assigned, deferred } = assignSession(rows.map((r) => r.event), sid);
+  for (const e of deferred) await putEvent(e);
+  if (assigned.length === 0) return;
+  const n = await uploadGrouped(assigned);
+  console.debug("[skilllens] flush ok", n);
+}
+
+// 停止录制时的最终上报：由 stopRecording 在清除 storage 标记之前调用，
+// 用停止前的 sid 兜底上报缓冲事件——否则清除后到达的 flush 读到
+// sessionId 为 null，缓冲事件全进 deferred 永久滞留（session 0 事件的根因）。
+// 单独执行、不抢 flushing 锁（停止时不会有并发写入，可接受）；
+// 无 sid 可回填的 deferred 事件直接丢弃并告警（录制已结束，没有后续回填时机）。
+export async function finalFlushWithSession(sid: string | null): Promise<void> {
+  const rows = await takeEvents(500);
+  const { assigned, deferred } = assignSession(rows.map((r) => r.event), sid);
+  if (deferred.length > 0) {
+    console.warn(`[skilllens] final flush: drop ${deferred.length} events without session`);
+  }
+  if (assigned.length === 0) return;
+  const n = await uploadGrouped(assigned);
+  console.debug("[skilllens] final flush done", n);
 }
 
 async function loop(): Promise<void> {
@@ -104,7 +129,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
   if (msg?.type === "STOP_RECORDING") {
-    stopRecording().then(() => sendResponse({ ok: true }));
+    // await 停止流程（内部先做最终上报再清 storage），确保 sendResponse
+    // 返回时缓冲事件已尝试上报完毕。
+    stopRecording()
+      .then(() => sendResponse({ ok: true }))
+      .catch((e) => sendResponse({ error: String(e) }));
     return true;
   }
   if (msg?.type === "GET_STATE") {

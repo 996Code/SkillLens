@@ -15,14 +15,26 @@ function nextSeq(): number {
 
 async function refreshState(): Promise<void> {
   const st = await chrome.runtime.sendMessage({ type: "GET_STATE" }).catch(() => null);
-  recording = st?.recording === true;
+  const next = st?.recording === true;
+  if (next !== recording) {
+    recording = next;
+    console.debug("[skilllens] recording =", recording);
+  }
 }
 void refreshState();
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "session" && changes.sl_recording) {
-    recording = changes.sl_recording.newValue === true;
+    const next = changes.sl_recording.newValue === true;
+    if (next !== recording) {
+      recording = next;
+      console.debug("[skilllens] recording =", recording);
+    }
   }
 });
+// 兜底轮询：门控原本依赖一次性 GET_STATE + storage.onChanged，
+// 任一环失效（SW 重启未广播、storage 事件丢失等）则全程静默不采集。
+// 页面生命周期内 3s 轮询一次，开销可忽略。
+setInterval(() => void refreshState(), 3000);
 
 async function emit(kind: RawEvent["kind"], payload: Record<string, unknown>): Promise<void> {
   if (!recording) return;
