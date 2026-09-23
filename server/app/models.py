@@ -70,3 +70,13 @@ class TransactionWindow(Base):
     idle_ms: Mapped[int] = mapped_column()
     max_window_ms: Mapped[int] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class Alignment(Base):
+    __tablename__ = "alignment"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_ids: Mapped[list] = mapped_column(JSON)
+    skeleton: Mapped[list] = mapped_column(JSON)
+    param_variables: Mapped[list] = mapped_column(JSON)
+    input_variables: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)

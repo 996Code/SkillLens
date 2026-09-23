@@ -33,12 +33,20 @@ def summarize_api(event: dict) -> dict:
     }
 
 
-def process_session(db: Session, session_id: str) -> dict:
+def _events_of(db: Session, session_id: str) -> list[dict]:
     rows = db.execute(
         select(RawEvent).where(RawEvent.session_id == session_id).order_by(RawEvent.ts, RawEvent.seq)
     ).scalars().all()
-    events = [{"event_id": r.id, "seq": r.seq, "ts": r.ts, "kind": r.kind,
-               "payload": r.payload or {}, "page_id": r.page_id or ""} for r in rows]
+    return [{"event_id": r.id, "seq": r.seq, "ts": r.ts, "kind": r.kind,
+             "payload": r.payload or {}, "page_id": r.page_id or ""} for r in rows]
+
+
+def load_windows(db: Session, session_id: str) -> list[dict]:
+    return build_windows(_events_of(db, session_id))
+
+
+def process_session(db: Session, session_id: str) -> dict:
+    events = _events_of(db, session_id)
     windows = build_windows(events)
 
     for model in (NormalizedEvent, TransactionWindow, SemanticAction):

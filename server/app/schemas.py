@@ -9,3 +9,7 @@ class RawEventIn(BaseModel):
     page_id: str = Field(default="", max_length=40)
     kind: Literal["ui", "action", "network", "console", "navigation"]
     payload: dict
+
+
+class AlignRequest(BaseModel):
+    session_ids: list[str] = Field(min_length=2, max_length=10)
