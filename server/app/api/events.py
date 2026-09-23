@@ -44,5 +44,5 @@ async def ingest_events(session_id: str, events: list[RawEventIn],
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="duplicate (session_id, seq)")
+        raise HTTPException(status_code=409, detail="duplicate (session_id, page_id, seq)")
     return {"accepted": len(events)}

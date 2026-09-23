@@ -47,7 +47,7 @@ def align_skeletons(windows_per_session: list[tuple[str, list[dict]]]) -> list[d
     for sid, windows in windows_per_session:
         sig_lists.append((sid, [window_signature(w) for w in windows]))
 
-    ref_sid, ref = sig_lists[0]
+    ref = sig_lists[0][1]
     common = list(ref)
     for _, sigs in sig_lists[1:]:
         common = lcs(common, sigs)
