@@ -13,6 +13,16 @@ function redact(obj) {
   return obj;
 }
 
+// 响应体脱敏：字符串内容可解析为 JSON 时递归 redact，否则保持原文截断。
+function redactBody(raw) {
+  const text = String(raw ?? "");
+  try {
+    return JSON.stringify(redact(JSON.parse(text))).slice(0, 2000);
+  } catch {
+    return text.slice(0, 2000);
+  }
+}
+
 function post(detail) {
   window.postMessage({ source: "skilllens-net", detail }, "*");
 }
@@ -26,10 +36,10 @@ window.fetch = async (...args) => {
     const url = typeof input === "string" ? input : input && input.url;
     const method = init?.method ?? "GET";
     const clone = resp.clone();
-    const resBody = await clone.text().catch(() => "");
+    const resBody = redactBody(await clone.text().catch(() => ""));
     post({
       method, url, status: resp.status, duration: Math.round(performance.now() - started),
-      reqBody: redact(init?.body ?? null), resBody: resBody.slice(0, 2000),
+      reqBody: redact(init?.body ?? null), resBody,
     });
   } catch { /* 观察失败不影响页面 */ }
   return resp;
@@ -47,7 +57,7 @@ XMLHttpRequest.prototype.send = function (body) {
     post({
       method: this._m, url: this._u, status: this.status,
       duration: Math.round(performance.now() - (this._t0 ?? 0)),
-      reqBody: redact(body), resBody: String(this.responseText ?? "").slice(0, 2000),
+      reqBody: redact(body), resBody: redactBody(this.responseText),
     });
   });
   return OrigSend.call(this, body);
