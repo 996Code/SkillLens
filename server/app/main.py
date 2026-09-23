@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import events, health
+from app.api import events, health, ingest
 from app.config import API_PREFIX
 
 app = FastAPI(title="SkillLens Local Agent")
@@ -15,3 +15,4 @@ app.add_middleware(
 )
 app.include_router(health.router, prefix=API_PREFIX)
 app.include_router(events.router, prefix=API_PREFIX)
+app.include_router(ingest.router, prefix=API_PREFIX)
