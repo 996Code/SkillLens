@@ -1,31 +1,39 @@
 import { describeElement } from "../shared/describe-element";
 import { inputKey } from "../shared/input-key";
 import { redactValue } from "../shared/redact";
-import { AGENT_URL, EVENT_MSG } from "../shared/types";
+import { EVENT_MSG } from "../shared/types";
 import type { RawEvent } from "../shared/types";
 
-let seq = 0;
-let sessionId = "";
+// 录制门控：初始经 GET_STATE 向 SW 查询（覆盖"已开录的存量页面"场景），
+// 之后由 storage.onChanged 跟随 sl_recording 实时更新。录制关：不采集任何事件。
+let recording = false;
 
-async function ensureSession(): Promise<void> {
-  if (sessionId) return;
-  const resp = await fetch(`${AGENT_URL}/sessions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ target_system: location.host, note: "auto" }),
-  });
-  sessionId = (await resp.json()).session_id;
+let seq = 0;
+function nextSeq(): number {
+  return seq++;
 }
 
+async function refreshState(): Promise<void> {
+  const st = await chrome.runtime.sendMessage({ type: "GET_STATE" }).catch(() => null);
+  recording = st?.recording === true;
+}
+void refreshState();
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "session" && changes.sl_recording) {
+    recording = changes.sl_recording.newValue === true;
+  }
+});
+
 async function emit(kind: RawEvent["kind"], payload: Record<string, unknown>): Promise<void> {
-  await ensureSession();
+  if (!recording) return;
   const event: RawEvent = {
-    seq: seq++, ts: Date.now(), kind,
-    payload: { ...payload, __session_id: sessionId },
+    seq: nextSeq(), ts: Date.now(), kind,
+    payload: { ...payload, __session_id: "" },
   };
   // MV3：content script 与 service worker 不共享 IndexedDB（CS 写的是页面源 DB，
   // SW 读的是扩展源 DB），因此事件经 runtime 消息转发给 SW 落库。
   // fire-and-forget：SW 休眠等异常由 catch 吞掉，事件由 alarms 定时兜底补传。
+  // __session_id 统一置空，由 flush（T8）回填 SW 侧 session。
   chrome.runtime.sendMessage({ type: EVENT_MSG, event }).catch(() => {});
 }
 
@@ -67,7 +75,11 @@ document.addEventListener(
   { capture: true },
 );
 
-void emit("navigation", { type: "page-load", url: location.href, title: document.title });
+// page-load 需等初始状态就绪后再判定，避免"已开录的存量页面"在 GET_STATE
+// 返回前误判为未录制而丢掉首条 navigation 事件。
+void refreshState().then(() => {
+  if (recording) void emit("navigation", { type: "page-load", url: location.href, title: document.title });
+});
 
 // 注入 MAIN world 脚本
 const s = document.createElement("script");
