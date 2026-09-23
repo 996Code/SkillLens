@@ -8,11 +8,19 @@ def generate_assertions(db: Session, skill_id: int) -> list[OutcomeAssertion]:
     skill = db.get(Skill, skill_id)
     alignment = db.get(Alignment, skill.alignment_id)
     rows: list[tuple] = []
-    for sid in alignment.session_ids:
-        actions = db.execute(
-            select(SemanticAction).where(SemanticAction.session_id == sid)
-        ).scalars().all()
-        for action in actions:
+    # Skill 的证据范围是骨架步：只遍历 skeleton 各步 session_window_seqs
+    # 指向的 semantic_action（精确到 session_id + window_seq），
+    # 单侧 session 独有的非骨架窗口（v1 演示噪音）不得生成断言。
+    for step in alignment.skeleton or []:
+        for sid, window_seq in (step.get("session_window_seqs") or {}).items():
+            action = db.execute(
+                select(SemanticAction).where(
+                    SemanticAction.session_id == sid,
+                    SemanticAction.window_seq == window_seq,
+                )
+            ).scalar_one_or_none()
+            if action is None:
+                continue
             for call in action.api_calls or []:
                 rows.append(("api_status", call["template"], 3,
                              {"api_template": call["template"], "expect_status": call.get("status")}))
@@ -20,6 +28,8 @@ def generate_assertions(db: Session, skill_id: int) -> list[OutcomeAssertion]:
                 rows.append(("state_signal", sig["api"], 3,
                              {"api_template": sig["api"], "field": sig["field"],
                               "expect_value": sig["value"]}))
+    # FieldChange 保持按 session 全量（层 2 是存在性语义，与骨架无关）
+    for sid in alignment.session_ids:
         changes = db.execute(
             select(FieldChange).where(FieldChange.session_id == sid)
         ).scalars().all()

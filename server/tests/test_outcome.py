@@ -50,6 +50,39 @@ async def test_verify_all_pass(client, monkeypatch):
         assert result["passed"] is True, r
 
 
+async def test_assertions_only_from_skeleton(client, monkeypatch):
+    import json as _json
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_FAKE_RESPONSE", _json.dumps({"name": "S1", "description": "d"}))
+    # s1 有额外非骨架窗口，s2 没有 → 断言不得包含 s1 独有 API
+    s1 = (await client.post("/api/v1/sessions", json={})).json()["session_id"]
+    s2 = (await client.post("/api/v1/sessions", json={})).json()["session_id"]
+    ev_common = [
+        {"seq": 0, "ts": 0, "kind": "action", "payload": {"type": "click", "target": {"label": "保存"}}},
+        {"seq": 1, "ts": 100, "kind": "network", "payload": {"method": "POST", "url": "/orders/1/save",
+             "status": 200, "reqBody": "{}", "resBody": '{"code":200}'}},
+    ]
+    ev_extra = [
+        {"seq": 5, "ts": 5000, "kind": "action", "payload": {"type": "click", "target": {"label": "额外"}}},
+        {"seq": 6, "ts": 5100, "kind": "network", "payload": {"method": "POST", "url": "/extra/only",
+             "status": 200, "reqBody": "{}", "resBody": '{"code":200}'}},
+    ]
+    await client.post(f"/api/v1/sessions/{s1}/events", json=ev_common + ev_extra)
+    await client.post(f"/api/v1/sessions/{s2}/events", json=ev_common)
+    await client.post(f"/api/v1/sessions/{s1}/process")
+    await client.post(f"/api/v1/sessions/{s2}/process")
+    aid = (await client.post("/api/v1/align", json={"session_ids": [s1, s2]})).json()["alignment_id"]
+    skill = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
+    await client.post(f"/api/v1/skills/{skill['id']}/assertions")
+    rows = (await client.get(f"/api/v1/skills/{skill['id']}/assertions")).json()
+    templates = {r["api_template"] for r in rows}
+    assert "/extra/only" not in templates          # 非骨架 API 不得成为断言
+    assert "/orders/{id}/save" in templates
+    for r in rows:
+        v = (await client.post(f"/api/v1/assertions/{r['id']}/verify")).json()
+        assert v["passed"] is True                  # 骨架内断言在两 session 全过
+
+
 async def test_verify_detects_failure(client, monkeypatch):
     skill_id, _ = await _make_learned_skill(client, monkeypatch)
     await client.post(f"/api/v1/skills/{skill_id}/assertions")
