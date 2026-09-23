@@ -93,6 +93,22 @@ class FieldChange(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
+class Skill(Base):
+    __tablename__ = "skill"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    alignment_id: Mapped[int] = mapped_column(index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20))
+    skeleton: Mapped[list] = mapped_column(JSON)
+    param_variables: Mapped[list] = mapped_column(JSON)
+    input_variables: Mapped[list] = mapped_column(JSON)
+    confidence: Mapped[float] = mapped_column()
+    evidence_count: Mapped[int] = mapped_column()
+    notes: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
 class LlmCallLog(Base):
     __tablename__ = "llm_call_log"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
