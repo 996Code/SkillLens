@@ -5,7 +5,8 @@ const MASK = "[REDACTED]";
 const SENSITIVE = /password|passwd|secret|token|authorization|cookie/i;
 
 function redact(obj) {
-  if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+  if (Array.isArray(obj)) return obj.map(redact);
+  if (obj && typeof obj === "object") {
     return Object.fromEntries(
       Object.entries(obj).map(([k, v]) => [k, SENSITIVE.test(k) ? MASK : redact(v)]),
     );
