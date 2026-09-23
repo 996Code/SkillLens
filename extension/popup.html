@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="zh">
+  <head><meta charset="utf-8" /><style>body { width: 260px; font: 13px system-ui; padding: 10px; }</style></head>
+  <body>
+    <input id="note" placeholder="任务意图，如：创建订单" style="width: 100%; box-sizing: border-box;" />
+    <div style="display: flex; gap: 8px; margin-top: 8px;">
+      <button id="start" style="flex: 1;">开始录制</button>
+      <button id="stop" style="flex: 1;">停止</button>
+    </div>
+    <div id="status" style="margin-top: 8px; color: #555;"></div>
+    <script type="module" src="src/popup.ts"></script>
+  </body>
+</html>

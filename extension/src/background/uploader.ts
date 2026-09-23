@@ -1,6 +1,12 @@
 import { putEvent, takeEvents } from "../store/idb";
 import { AGENT_URL, EVENT_MSG } from "../shared/types";
 import type { RawEvent } from "../shared/types";
+import { getRecordingState, startRecording, stopRecording } from "./session";
+
+// chrome.storage.session 默认 accessLevel 为 TRUSTED_CONTEXTS（仅扩展页面可读），
+// content script 属于非受信上下文读不到——SW 启动时放开一次，
+// 否则录制门控（capture 读 sl_recording）完全失效。
+void chrome.storage.session.setAccessLevel({ accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS" });
 
 const BATCH = 50;
 const MAX_RETRIES = 3;
@@ -78,6 +84,24 @@ chrome.runtime.onMessage.addListener((msg) => {
       await putEvent(msg.event as RawEvent);
       await flush();
     })();
+  }
+  // 未知消息类型不 return true，交由下方录制开关监听器异步响应
+});
+
+// 录制开关消息（popup -> SW）：单一 session 由 SW 统一创建/停止，
+// 与上方 events-pending 监听并存（两个监听器都会被调用）。
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type === "START_RECORDING") {
+    startRecording(String(msg.note ?? "")).then(sendResponse).catch((e) => sendResponse({ error: String(e) }));
+    return true;
+  }
+  if (msg?.type === "STOP_RECORDING") {
+    stopRecording().then(() => sendResponse({ ok: true }));
+    return true;
+  }
+  if (msg?.type === "GET_STATE") {
+    getRecordingState().then(sendResponse);
+    return true;
   }
 });
 chrome.alarms.onAlarm.addListener(() => void flush());
