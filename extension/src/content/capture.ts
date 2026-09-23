@@ -1,5 +1,6 @@
 import { describeElement } from "../shared/describe-element";
 import { inputKey } from "../shared/input-key";
+import { makePageId } from "../shared/page-id";
 import { redactValue } from "../shared/redact";
 import { EVENT_MSG } from "../shared/types";
 import type { RawEvent } from "../shared/types";
@@ -39,7 +40,7 @@ setInterval(() => void refreshState(), 3000);
 async function emit(kind: RawEvent["kind"], payload: Record<string, unknown>): Promise<void> {
   if (!recording) return;
   const event: RawEvent = {
-    seq: nextSeq(), ts: Date.now(), kind,
+    seq: nextSeq(), page_id: makePageId(), ts: Date.now(), kind,
     payload: { ...payload, __session_id: "" },
   };
   // MV3：content script 与 service worker 不共享 IndexedDB（CS 写的是页面源 DB，

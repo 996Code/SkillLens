@@ -2,6 +2,7 @@ export type EventKind = "ui" | "action" | "network" | "console" | "navigation";
 
 export interface RawEvent {
   seq: number;
+  page_id: string;
   ts: number;
   kind: EventKind;
   payload: Record<string, unknown>;
