@@ -1,0 +1,21 @@
+0|navigation|page-load||
+1|network||GET /static-mind-designer/|
+2|network||GET /ai-modeler/api/health|
+3|network||GET /codeBack/formConfig/getFormConfigByCode?formConfig|
+4|network||GET /codeBack/bpm/model/simpleList|
+5|network||GET /codeBack/dynamicServer/get-all-dynamic-server|
+6|action|click|单选|
+7|network||GET /codeBack/bpm/model/getModelTaskKeyListWithFinish?m|
+8|network||POST /codeBack/role/list|
+9|action|click|点击选择特殊字符|
+10|action|input|输入 LaTeX 代码，或悬浮上方分类选择符号插入|111223333
+11|action|click|插入|
+12|network||GET /codeBack/list/data/get-table-list|
+13|network||GET /framework/base-data/dict-type/select-list|
+14|action|click|*富文本业务|
+15|action|click|点击选择特殊字符|
+16|action|input|输入 LaTeX 代码，或悬浮上方分类选择符号插入|3213213
+17|action|click|插入|
+18|action|click|请输入|
+19|action|input|请输入|fuwenben1432432
+20|action|click|*文本输入框业务请输入*数值业务请输入数字*文本输入框业务请输入*日期时间业务选择日期*文本输入框业务请输入*|
