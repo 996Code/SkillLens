@@ -59,3 +59,15 @@ document.addEventListener(
 );
 
 void emit("navigation", { type: "page-load", url: location.href, title: document.title });
+
+// 注入 MAIN world 脚本
+const s = document.createElement("script");
+s.src = chrome.runtime.getURL("src/injected/net-hook.js");
+s.async = false;
+document.documentElement.appendChild(s);
+
+// 接收网络事件
+window.addEventListener("message", (e) => {
+  if (e.source !== window || e.data?.source !== "skilllens-net") return;
+  void emit("network", e.data.detail);
+});
