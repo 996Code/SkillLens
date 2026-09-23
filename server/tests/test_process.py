@@ -30,6 +30,8 @@ async def test_process_creates_semantic_actions(client):
     assert [c["template"] for c in row["api_calls"]] == ["/codeBack/formConfig/saveFormConfig"]
     assert row["api_calls"][0]["method"] == "POST"
     assert row["state_signals"] == [{"api": "/codeBack/formConfig/saveFormConfig",
+                                     "field": "code", "value": 200},
+                                    {"api": "/codeBack/formConfig/saveFormConfig",
                                      "field": "status", "value": "SUCCESS"}]
 
 

@@ -5,7 +5,8 @@ from app.ingestion.signals import extract_state_signals
 
 def test_top_level_status():
     body = json.dumps({"code": 200, "status": "APPROVED"})
-    assert extract_state_signals(body) == [{"field": "status", "value": "APPROVED"}]
+    assert extract_state_signals(body) == [{"field": "code", "value": 200},
+                                            {"field": "status", "value": "APPROVED"}]
 
 
 def test_nested_data_state():
@@ -22,3 +23,8 @@ def test_none_and_invalid():
     assert extract_state_signals(None) == []
     assert extract_state_signals("not json") == []
     assert extract_state_signals('{"status": 200}') == [{"field": "status", "value": 200}]
+
+
+def test_top_level_code_njmind_convention():
+    body = json.dumps({"code": 200, "data": {"formConfigId": "1"}})
+    assert extract_state_signals(body) == [{"field": "code", "value": 200}]

@@ -1,7 +1,7 @@
 import json
 import re
 
-STATE_KEY = re.compile(r"^(status|state)$", re.I)
+STATE_KEY = re.compile(r"^(status|state|code|result)$", re.I)
 
 
 def extract_state_signals(res_body: str | None) -> list[dict]:
