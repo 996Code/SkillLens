@@ -10,16 +10,13 @@ STOP_RECORDING → 轮询 server 确认事件落库。
 （复用 njmind_login 的表单逻辑，凭据读 server/.env，不入库不打印）。
 """
 import asyncio
-import json
 import sys
-import urllib.request
 from pathlib import Path
 
 from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 EXT_DIST = ROOT / "extension" / "dist"
-SERVER = "http://127.0.0.1:8710"
 FORM_URL = "http://192.168.99.22/mb3/1/mind-designer/field-edit?formCode=ceshi000001"
 NOTE = "auto-record-e2e"
 
@@ -42,6 +39,8 @@ async def login_in_page(page, user: str, password: str, login_url: str) -> None:
 async def find_service_worker(ctx) -> object:
     for _ in range(20):
         for w in ctx.service_workers:
+            # SW 实际 URL 是构建产物名（service-worker-loader*.js）；
+            # "uploader" 兜底匹配源码名，防构建产物改名
             if "service-worker-loader" in w.url or "uploader" in w.url:
                 return w
         await asyncio.sleep(0.5)
@@ -68,8 +67,15 @@ async def main() -> None:
     user = cfg.get("NJMIND_USER") or ""
     password = cfg.get("NJMIND_PASS") or ""
     login_url = cfg.get("NJMIND_LOGIN_URL") or "http://192.168.99.22/mb3/1/"
+    note = NOTE
     if "--note" in sys.argv:
-        NOTE = sys.argv[sys.argv.index("--note") + 1]
+        i = sys.argv.index("--note")
+        if i + 1 >= len(sys.argv):
+            sys.exit("--note 需要一个值")
+        note = sys.argv[i + 1]
+    if not user or not password:
+        sys.exit("缺少 NJMIND_USER/NJMIND_PASS（server/.env）——"
+                 "缺凭据时会以表单定位超时的间接症状报错，这里显式报")
 
     try:
         async with async_playwright() as p:
@@ -89,7 +95,7 @@ async def main() -> None:
             await login_in_page(login_page, user, password, login_url)
 
             # 2) 开录制
-            r = await ext_call(ctx, sw, {"type": "START_RECORDING", "note": NOTE})
+            r = await ext_call(ctx, sw, {"type": "START_RECORDING", "note": note})
             print("start_recording:", r)
             sid = (r or {}).get("id")
 
@@ -99,7 +105,7 @@ async def main() -> None:
             await page.wait_for_load_state("domcontentloaded", timeout=15000)
             await page.wait_for_timeout(2000)
             # 表单名输入框 = 第一个"请输入"（disabled 的 code 框不可填）
-            await page.get_by_placeholder("请输入").first.fill(f"auto-{NOTE}")
+            await page.get_by_placeholder("请输入").first.fill(f"auto-{note}")
             await page.get_by_role("button", name="保存").click()
             await page.wait_for_timeout(3000)
 
@@ -109,6 +115,7 @@ async def main() -> None:
             await ctx.close()
     finally:
         import subprocess
+        # 独占运行：模式串会匹配并发第二实例的浏览器，本脚本设计为单实例
         subprocess.run(["pkill", "-f", "skilllens-ext-profile"],
                        capture_output=True)
 
