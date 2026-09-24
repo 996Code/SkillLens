@@ -2,6 +2,7 @@ import json
 import os
 
 import httpx
+import pytest
 from sqlalchemy import select
 
 from app.db import SessionLocal
@@ -72,6 +73,36 @@ def test_complete_logs_to_db(monkeypatch):
         assert row.prompt == "prompt-abc"
         assert row.response == "logged-response"
         assert row.provider == "fake"
+        assert row.latency_ms >= 0
+    finally:
+        db.close()
+
+
+def test_complete_logs_on_provider_error(monkeypatch):
+    class ExplodingProvider:
+        name = "openai-compat"
+
+        def complete(self, prompt):
+            raise RuntimeError("boom-connection")
+
+    import app.llm.gateway as llm_gateway
+    monkeypatch.setattr(llm_gateway, "get_provider", lambda: ExplodingProvider())
+
+    from app.db import engine
+    from app.models import Base
+
+    Base.metadata.create_all(engine)
+    db = SessionLocal()
+    try:
+        with pytest.raises(RuntimeError):
+            llm_gateway.complete(db, "skill_naming", "prompt-xyz")
+        row = db.execute(select(LlmCallLog).order_by(LlmCallLog.id.desc())).scalars().first()
+        assert row.purpose == "skill_naming"
+        assert row.provider == "openai-compat"
+        assert row.prompt == "prompt-xyz"
+        assert "RuntimeError" in row.response and "boom" in row.response
+        assert row.prompt_tokens is None
+        assert row.completion_tokens is None
         assert row.latency_ms >= 0
     finally:
         db.close()

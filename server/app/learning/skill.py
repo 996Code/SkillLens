@@ -4,7 +4,7 @@ import re
 from sqlalchemy.orm import Session
 
 from app.llm.gateway import complete
-from app.models import Alignment, Skill
+from app.models import Alignment, OutcomeAssertion, Skill
 
 PASCAL = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 
@@ -68,6 +68,11 @@ def induce_skill(db: Session, alignment_id: int) -> Skill:
         else:
             notes = why
     confidence = _confidence(alignment)
+    # 先删旧 Skill 的断言再删 Skill：否则断言行 skill_id 悬空，verify 会 500（孤儿根治）
+    old_skill_ids = [s.id for s in db.query(Skill).filter(Skill.alignment_id == alignment_id).all()]
+    if old_skill_ids:
+        db.query(OutcomeAssertion).filter(OutcomeAssertion.skill_id.in_(old_skill_ids)).delete(
+            synchronize_session=False)
     db.query(Skill).filter(Skill.alignment_id == alignment_id).delete()
     skill = Skill(
         alignment_id=alignment_id, name=name, description=desc, status=status,
