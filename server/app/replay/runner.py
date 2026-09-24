@@ -96,6 +96,8 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
         ctx = await browser.new_context(storage_state=STORAGE_STATE or None)
         page = await ctx.new_page()
         await page.goto(plan["url"])
+        await page.wait_for_load_state("domcontentloaded", timeout=15000)
+        await page.wait_for_timeout(2000)
         result = await execute_plan(page, plan)
 
         assertions = [{"kind": a.kind, "payload": a.payload} for a in
