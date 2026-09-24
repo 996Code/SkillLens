@@ -2,14 +2,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import change, events, health, ingest, llm_skills, replay
-from app.config import API_PREFIX
+from app.config import ALLOWED_ORIGINS, API_PREFIX
 
 app = FastAPI(title="SkillLens Local Agent")
-# POC 阶段：本地 Agent 仅监听 127.0.0.1，CORS 全放开以支持插件 content script
-# 跨域上报；私有化阶段改为 background service worker 转发后需收紧。
+# CORS 由 ALLOWED_ORIGINS 配置（默认 * 兼容插件直连；私有化收紧见 deploy/README.md）。
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
