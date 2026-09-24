@@ -75,6 +75,30 @@ async def observe(delta_id: int, body: ObserveRequest,
             "replay_status": db.get(ReplayRun, row.replay_run_id).status}
 
 
+class ReportRequest(BaseModel):
+    observed_delta_id: int
+
+
+@router.post("/expected-deltas/{delta_id}/report", status_code=201)
+async def report(delta_id: int, body: ReportRequest,
+                 db: Session = Depends(get_db)) -> dict:
+    from app.change.classify import classify_delta
+    from app.models import DeltaReport, ObservedDelta
+    delta = db.get(ExpectedDelta, delta_id)
+    obs = db.get(ObservedDelta, body.observed_delta_id)
+    if not delta or not obs:
+        raise HTTPException(404, "expected/observed delta not found")
+    if obs.expected_delta_id != delta_id:
+        raise HTTPException(409, "observed delta 不属于该 expected delta")
+    r = classify_delta(delta.changes, obs.items)
+    row = DeltaReport(expected_delta_id=delta_id, observed_delta_id=obs.id,
+                      expected=r["expected"], missing=r["missing"],
+                      unexpected=r["unexpected"], drift=r["drift"])
+    db.add(row); db.commit(); db.refresh(row)
+    return {"id": row.id, "expected_delta_id": delta_id,
+            "observed_delta_id": obs.id, **r}
+
+
 @router.get("/expected-deltas/{delta_id}")
 async def get_expected(delta_id: int, db: Session = Depends(get_db)) -> dict:
     row = db.get(ExpectedDelta, delta_id)
