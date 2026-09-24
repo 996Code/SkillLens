@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import time
@@ -34,13 +35,17 @@ async def _open_browser(p):
 async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000) -> dict:
     observed: list[dict] = []
 
-    async def on_response(response):
-        try:
-            body = await response.text()
-        except Exception:
-            body = ""
-        observed.append({"url": response.url, "status": response.status,
-                         "body": body[:MAX_BODY]})
+    # 同步壳 + create_task：Playwright 的 on() 对 async 回调支持不稳（版本相关，
+    # 可能静默不调用或调用不等待），同步回调内自建 task 最稳。
+    def on_response(response):
+        async def collect():
+            try:
+                body = await response.text()
+            except Exception:
+                body = ""
+            observed.append({"url": response.url, "status": response.status,
+                             "body": body[:MAX_BODY]})
+        asyncio.get_running_loop().create_task(collect())
 
     page.on("response", on_response)
     executed: list[dict] = []
@@ -65,7 +70,7 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000) -> dict:
             executed.append({**step, "ok": False, "error": str(exc)[:200]})
             failed = True
     try:
-        await page.wait_for_timeout(500)  # 收尾等待尾随响应
+        await page.wait_for_timeout(1500)  # 收尾等待尾随响应（njmind 保存链实测 ~600ms+）
     except Exception:
         pass
     return {"executed": executed, "observed": observed}
