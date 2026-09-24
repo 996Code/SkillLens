@@ -68,13 +68,58 @@ def lcs(a: list[str], b: list[str]) -> list[str]:
     return out
 
 
-def align_skeletons(windows_per_session: list[tuple[str, list[dict]]]) -> list[dict]:
+# 分桶阈值：LCS 相似度 >= 0.6 视为同任务的不同路径（宪法 §8：分叉先分桶再桶内对齐）
+BUCKET_SIMILARITY_THRESHOLD = 0.6
+
+
+def _seq_similarity(a: list[str], b: list[str]) -> float:
+    """LCS 长度 / 较长序列长度。"""
+    if not a or not b:
+        return 0.0
+    return len(lcs(a, b)) / max(len(a), len(b))
+
+
+def _bucket_sessions(sig_lists: list[tuple[str, list[str]]]) -> list[list[str]]:
+    """按窗口签名序列分桶：完全相同→同桶；与桶内任一成员相似度达标→归并。
+    贪心顺序归并（首个入桶者作比较锚，MVP 语义）。"""
+    buckets: list[list[str]] = []
+    anchors: list[list[str]] = []
+    for sid, sigs in sig_lists:
+        placed = False
+        for bi, anchor in enumerate(anchors):
+            if sigs == anchor or _seq_similarity(sigs, anchor) >= BUCKET_SIMILARITY_THRESHOLD:
+                buckets[bi].append(sid)
+                placed = True
+                break
+        if not placed:
+            buckets.append([sid])
+            anchors.append(sigs)
+    return buckets
+
+
+def align_skeletons(windows_per_session: list[tuple[str, list[dict]]]) -> dict:
+    """返回 {"skeleton": [...], "buckets": [{"sessions": [...], "skeleton": [...]}]}。
+    skeleton 保持原跨全 session 的 LCS 语义（Skill 断言证据范围，Sprint 3 fix1：
+    单侧独有的窗口不得进骨架）；buckets 是多路径策略记录（每桶桶内对齐）。"""
     if not windows_per_session:
-        return []
+        return {"skeleton": [], "buckets": []}
     sig_lists: list[tuple[str, list[str]]] = []
     for sid, windows in windows_per_session:
         sig_lists.append((sid, [window_signature(w) for w in windows]))
 
+    skeleton = _align_one(sig_lists)
+    buckets = _bucket_sessions(sig_lists)
+    out_buckets = []
+    for members in buckets:
+        out_buckets.append({
+            "sessions": members,
+            "skeleton": _align_one([s for s in sig_lists if s[0] in members]),
+        })
+    return {"skeleton": skeleton, "buckets": out_buckets}
+
+
+def _align_one(sig_lists: list[tuple[str, list[str]]]) -> list[dict]:
+    """桶内对齐（原 align_skeletons 逻辑，输入已是签名序列）。"""
     ref = sig_lists[0][1]
     common = list(ref)
     for _, sigs in sig_lists[1:]:

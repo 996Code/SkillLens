@@ -20,7 +20,7 @@ async def test_process_creates_semantic_actions(client):
     sid = await _seed(client)
     resp = await client.post(f"/api/v1/sessions/{sid}/process")
     assert resp.status_code == 200
-    assert resp.json() == {"windows": 1}
+    assert resp.json() == {"windows": 1, "kept": 1}  # S10：噪声过滤后 kept 计数
 
     rows = (await client.get(f"/api/v1/sessions/{sid}/semantic-actions")).json()
     assert len(rows) == 1

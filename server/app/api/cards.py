@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
-from app.models import Alignment, OutcomeAssertion, ReplayRun, Skill
+from app.models import Alignment, OutcomeAssertion, ReplayRun, Skill, SkillStrategy
 
 router = APIRouter()
 
@@ -56,5 +56,9 @@ async def get_skill_card(skill_id: int, db: Session = Depends(get_db)) -> dict:
         "last_run": _last_run(db, skill_id),
         "window_params": (db.get(Alignment, skill.alignment_id).window_params
                           if skill.alignment_id else None),
+        "strategies": [{"signature": s.strategy_signature[:200],
+                        "evidence_count": s.evidence_count}
+                       for s in db.query(SkillStrategy).filter(
+                           SkillStrategy.skill_id == skill_id).all()],
         "notes": skill.notes,
     }

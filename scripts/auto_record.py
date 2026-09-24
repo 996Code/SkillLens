@@ -112,8 +112,9 @@ async def main() -> None:
             await login_in_page(login_page, user, password, login_url)
             await login_page.close()
 
-            # 2) 开录制
-            r = await ext_call(ctx, sw, {"type": "START_RECORDING", "note": note})
+            # 2) 开录制（source=demo：演示轨显式标记，与 popup 真实流量区分）
+            r = await ext_call(ctx, sw, {"type": "START_RECORDING", "note": note,
+                                         "source": "demo"})
             print("start_recording:", r)
             sid = (r or {}).get("id")
 

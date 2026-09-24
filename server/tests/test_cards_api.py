@@ -57,7 +57,7 @@ async def test_card_full_fields(client, monkeypatch):
     card = resp.json()
     assert set(card) == {"id", "name", "description", "status", "confidence",
                          "evidence_count", "alignment_id", "skeleton", "input_variables",
-                         "param_variables", "assertions", "last_run", "window_params",
+                         "param_variables", "assertions", "strategies", "last_run", "window_params",
                          "notes"}
     assert card["id"] == skill_id
     assert card["name"] == "SaveForm"

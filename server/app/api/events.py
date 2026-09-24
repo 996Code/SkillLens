@@ -1,4 +1,5 @@
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -23,12 +24,15 @@ def get_db():
 class SessionCreate(BaseModel):
     target_system: str = ""
     note: str = ""
+    # S10 C2：来源标记——popup 用户开录 real_traffic；auto_record/旧客户端缺省 demo
+    source: Literal["demo", "real_traffic"] = "demo"
 
 
 @router.post("/sessions")
 async def create_session(body: SessionCreate, db: Session = Depends(get_db)) -> dict:
     session_id = str(uuid.uuid4())
-    db.add(RecordingSession(id=session_id, target_system=body.target_system, note=body.note))
+    db.add(RecordingSession(id=session_id, target_system=body.target_system,
+                            note=body.note, source=body.source))
     db.commit()
     return {"session_id": session_id}
 

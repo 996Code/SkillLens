@@ -18,6 +18,8 @@ class RecordingSession(Base):
     started_at: Mapped[datetime] = mapped_column(default=utcnow)
     target_system: Mapped[str] = mapped_column(String(200), default="")
     note: Mapped[str] = mapped_column(String(500), default="")
+    # Sprint 10 C2：会话来源标记（demo=演示基线 | real_traffic=真实用户流量）
+    source: Mapped[str] = mapped_column(String(20), default="demo")
 
 
 class RawEvent(Base):
@@ -75,6 +77,16 @@ class TransactionWindow(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
+class FilteredWindow(Base):
+    """S10 Task2：噪声过滤决策审计（C3——不删 raw，可回放重过滤）。"""
+    __tablename__ = "filtered_window"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    window_seq: Mapped[int] = mapped_column()
+    reason: Mapped[str] = mapped_column(String(50))
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
 class Alignment(Base):
     __tablename__ = "alignment"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -83,6 +95,7 @@ class Alignment(Base):
     param_variables: Mapped[list] = mapped_column(JSON)
     input_variables: Mapped[list] = mapped_column(JSON)
     window_params: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    buckets: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
@@ -111,6 +124,31 @@ class Skill(Base):
     evidence_count: Mapped[int] = mapped_column()
     notes: Mapped[str] = mapped_column(String(500), default="")
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class SkillStrategy(Base):
+    """Skill 的可选路径（spec §5）：分桶对齐后每桶一条，主桶亦记录。"""
+    __tablename__ = "skill_strategy"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    skill_id: Mapped[int] = mapped_column(index=True)
+    strategy_signature: Mapped[str] = mapped_column(Text)
+    skeleton: Mapped[list] = mapped_column(JSON, nullable=True)
+    evidence_count: Mapped[int] = mapped_column(default=1)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class EvidenceEdge(Base):
+    """证据图边（spec §5）：全局证据资产，非 skill 私有（re-induce 不清）。"""
+    __tablename__ = "evidence_edge"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    src: Mapped[str] = mapped_column(String(300))
+    dst: Mapped[str] = mapped_column(String(300))
+    type: Mapped[str] = mapped_column(String(30))
+    evidence_count: Mapped[int] = mapped_column(default=1)
+    first_seen: Mapped[datetime] = mapped_column(default=utcnow)
+    last_seen: Mapped[datetime] = mapped_column(default=utcnow)
+    __table_args__ = (UniqueConstraint("src", "dst", "type",
+                                        name="uq_evidence_edge"),)
 
 
 class LlmCallLog(Base):
