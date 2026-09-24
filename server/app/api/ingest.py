@@ -37,7 +37,8 @@ async def list_semantic_actions(session_id: str, db: Session = Depends(get_db)) 
     return [
         {"window_seq": r.window_seq, "anchor_seq": r.anchor_seq,
          "anchor_type": r.anchor_type, "target": r.target,
-         "api_calls": r.api_calls, "state_signals": r.state_signals}
+         "api_calls": r.api_calls, "state_signals": r.state_signals,
+         "state_before": r.state_before, "state_after": r.state_after}
         for r in rows
     ]
 
