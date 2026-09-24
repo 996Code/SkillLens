@@ -114,13 +114,163 @@ describe("SkillsList", () => {
   });
 
   it("renders empty state when no skills", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () =>
-      new Response(JSON.stringify([]), { status: 200 })));
+    // S10 起 SkillsList 还会拉 /baseline/compare——mock 按路由返回（compare 返回
+    // 数组会让 vs_baseline 渲染炸），空态语义只看 skills 列表。
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/v1/baseline/compare") {
+        return new Response(JSON.stringify({
+          demo: { count: 0, avg_confidence: null, avg_pass_rate: null },
+          real_traffic: { count: 0, avg_confidence: null, avg_pass_rate: null },
+          vs_baseline: { confidence_ratio: null, pass_rate_ratio: null, meets_c2: false },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify([]), { status: 200 });
+    }));
     const root = document.createElement("div");
     document.body.appendChild(root);
     mountView(root, SkillsList, "/skills");
     await flush();
+    await flush();
     expect(root.textContent).toContain("暂无 Skill，先录制并归纳");
+  });
+
+  // ---------- S10 Task5：source 徽标 + 基线对比区块 ----------
+
+  function stubSkillsAndCompare(
+    skills: Record<string, unknown>[],
+    compare: Record<string, unknown> | { status: number; body: string },
+  ) {
+    return vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/v1/skills") {
+        return new Response(JSON.stringify(skills), {
+          status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url === "/api/v1/baseline/compare") {
+        if ("status" in compare) {
+          return new Response(compare.body, { status: compare.status });
+        }
+        return new Response(JSON.stringify(compare), {
+          status: 200, headers: { "content-type": "application/json" } });
+      }
+      const m = url.match(/^\/api\/v1\/skills\/(\d+)\/card$/);
+      if (m) {
+        const id = Number(m[1]);
+        const s = skills.find((x) => x.id === id) as Record<string, unknown>;
+        return new Response(JSON.stringify({
+          id, name: s.name, description: s.description ?? "", status: s.status,
+          confidence: s.confidence, evidence_count: s.evidence_count,
+          alignment_id: s.alignment_id ?? null, skeleton: [],
+          input_variables: [], param_variables: [], assertions: [],
+          last_run: null, window_params: null, notes: "",
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response("not found", { status: 404 });
+    });
+  }
+
+  const skillRows = [
+    { id: 2, alignment_id: 2, name: "Cand2", description: "", status: "candidate",
+      confidence: 0.6, evidence_count: 1, notes: "", source: "demo" },
+    { id: 1, alignment_id: 1, name: "SaveForm", description: "d", status: "learned",
+      confidence: 1.0, evidence_count: 2, notes: "", source: "real_traffic" },
+  ];
+
+  it("renders source badges: real_traffic green, demo gray", async () => {
+    vi.stubGlobal("fetch", stubSkillsAndCompare(skillRows, {
+      demo: { count: 1, avg_confidence: 0.6, avg_pass_rate: null },
+      real_traffic: { count: 1, avg_confidence: 1.0, avg_pass_rate: null },
+      vs_baseline: { confidence_ratio: 1.0, pass_rate_ratio: null, meets_c2: true },
+    }));
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    mountView(root, SkillsList, "/skills");
+    await flush();
+    await flush();
+
+    const cards = root.querySelectorAll(".card");
+    const badges = Array.from(cards).map((c) =>
+      c.querySelector<HTMLElement>("[data-testid='source-badge']"));
+    expect(badges[0]?.textContent).toContain("演示"); // 列表 id 倒序：Cand2(demo) 首张
+    expect(badges[0]?.className).toContain("badge-demo");
+    expect(badges[1]?.textContent).toContain("真实流量");
+    expect(badges[1]?.className).toContain("badge-real");
+  });
+
+  it("renders compare block with C2 met state", async () => {
+    vi.stubGlobal("fetch", stubSkillsAndCompare(skillRows, {
+      demo: { count: 2, avg_confidence: 1.0, avg_pass_rate: 1.0 },
+      real_traffic: { count: 3, avg_confidence: 0.9, avg_pass_rate: 0.8 },
+      vs_baseline: { confidence_ratio: 0.9, pass_rate_ratio: 0.8, meets_c2: true },
+    }));
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    mountView(root, SkillsList, "/skills");
+    await flush();
+    await flush();
+
+    const block = root.querySelector("[data-testid='baseline-compare']");
+    expect(block).not.toBeNull();
+    expect(root.textContent).toContain("基线对比");
+    expect(root.textContent).toContain("2 / 3");
+    expect(root.querySelector("[data-testid='confidence-ratio']")?.textContent)
+      .toBe("90%");
+    expect(root.querySelector("[data-testid='c2-status']")?.textContent)
+      .toContain("C2 达标");
+    expect(root.querySelector(".c2-met")).not.toBeNull();
+  });
+
+  it("renders compare block with C2 not-met state and ratios", async () => {
+    vi.stubGlobal("fetch", stubSkillsAndCompare(skillRows, {
+      demo: { count: 1, avg_confidence: 1.0, avg_pass_rate: 1.0 },
+      real_traffic: { count: 1, avg_confidence: 0.6, avg_pass_rate: 0.5 },
+      vs_baseline: { confidence_ratio: 0.6, pass_rate_ratio: 0.5, meets_c2: false },
+    }));
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    mountView(root, SkillsList, "/skills");
+    await flush();
+    await flush();
+
+    expect(root.querySelector("[data-testid='c2-status']")?.textContent)
+      .toContain("C2 未达标");
+    expect(root.querySelector(".c2-not")).not.toBeNull();
+    expect(root.querySelector("[data-testid='confidence-ratio']")?.textContent)
+      .toBe("60%");
+  });
+
+  it("renders compare block empty state when no real traffic", async () => {
+    vi.stubGlobal("fetch", stubSkillsAndCompare(skillRows, {
+      demo: { count: 2, avg_confidence: 0.8, avg_pass_rate: null },
+      real_traffic: { count: 0, avg_confidence: null, avg_pass_rate: null },
+      vs_baseline: { confidence_ratio: null, pass_rate_ratio: null, meets_c2: false },
+    }));
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    mountView(root, SkillsList, "/skills");
+    await flush();
+    await flush();
+
+    expect(root.textContent).toContain("暂无真实流量数据");
+    expect(root.querySelector("[data-testid='c2-status']")?.textContent)
+      .toContain("C2 未达标");
+    // 列表本身不受影响
+    expect(root.textContent).toContain("SaveForm");
+  });
+
+  it("degrades compare block on fetch error without breaking list", async () => {
+    vi.stubGlobal("fetch", stubSkillsAndCompare(skillRows,
+      { status: 500, body: "boom" }));
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    mountView(root, SkillsList, "/skills");
+    await flush();
+    await flush();
+
+    expect(root.querySelector("[data-testid='baseline-compare']")).toBeNull();
+    expect(root.textContent).toContain("基线对比加载失败");
+    expect(root.textContent).toContain("SaveForm");
   });
 });
 

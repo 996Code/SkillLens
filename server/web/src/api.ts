@@ -32,6 +32,7 @@ export interface SkillListItem {
   confidence: number;
   evidence_count: number;
   notes: string;
+  source: string; // demo | real_traffic（S10：会话来源徽标）
 }
 
 export interface SkeletonStep {
@@ -173,10 +174,32 @@ export interface ReplayRunDetail {
   artifact_path: string;
 }
 
+// ---------- 类型（S10 基线对比，Task 5） ----------
+
+export interface BaselineSide {
+  count: number;
+  avg_confidence: number | null;
+  avg_pass_rate: number | null;
+}
+
+export interface BaselineCompare {
+  demo: BaselineSide;
+  real_traffic: BaselineSide;
+  vs_baseline: {
+    confidence_ratio: number | null;
+    pass_rate_ratio: number | null;
+    meets_c2: boolean;
+  };
+}
+
 // ---------- API 函数 ----------
 
 export function getSkills(): Promise<SkillListItem[]> {
   return get<SkillListItem[]>("/api/v1/skills");
+}
+
+export function getBaselineCompare(): Promise<BaselineCompare> {
+  return get<BaselineCompare>("/api/v1/baseline/compare");
 }
 
 export function getSkillCard(id: number | string): Promise<SkillCard> {

@@ -161,3 +161,36 @@ async def test_induce_writes_strategies_and_evidence(client, monkeypatch):
         assert call_edge.evidence_count >= 2  # 每 induce 累加（signature 可编码多个 api 调用）
     finally:
         db.close()
+
+
+async def test_list_skills_source_field(client, monkeypatch):
+    """S10 Task5：GET /skills 列表项带 source（首个 session 来源，缺省 demo）。"""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_FAKE_RESPONSE",
+                       json.dumps({"name": "SaveFormConfig", "description": "保存"}))
+
+    async def _make(source):
+        sids = []
+        for order_id in (111, 222):
+            body = {"source": source} if source else {}
+            sid = (await client.post("/api/v1/sessions", json=body)).json()["session_id"]
+            events = [
+                {"seq": 0, "ts": 2000, "kind": "action",
+                 "payload": {"type": "click", "target": {"label": "保存"}}},
+                {"seq": 1, "ts": 2600, "kind": "network",
+                 "payload": {"method": "POST", "url": f"/orders/{order_id}/save",
+                             "status": 200, "reqBody": "{}", "resBody": '{"code":200}'}},
+            ]
+            await client.post(f"/api/v1/sessions/{sid}/events", json=events)
+            await client.post(f"/api/v1/sessions/{sid}/process")
+            sids.append(sid)
+        aid = (await client.post("/api/v1/align", json={"session_ids": sids})).json()["alignment_id"]
+        return (await client.post(f"/api/v1/alignments/{aid}/induce")).json()["id"]
+
+    demo_skill = await _make(None)
+    real_skill = await _make("real_traffic")
+
+    skills = (await client.get("/api/v1/skills")).json()
+    by_id = {s["id"]: s for s in skills}
+    assert by_id[demo_skill]["source"] == "demo"
+    assert by_id[real_skill]["source"] == "real_traffic"

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
@@ -50,11 +51,25 @@ async def induce(alignment_id: int, db: Session = Depends(get_db)) -> dict:
 
 @router.get("/skills")
 async def list_skills(db: Session = Depends(get_db)) -> list:
+    from app.api.baseline import _skill_source
+    from app.models import Alignment
+    sources = {sid: source for sid, source in db.execute(
+        select(RecordingSession.id, RecordingSession.source)).all()}
+    alignments = {a.id: a for a in db.query(Alignment).all()}
+
+    def source_of(r: Skill) -> str:
+        # 同 baseline._skill_source 取法：alignment 首个 session 的 source，缺省 demo
+        alignment = alignments.get(r.alignment_id)
+        for sid in (alignment.session_ids or [] if alignment else []):
+            if sid in sources:
+                return sources[sid] or "demo"
+        return "demo"
+
     rows = db.query(Skill).order_by(Skill.id.desc()).all()
     return [{"id": r.id, "alignment_id": r.alignment_id, "name": r.name,
              "description": r.description, "status": r.status,
              "confidence": r.confidence, "evidence_count": r.evidence_count,
-             "notes": r.notes} for r in rows]
+             "notes": r.notes, "source": source_of(r)} for r in rows]
 
 
 @router.post("/skills/{skill_id}/assertions")
