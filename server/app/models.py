@@ -132,3 +132,17 @@ class OutcomeAssertion(Base):
     api_template: Mapped[str] = mapped_column(String(500))
     payload: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class ReplayRun(Base):
+    __tablename__ = "replay_run"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    skill_id: Mapped[int] = mapped_column(index=True)
+    mode: Mapped[str] = mapped_column(String(10))
+    status: Mapped[str] = mapped_column(String(10))
+    plan: Mapped[dict] = mapped_column(JSON)
+    executed: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    assertion_results: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    attribution: Mapped[str | None] = mapped_column(Text, nullable=True)
+    artifact_path: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
