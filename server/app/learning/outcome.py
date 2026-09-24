@@ -4,6 +4,22 @@ from sqlalchemy.orm import Session
 from app.models import Alignment, FieldChange, OutcomeAssertion, SemanticAction, Skill
 
 
+def _ui_text_rows(action: SemanticAction) -> list[tuple]:
+    """从单个骨架窗的 state_before/state_after 提取 forms 差集。
+    同 label 且 value 不同 → ("ui_text", "", 2, {label, before, after})。
+    任一侧缺失（旧数据 NULL）无差集可言，返回空。"""
+    before = action.state_before or {}
+    after = action.state_after or {}
+    b_map = {f.get("label"): f.get("value") for f in (before.get("forms") or [])}
+    a_map = {f.get("label"): f.get("value") for f in (after.get("forms") or [])}
+    out: list[tuple] = []
+    for label in sorted(set(b_map) & set(a_map)):
+        if b_map[label] != a_map[label]:
+            out.append(("ui_text", "", 2,
+                        {"label": label, "before": b_map[label], "after": a_map[label]}))
+    return out
+
+
 def generate_assertions(db: Session, skill_id: int) -> list[OutcomeAssertion]:
     skill = db.get(Skill, skill_id)
     alignment = db.get(Alignment, skill.alignment_id)
@@ -28,6 +44,10 @@ def generate_assertions(db: Session, skill_id: int) -> list[OutcomeAssertion]:
                 rows.append(("state_signal", sig["api"], 3,
                              {"api_template": sig["api"], "field": sig["field"],
                               "expect_value": sig["value"]}))
+            # Sprint 8 T3：骨架窗 UI 状态差集 → ui_text 断言（层 2，reqBody 盲区证据）。
+            # 只取骨架窗口的 state_before/after（与 api_status 同证据范围，
+            # Sprint 3 fix1 语义：非骨架窗口的快照不得生成断言）。
+            rows.extend(_ui_text_rows(action))
     # FieldChange 保持按 session 全量（层 2 是存在性语义，与骨架无关）
     for sid in alignment.session_ids:
         changes = db.execute(
@@ -43,10 +63,13 @@ def generate_assertions(db: Session, skill_id: int) -> list[OutcomeAssertion]:
                              {"api_template": fc.api_template, "field": ch["field"],
                               "before": ch["before"], "after": ch["after"]}))
 
-    # 按 (kind, api_template, field) 去重（跨 session 重复的同类断言合并）
+    # 按 (kind, api_template, field) 去重（跨 session 重复的同类断言合并）。
+    # ui_text 无 template/field：template 为空串、field 位置用 label——
+    # 不同 label 不碰撞、同 label 跨 session 仍合并（去重键仍生效）。
     seen: dict[tuple, tuple] = {}
     for kind, tpl, layer, payload in rows:
-        seen.setdefault((kind, tpl, payload.get("field", "")), (kind, tpl, layer, payload))
+        field_key = payload.get("field") or payload.get("label") or ""
+        seen.setdefault((kind, tpl, field_key), (kind, tpl, layer, payload))
 
     db.query(OutcomeAssertion).filter(OutcomeAssertion.skill_id == skill_id).delete()
     written = []
@@ -84,6 +107,19 @@ def _check_one(db: Session, sid: str, kind: str, p: dict) -> bool:
         values = [s["value"] for act in actions for s in (act.state_signals or [])
                   if s["api"] == p["api_template"] and s["field"] == p["field"]]
         return bool(values) and all(v == p["expect_value"] for v in values)
+    if kind == "ui_text":
+        # 层 2 存在性语义：session 任一语义动作窗的快照差集里该 label 发生了变化即过
+        # （与 field_change 同口径：before/after 是证据值，跨 session 天然可不同）
+        actions = db.execute(select(SemanticAction).where(SemanticAction.session_id == sid)).scalars().all()
+        for act in actions:
+            b_map = {f.get("label"): f.get("value")
+                     for f in ((act.state_before or {}).get("forms") or [])}
+            a_map = {f.get("label"): f.get("value")
+                     for f in ((act.state_after or {}).get("forms") or [])}
+            if p["label"] in b_map and p["label"] in a_map \
+                    and b_map[p["label"]] != a_map[p["label"]]:
+                return True
+        return False
     if kind == "field_change":
         fcs = db.execute(select(FieldChange).where(FieldChange.session_id == sid)).scalars().all()
         # before/after 是证据值：可能含输入变量（如 note=n111/n222），跨 session 天然不同，

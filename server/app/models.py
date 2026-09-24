@@ -45,6 +45,9 @@ class SemanticAction(Base):
     target: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     api_calls: Mapped[list] = mapped_column(JSON)
     state_signals: Mapped[list] = mapped_column(JSON)
+    # Sprint 8 块B：锚点前后 UI 状态快照（kind="snapshot" 事件解析产物），旧数据为 NULL
+    state_before: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    state_after: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 

@@ -18,6 +18,8 @@ async def test_fail_triggers_attribution(client, monkeypatch, tmp_path):
         async def wait_for_timeout(self, ms): ...
         async def screenshot(self, path): open(path, "w").write("png")
         async def title(self): return "测试页"
+        # T4 快照采集桩：runner 在 execute 前后调 collect_page_snapshot
+        async def query_selector_all(self, selector): return []
     class FakeCtx:
         async def new_page(self): return FakePage()
     class FakeBrowser:
@@ -64,6 +66,8 @@ async def test_pass_no_attribution(client, monkeypatch, tmp_path):
         async def wait_for_timeout(self, ms): ...
         async def screenshot(self, path): open(path, "w").write("png")
         async def title(self): return "测试页"
+        # T4 快照采集桩：runner 在 execute 前后调 collect_page_snapshot
+        async def query_selector_all(self, selector): return []
     class FakeCtx:
         async def new_page(self): return FakePage()
     class FakeBrowser:
@@ -97,6 +101,8 @@ async def test_execute_exception_lands_error_run(client, monkeypatch):
         async def wait_for_timeout(self, ms): ...
         async def screenshot(self, path): open(path, "w").write("png")
         async def title(self): return "测试页"
+        # T4 快照采集桩：runner 在 execute 前后调 collect_page_snapshot
+        async def query_selector_all(self, selector): return []
     class FakeCtx:
         async def new_page(self): return FakePage()
     class FakeBrowser:

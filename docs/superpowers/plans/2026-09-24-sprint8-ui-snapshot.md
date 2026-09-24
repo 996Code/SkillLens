@@ -5,7 +5,7 @@
 
 **Goal:** 补齐 UI 状态证据层——插件在锚点前后采轻量状态快照，server 解析进 semantic_action，层 2 断言支持 ui_text 对比，回放执行前后快照入 run——使"字段默认值变化"这类 reqBody 盲区可测。
 
-**Architecture:** ①插件 capture.ts 在锚点动作（click/submit）触发时：动作用 MutationObserver/waitForIdle 采"前快照"（表单 input 值映射/状态标签文本/表格行数），网络空闲后采"后快照"，随窗口上报（kind="snapshot"，payload={phase: before|after, forms: [{name,value}], labels: [{text}], tables: [{rows}]}）；②server process 管道把 snapshot 事件并入窗口产物——写 semantic_action.state_before/state_after（新列，JSON，可空）；③outcome.generate_assertions 从 state_after 与 state_before 的差集生成 ui_text 断言（kind 新增 "ui_text"，payload={selector_label, before, after}）；④runner 在 goto 后与 execute_plan 完成后各采一次同 schema 快照，入 replay_run.plan 旁挂字段 before/after_snapshot；断言评估时 ui_text 用 after 快照对比。
+**Architecture:** ①插件 capture.ts 在锚点动作（click/submit）触发时：动作用 MutationObserver/waitForIdle 采"前快照"（表单 input 值映射/状态标签文本/表格行数），网络空闲后采"后快照"，随窗口上报（kind="snapshot"，payload={phase: before|after, forms: [{name,value}], labels: [{text}], tables: [{rows}]}）；②server process 管道把 snapshot 事件并入窗口产物——写 semantic_action.state_before/state_after（新列，JSON，可空）；③outcome.generate_assertions 从 state_after 与 state_before 的差集生成 ui_text 断言（kind 新增 "ui_text"，payload={label, before, after}）；④runner 在 goto 后与 execute_plan 完成后各采一次同 schema 快照，入 replay_run.plan 旁挂字段 before/after_snapshot；断言评估时 ui_text 用 after 快照对比。
 
 **Tech Stack:** 无新依赖。插件 vitest + jsdom；server pytest。Alembic 迁移加两列。
 
@@ -15,7 +15,7 @@
 
 - C3：快照事件落 raw_event（kind=snapshot），解析产物落 semantic_action 列；回放快照落 replay_run。
 - 快照体积红线：单快照 ≤32KB（表单值截断 1KB/字段，最多 50 字段，超出记 overflow 标记）——防 100KB 教训重演。
-- 语义定位复用：快照的 selector_label 与 describe-element.ts 的语义描述同源，不发明新选择器格式。
+- 语义定位复用：快照的 label 与 describe-element.ts 的语义描述同源，不发明新选择器格式。
 - 测试基线：S7 合入后为 105+；每任务全量绿。
 - 插件消息协议零改动（快照走既有事件通道）。
 

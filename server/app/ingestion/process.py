@@ -45,9 +45,49 @@ def load_windows(db: Session, session_id: str) -> list[dict]:
     return build_windows(_events_of(db, session_id))
 
 
+def assign_snapshots(events: list[dict], windows: list[dict]) -> list[dict]:
+    """把 kind="snapshot" 事件按时间序归属到锚点窗口（Sprint 8 块B）。
+
+    归属规则（与 CS 采集时序一致，见 extension capture.ts）：
+    - before 快照 ts 早于锚点、且晚于上一锚点（动作前同步采集）→ 归该锚点窗口，
+      多 before 取最靠近锚点的一个；
+    - after 快照在锚点之后、下一锚点之前（锚点后 2.5s 采集，跨网络空闲窗口）→
+      归该锚点窗口，多 after 取最后；
+    - 无快照成员时 state_before/state_after 为 None（向后兼容旧数据）。
+    snapshot 不进窗口 members（members 只含 network，被 window_signature/
+    summarize_api 消费，混入会污染对齐骨架与 api_calls）。"""
+    anchor_ts = [w["anchor"]["ts"] for w in windows]
+    out: list[dict] = [{"before": None, "after": None} for _ in windows]
+    for e in events:
+        if e["kind"] != "snapshot":
+            continue
+        payload = e.get("payload") or {}
+        phase = payload.get("phase")
+        if phase not in ("before", "after"):
+            continue
+        # 归属窗口：before 先于锚点采集 → 归属下一个锚点（首个 ts >= 快照 ts 的窗口）；
+        # after 晚于锚点 → 归属前一个锚点（最后一个 ts <= 快照 ts 的窗口）。
+        # 同窗口多 before/after 时后者覆盖前者（before 取最靠近锚点，after 取最后）。
+        idx = None
+        if phase == "before":
+            for i, ts in enumerate(anchor_ts):
+                if e["ts"] <= ts:
+                    idx = i
+                    break
+        else:
+            for i, ts in enumerate(anchor_ts):
+                if e["ts"] >= ts:
+                    idx = i
+        if idx is None:
+            continue  # 末锚点后才有的 before / 首锚点前的 after：时序异常，丢弃
+        out[idx][phase] = payload
+    return out
+
+
 def process_session(db: Session, session_id: str) -> dict:
     events = _events_of(db, session_id)
     windows = build_windows(events)
+    snapshots = assign_snapshots(events, windows)
 
     for model in (NormalizedEvent, TransactionWindow, SemanticAction):
         db.query(model).filter(model.session_id == session_id).delete()
@@ -68,12 +108,14 @@ def process_session(db: Session, session_id: str) -> dict:
         for m, call in zip(w["members"], api_calls):
             for s in extract_state_signals((m.get("payload") or {}).get("resBody")):
                 state_signals.append({"api": call["template"], **s})
+        snaps = snapshots[i]
         db.add(SemanticAction(
             session_id=session_id, window_seq=i,
             anchor_seq=w["anchor"]["seq"],
             anchor_type=(w["anchor"].get("payload") or {}).get("type", ""),
             target=(w["anchor"].get("payload") or {}).get("target"),
             api_calls=api_calls, state_signals=state_signals,
+            state_before=snaps["before"], state_after=snaps["after"],
         ))
     db.commit()
     return {"windows": len(windows)}

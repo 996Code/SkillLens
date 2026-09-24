@@ -12,6 +12,7 @@ from app.llm.gateway import complete
 from app.models import Alignment, OutcomeAssertion, RawEvent, ReplayRun, Skill
 from app.replay.assert_eval import evaluate_assertions, path_matches
 from app.replay.locate import locate
+from app.replay.page_snapshot import collect_page_snapshot
 from app.replay.plan import compile_skeleton_plan, requires_confirmation
 
 MAX_BODY = 8192
@@ -158,12 +159,18 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
             assertions = [{"kind": a.kind, "payload": a.payload} for a in
                           db.query(OutcomeAssertion).filter(
                               OutcomeAssertion.skill_id == skill_id).all()]
+            # T4：执行前采 before 快照（水合竞态防护在 execute_plan 的 fill 确认内，
+            # 不与本采集竞争）
+            before_snapshot = await collect_page_snapshot(page, phase="before")
             result = await execute_plan(
                 page, plan,
                 awaited_templates=[a["payload"]["api_template"] for a in assertions
                                    if "api_template" in a["payload"]])
+            # T4：断言评估前采 after 快照（ui_text 用它对比）
+            after_snapshot = await collect_page_snapshot(page, phase="after")
 
-            results = evaluate_assertions(assertions, result["observed"])
+            results = evaluate_assertions(assertions, result["observed"],
+                                          after_snapshot=after_snapshot)
             any_ok_step = any(s.get("ok") for s in result["executed"])
             if not any_ok_step:
                 status = "error"
@@ -191,6 +198,10 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
         db.refresh(run)
         return run
 
+    # T4：前后快照旁挂 plan（plan 消费方只读 url/steps，加法变更零破坏面，
+    # 优于包装 executed——后者被 extract_observed 按步骤列表遍历）
+    plan = {**plan, "before_snapshot": before_snapshot,
+            "after_snapshot": after_snapshot}
     run = ReplayRun(skill_id=skill_id, mode="execute", status=status, plan=plan,
                     executed=result["executed"], assertion_results=results)
     db.add(run)
