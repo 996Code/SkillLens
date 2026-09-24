@@ -46,6 +46,10 @@ async def confirm_expected(delta_id: int, body: ConfirmRequest,
         if not ok:
             raise HTTPException(422, why)
         row.changes = body.changes
+    else:
+        ok, why = verify_delta(row.changes)
+        if not ok:
+            raise HTTPException(422, f"当前 changes 无效（{why}），确认时必须提交修订")
     row.status = "confirmed"
     row.reviewed_by = body.reviewed_by
     db.commit(); db.refresh(row)

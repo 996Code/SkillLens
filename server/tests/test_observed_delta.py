@@ -88,14 +88,8 @@ async def test_observe_shadow_returns_409(client, monkeypatch):
     await client.post(f"/api/v1/expected-deltas/{body['id']}/confirm",
                       json={"reviewed_by": "t"})
 
-    import app.replay.runner as rm
-    from app.models import ReplayRun
-
-    async def fake_shadow_run(db, skill_id_, overrides, confirm):
-        return ReplayRun(skill_id=skill_id_, mode="shadow", status="shadow",
-                         plan={"url": "u", "steps": []})
-
-    monkeypatch.setattr(rm, "run_replay", fake_shadow_run)
+    # 不 patch run_replay：observed.py 在 import 时绑定符号，patch rm.run_replay
+    # 无效（终审 F2）；真实 shadow 分支由 skill 含 POST + confirm=False 天然触发。
 
     r = await client.post(f"/api/v1/expected-deltas/{body['id']}/observe",
                           json={"skill_id": skill_id, "confirm_side_effect": False})

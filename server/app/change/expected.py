@@ -40,6 +40,8 @@ def verify_delta(changes: list) -> tuple[bool, str]:
     if len(changes) > MAX_CHANGES:
         return False, f"changes 超过 {MAX_CHANGES} 条"
     for c in changes:
+        if not isinstance(c, dict):
+            return False, "changes 元素必须是对象"
         if c.get("type") not in ALLOWED_TYPES:
             return False, f"未知类型 {c.get('type')}"
         if not str(c.get("value") or "").strip():

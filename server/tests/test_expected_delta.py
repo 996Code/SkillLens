@@ -40,3 +40,14 @@ async def test_generate_verify_failure_stores_draft_with_reason(client, monkeypa
     monkeypatch.setenv("LLM_FAKE_RESPONSE", "垃圾输出非 JSON")
     body = (await _post(client, "需求")).json()
     assert body["status"] == "draft" and "无法解析" in body["notes"]
+
+
+async def test_generate_non_dict_change_element_stays_draft(client, monkeypatch):
+    """LLM 返回 changes 含非 dict 元素时不得 500，verify 失败走 draft+notes。"""
+    monkeypatch.setenv("LLM_FAKE_RESPONSE", json.dumps(
+        {"feature": "F", "changes": ["裸字符串"]}))
+    r = await client.post("/api/v1/expected-deltas",
+                           json={"requirement_id": "r1", "requirement_text": "需求"})
+    assert r.status_code == 201
+    body = r.json()
+    assert body["status"] == "draft" and body["notes"]
