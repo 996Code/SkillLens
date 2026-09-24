@@ -1,13 +1,121 @@
 <!doctype html>
 <html lang="zh">
-  <head><meta charset="utf-8" /><style>body { width: 260px; font: 13px system-ui; padding: 10px; }</style></head>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        --bg: #f7f8fa;
+        --card: #ffffff;
+        --text: #1a2233;
+        --muted: #6b7280;
+        --line: #e5e7eb;
+        --accent: #2563eb;
+        --accent-hover: #1d4ed8;
+        --danger: #dc2626;
+        --ok: #16a34a;
+        --radius: 12px;
+      }
+      * { box-sizing: border-box; margin: 0; }
+      body {
+        width: 320px;
+        font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        color: var(--text);
+        background: var(--bg);
+        padding: 12px;
+      }
+      .head {
+        display: flex; align-items: center; gap: 8px;
+        padding: 10px 12px; margin-bottom: 10px;
+        background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+      }
+      .logo {
+        width: 22px; height: 22px; border-radius: 6px;
+        background: linear-gradient(135deg, #2563eb, #7c3aed);
+        display: flex; align-items: center; justify-content: center;
+        color: #fff; font-weight: 700; font-size: 11px;
+      }
+      .head .title { font-weight: 600; font-size: 13px; }
+      .head .sub { font-size: 11px; color: var(--muted); }
+      .dot {
+        margin-left: auto; width: 8px; height: 8px; border-radius: 50%;
+        background: #d1d5db; transition: background .2s;
+      }
+      .dot.rec { background: var(--danger); animation: pulse 1.2s ease-in-out infinite; }
+      @keyframes pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(220,38,38,.35); }
+        50% { box-shadow: 0 0 0 6px rgba(220,38,38,0); }
+      }
+      .section {
+        background: var(--card); border: 1px solid var(--line);
+        border-radius: var(--radius); padding: 12px; margin-bottom: 10px;
+      }
+      .label { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+      input#note {
+        width: 100%; padding: 8px 10px; font: inherit;
+        border: 1px solid var(--line); border-radius: 8px; outline: none;
+        transition: border-color .15s;
+      }
+      input#note:focus { border-color: var(--accent); }
+      .row { display: flex; gap: 8px; margin-top: 10px; }
+      button {
+        flex: 1; padding: 8px 0; font: inherit; font-weight: 500;
+        border: none; border-radius: 8px; cursor: pointer;
+        transition: background .15s, opacity .15s;
+      }
+      button#start { background: var(--accent); color: #fff; }
+      button#start:hover { background: var(--accent-hover); }
+      button#stop {
+        background: #eef2f7; color: var(--text);
+      }
+      button#stop:hover { background: #e2e8f0; }
+      button:disabled { opacity: .5; cursor: not-allowed; }
+      .status {
+        display: flex; align-items: center; gap: 6px;
+        font-size: 12px; color: var(--muted); padding: 2px 4px;
+      }
+      .status .sdot { width: 6px; height: 6px; border-radius: 50%; background: #d1d5db; }
+      .status.rec .sdot { background: var(--danger); }
+      .status.ok .sdot { background: var(--ok); }
+      #status { word-break: break-all; }
+      .conn {
+        display: flex; align-items: center; gap: 6px;
+        font-size: 11px; color: var(--muted); padding: 0 4px 2px;
+      }
+      .conn .cdot { width: 6px; height: 6px; border-radius: 50%; background: #d1d5db; }
+      .conn.ok .cdot { background: var(--ok); }
+      .conn.err .cdot { background: var(--danger); }
+      .meta {
+        font-size: 11px; color: var(--muted); margin-top: 4px; padding: 0 4px;
+      }
+    </style>
+  </head>
   <body>
-    <input id="note" placeholder="任务意图，如：创建订单" style="width: 100%; box-sizing: border-box;" />
-    <div style="display: flex; gap: 8px; margin-top: 8px;">
-      <button id="start" style="flex: 1;">开始录制</button>
-      <button id="stop" style="flex: 1;">停止</button>
+    <div class="head">
+      <div class="logo">SL</div>
+      <div>
+        <div class="title">SkillLens Sensor</div>
+        <div class="sub">操作观察 · 技能学习</div>
+      </div>
+      <div class="dot" id="status-dot"></div>
     </div>
-    <div id="status" style="margin-top: 8px; color: #555;"></div>
+
+    <div class="section">
+      <div class="label">任务意图（录制备注）</div>
+      <input id="note" placeholder="如：创建订单 / 保存表单配置" />
+      <div class="row">
+        <button id="start">开始录制</button>
+        <button id="stop">停止</button>
+      </div>
+    </div>
+
+    <div class="status" id="status-wrap">
+      <span class="sdot"></span><span id="status">未录制</span>
+    </div>
+    <div class="meta" id="meta"></div>
+    <div class="conn" id="conn">
+      <span class="cdot"></span><span id="conn-text">连接本地 Agent…</span>
+    </div>
+
     <script type="module" src="src/popup.ts"></script>
   </body>
 </html>

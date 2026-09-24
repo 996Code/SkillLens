@@ -1,0 +1,23 @@
+services:
+  server:
+    build: ./server
+    ports:
+      - "8710:8710"
+    env_file:
+      - server/.env
+    environment:
+      DATABASE_URL: sqlite:////data/skilllens.db
+      REPLAY_ARTIFACT_DIR: /data/artifacts
+    volumes:
+      - skilllens-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8710/api/v1/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  skilllens-data:

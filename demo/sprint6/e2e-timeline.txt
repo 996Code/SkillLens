@@ -1,0 +1,16 @@
+Sprint 6 压轴 E2E 时间线（2026-09-24，Docker 容器全链路）
+================================================================
+T0        docker compose down -v && up -d --build（复用已建镜像）
++12s      health {"status":"ok"}，容器 (healthy)
++~60s     njmind_login.py 刷新登录态 + override 挂载 state 进容器
++~90s     auto_record.py --note sprint6-final（带插件浏览器 CDP 采集）
+          → session 60316b31，容器内 raw_event 11（action 2/nav 1/network 8）
++~100s    process {"windows":1} → align #1 → induce（真实 LLM）
+          → Skill #1 SaveFormAndTableConfig (learned) → assertions 4
++~120s    expected-deltas（LLM draft 2 条）→ confirm 人工修订 4 条
++~130s    observe：容器内 Playwright 回放 run 1 status=pass（8 观测项）
++139s     report：四分类 expected 3 / missing 1 / unexpected 5 / drift 0
+----------------------------------------------------------------
+结论：T1-T0 = 139s ≤ 1800s（spec Sprint 6 验收线）
+全链路：装插件(docker 服务+Chrome 插件) → 采集 → 学习 → 回放 → 报告
+复现口径：deploy/README.md（30 分钟含首次构建与人工路径）
