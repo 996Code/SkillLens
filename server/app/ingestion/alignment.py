@@ -1,4 +1,32 @@
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.ingestion.url_template import split_url, templatize_path
+from app.models import TransactionWindow
+
+
+def collect_window_params(db: Session, session_ids: list[str]) -> dict | None:
+    """从各 session 的 transaction_window 行读切窗参数快照（对账用）。
+    一致：{"idle_ms", "max_window_ms", "consistent": true}；
+    不一致：{"sessions": {sid: {...}}, "consistent": false, "warn": true}；
+    无窗口行（未 process 或空）：None。"""
+    per_session: dict[str, dict] = {}
+    for sid in session_ids:
+        row = db.execute(
+            select(TransactionWindow).where(TransactionWindow.session_id == sid)
+            .order_by(TransactionWindow.window_seq).limit(1)
+        ).scalar_one_or_none()
+        if row is None:
+            continue
+        per_session[sid] = {"idle_ms": row.idle_ms, "max_window_ms": row.max_window_ms}
+    if not per_session:
+        return None
+    unique = {tuple(sorted(p.items())) for p in per_session.values()}
+    if len(unique) == 1:
+        params = next(iter(per_session.values()))
+        return {"idle_ms": params["idle_ms"], "max_window_ms": params["max_window_ms"],
+                "consistent": True}
+    return {"sessions": per_session, "consistent": False, "warn": True}
 
 
 def window_signature(window: dict) -> str:
