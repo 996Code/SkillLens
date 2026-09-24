@@ -52,3 +52,62 @@ async def test_align_unprocessed_409(client):
 async def test_alignment_get_404(client):
     resp = await client.get("/api/v1/alignments/99999")
     assert resp.status_code == 404
+
+
+async def test_align_records_window_params_snapshot(client):
+    # 两 session 经同一 process → transaction_window 行的 idle_ms/max_window_ms 一致
+    s1 = await _seed_session(client, 111)
+    s2 = await _seed_session(client, 222)
+    resp = await client.post("/api/v1/align", json={"session_ids": [s1, s2]})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["window_params"] == {"idle_ms": 2000, "max_window_ms": 8000,
+                                     "consistent": True}
+
+    got = await client.get(f"/api/v1/alignments/{body['alignment_id']}")
+    assert got.status_code == 200
+    assert got.json()["window_params"] == body["window_params"]
+
+
+async def test_align_window_params_inconsistent_warns(client):
+    from app.db import SessionLocal
+    from app.models import TransactionWindow
+
+    s1 = await _seed_session(client, 111)
+    s2 = await _seed_session(client, 222)
+    # 篡改 s2 的切窗参数快照（模拟参数化调整后两 session 错位）
+    db = SessionLocal()
+    try:
+        db.query(TransactionWindow).filter(
+            TransactionWindow.session_id == s2
+        ).update({"idle_ms": 500, "max_window_ms": 4000})
+        db.commit()
+    finally:
+        db.close()
+    resp = await client.post("/api/v1/align", json={"session_ids": [s1, s2]})
+    assert resp.status_code == 200
+    wp = resp.json()["window_params"]
+    assert wp["consistent"] is False
+    assert wp["sessions"] == {s1: {"idle_ms": 2000, "max_window_ms": 8000},
+                              s2: {"idle_ms": 500, "max_window_ms": 4000}}
+    assert wp.get("warn") is True
+
+
+async def test_alignment_old_row_window_params_null(client):
+    # 旧数据（无该列值）：GET 返回 null 不报错
+    from app.db import SessionLocal
+    from app.models import Alignment
+
+    db = SessionLocal()
+    try:
+        row = Alignment(session_ids=["a", "b"], skeleton=[], param_variables=[],
+                        input_variables=[])
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        aid = row.id
+    finally:
+        db.close()
+    got = await client.get(f"/api/v1/alignments/{aid}")
+    assert got.status_code == 200
+    assert got.json()["window_params"] is None

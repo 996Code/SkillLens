@@ -67,3 +67,45 @@ async def test_induce_idempotent(client, fake_llm):
     await client.post(f"/api/v1/alignments/{aid}/induce")
     skills = (await client.get("/api/v1/skills")).json()
     assert len([s for s in skills if s["alignment_id"] == aid]) == 1
+
+
+async def test_reinduce_removes_old_assertions(client, fake_llm):
+    # re-induce 删旧 Skill 前必须先删其断言：否则旧行 skill_id 悬空，verify 500
+    aid = await _make_alignment(client)
+    skill = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
+    await client.post(f"/api/v1/skills/{skill['id']}/assertions")
+    rows = (await client.get(f"/api/v1/skills/{skill['id']}/assertions")).json()
+    assert rows
+    old_ids = [r["id"] for r in rows]
+
+    await client.post(f"/api/v1/alignments/{aid}/induce")
+
+    from app.db import SessionLocal
+    from app.models import OutcomeAssertion
+    db = SessionLocal()
+    try:
+        for oid in old_ids:
+            assert db.get(OutcomeAssertion, oid) is None  # 旧断言行已删除
+    finally:
+        db.close()
+
+    for oid in old_ids:
+        resp = await client.post(f"/api/v1/assertions/{oid}/verify")
+        assert resp.status_code == 404                    # 404，而非孤儿 500
+
+
+async def test_verify_assertion_missing_skill_404(client):
+    # 兜底：断言存在但 skill 已消失（历史孤儿数据）→ 404 而非 AttributeError 500
+    from app.db import SessionLocal
+    from app.models import OutcomeAssertion
+    db = SessionLocal()
+    orphan = OutcomeAssertion(skill_id=999999, layer=3, kind="api_status",
+                              api_template="/x/y", payload={})
+    db.add(orphan)
+    db.commit()
+    orphan_id = orphan.id
+    db.close()
+
+    resp = await client.post(f"/api/v1/assertions/{orphan_id}/verify")
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "skill not found"

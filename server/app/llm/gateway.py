@@ -18,7 +18,20 @@ def get_provider() -> Provider:
 def complete(db: Session, purpose: str, prompt: str):
     provider = get_provider()
     started = time.perf_counter()
-    result = provider.complete(prompt)
+    try:
+        result = provider.complete(prompt)
+    except Exception as e:
+        # C3 失败路径：provider 异常（如网关 401）也要落 llm_call_log 后 re-raise。
+        # 安全红线：只记异常类型+摘要，不含响应体（可能带网关回显的 key 片段）。
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        db.add(LlmCallLog(purpose=purpose, provider=provider.name,
+                          model=getattr(provider, "model", "unknown"),
+                          prompt=prompt,
+                          response=f"{type(e).__name__}: {str(e)[:200]}",
+                          prompt_tokens=None, completion_tokens=None,
+                          latency_ms=latency_ms))
+        db.commit()
+        raise
     latency_ms = int((time.perf_counter() - started) * 1000)
     db.add(LlmCallLog(purpose=purpose, provider=result.provider, model=result.model,
                       prompt=prompt, response=result.text,

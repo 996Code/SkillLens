@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
-from app.ingestion.alignment import align_skeletons
+from app.ingestion.alignment import align_skeletons, collect_window_params
 from app.ingestion.process import load_windows, process_session
 from app.ingestion.variables import input_variables, param_variables
 from app.models import Alignment, RawEvent, RecordingSession, SemanticAction
@@ -59,13 +59,16 @@ async def align(body: AlignRequest, db: Session = Depends(get_db)) -> dict:
         ).scalars().all()
         events_per_session.append((sid, [{"kind": r.kind, "payload": r.payload or {}} for r in rows]))
     ivars = input_variables(events_per_session)
+    window_params = collect_window_params(db, body.session_ids)
     row = Alignment(session_ids=body.session_ids, skeleton=skeleton,
-                    param_variables=pvars, input_variables=ivars)
+                    param_variables=pvars, input_variables=ivars,
+                    window_params=window_params)
     db.add(row)
     db.commit()
     db.refresh(row)
     return {"alignment_id": row.id, "skeleton": skeleton,
-            "param_variables": pvars, "input_variables": ivars}
+            "param_variables": pvars, "input_variables": ivars,
+            "window_params": window_params}
 
 
 @router.get("/alignments/{alignment_id}")
@@ -75,4 +78,5 @@ async def get_alignment(alignment_id: int, db: Session = Depends(get_db)) -> dic
         raise HTTPException(status_code=404, detail="alignment not found")
     return {"alignment_id": row.id, "session_ids": row.session_ids,
             "skeleton": row.skeleton, "param_variables": row.param_variables,
-            "input_variables": row.input_variables}
+            "input_variables": row.input_variables,
+            "window_params": row.window_params}

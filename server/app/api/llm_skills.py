@@ -67,8 +67,11 @@ async def create_assertions(skill_id: int, db: Session = Depends(get_db)) -> dic
 
 @router.post("/assertions/{assertion_id}/verify")
 async def verify_assertion(assertion_id: int, db: Session = Depends(get_db)) -> dict:
-    if not db.get(OutcomeAssertion, assertion_id):
+    assertion = db.get(OutcomeAssertion, assertion_id)
+    if not assertion:
         raise HTTPException(status_code=404, detail="assertion not found")
+    if not db.get(Skill, assertion.skill_id):
+        raise HTTPException(status_code=404, detail="skill not found")
     return verify_against_session(db, assertion_id)
 
 

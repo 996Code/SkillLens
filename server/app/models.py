@@ -79,6 +79,7 @@ class Alignment(Base):
     skeleton: Mapped[list] = mapped_column(JSON)
     param_variables: Mapped[list] = mapped_column(JSON)
     input_variables: Mapped[list] = mapped_column(JSON)
+    window_params: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 

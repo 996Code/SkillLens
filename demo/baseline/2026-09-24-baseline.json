@@ -1,0 +1,59 @@
+{
+  "meta": {
+    "exported_at": "2026-09-24T07:59:22+00:00",
+    "db_path": "D:\\github\\SkillLens\\server\\skilllens.db",
+    "skill_count": 4
+  },
+  "skills": [
+    {
+      "skill_id": 1,
+      "name": "SaveFormAndTableConfig",
+      "status": "learned",
+      "confidence": 0.6,
+      "evidence_count": 2,
+      "assertion_count": 4,
+      "assertion_pass_rate": 1.0,
+      "input_var_names": [],
+      "window_params": null
+    },
+    {
+      "skill_id": 2,
+      "name": "SaveFormAndTableConfig",
+      "status": "learned",
+      "confidence": 1.0,
+      "evidence_count": 2,
+      "assertion_count": 4,
+      "assertion_pass_rate": 1.0,
+      "input_var_names": [
+        "请输入"
+      ],
+      "window_params": null
+    },
+    {
+      "skill_id": 3,
+      "name": "SaveFormAndTableConfig",
+      "status": "learned",
+      "confidence": 1.0,
+      "evidence_count": 2,
+      "assertion_count": 4,
+      "assertion_pass_rate": 0.75,
+      "input_var_names": [
+        "请输入"
+      ],
+      "window_params": null
+    },
+    {
+      "skill_id": 4,
+      "name": "SaveFormAndTableConfig",
+      "status": "learned",
+      "confidence": 1.0,
+      "evidence_count": 2,
+      "assertion_count": 4,
+      "assertion_pass_rate": 1.0,
+      "input_var_names": [
+        "请输入"
+      ],
+      "window_params": null
+    }
+  ]
+}
