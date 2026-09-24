@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import events, health, ingest, llm_skills, replay
+from app.api import change, events, health, ingest, llm_skills, replay
 from app.config import API_PREFIX
 
 app = FastAPI(title="SkillLens Local Agent")
@@ -18,3 +18,4 @@ app.include_router(events.router, prefix=API_PREFIX)
 app.include_router(ingest.router, prefix=API_PREFIX)
 app.include_router(llm_skills.router, prefix=API_PREFIX)
 app.include_router(replay.router, prefix=API_PREFIX)
+app.include_router(change.router, prefix=API_PREFIX)
