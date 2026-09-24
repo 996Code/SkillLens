@@ -73,3 +73,31 @@ async def test_observe_rejects_draft(client, monkeypatch):
     r = await client.post(f"/api/v1/expected-deltas/{body['id']}/observe",
                           json={"skill_id": 1, "confirm_side_effect": True})
     assert r.status_code == 409
+
+
+async def test_observe_shadow_returns_409(client, monkeypatch):
+    """C1 守卫：shadow run 不产生观测、不落 observed_delta（T3 裁定的持久用例）。"""
+    import json as _json
+
+    skill_id = await _seed_skill(client, monkeypatch)
+    monkeypatch.setenv("LLM_FAKE_RESPONSE", _json.dumps(
+        {"feature": "F", "changes": [{"type": "ui_action", "value": "A"}]}))
+    body = (await client.post("/api/v1/expected-deltas",
+                              json={"requirement_id": "r1",
+                                    "requirement_text": "需求"})).json()
+    await client.post(f"/api/v1/expected-deltas/{body['id']}/confirm",
+                      json={"reviewed_by": "t"})
+
+    import app.replay.runner as rm
+    from app.models import ReplayRun
+
+    async def fake_shadow_run(db, skill_id_, overrides, confirm):
+        return ReplayRun(skill_id=skill_id_, mode="shadow", status="shadow",
+                         plan={"url": "u", "steps": []})
+
+    monkeypatch.setattr(rm, "run_replay", fake_shadow_run)
+
+    r = await client.post(f"/api/v1/expected-deltas/{body['id']}/observe",
+                          json={"skill_id": skill_id, "confirm_side_effect": False})
+    assert r.status_code == 409
+    assert r.json()["detail"] == "shadow run 未执行，无观测"
