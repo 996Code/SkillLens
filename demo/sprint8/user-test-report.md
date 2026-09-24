@@ -7,8 +7,8 @@
 
 | # | 步骤 | 结果 | 用户可见证据 |
 |---|---|---|---|
-| 1 | 打开 popup（chrome-extension://{id}/popup.html） | ✅ | 卡片式界面渲染正常 |
-| 2 | 界面·开录 | ✅ | "开始录制"按钮存在且可点；点击后状态切"录制中"，显示会话号 37983b58，Agent 连接状态点正常 |
+| 1 | 打开 popup（chrome-extension://{id}/popup.html） | ✅ | 卡片式界面渲染正常；截图 `screenshots/01-popup-idle.png` |
+| 2 | 界面·开录 | ✅ | "开始录制"按钮存在且可点；点击后状态切"录制中"，显示会话号 37983b58，Agent 连接状态点正常；截图 `screenshots/02-popup-recording.png` |
 | 3 | 功能·表单操作 | ✅ | njmind 表单填入 `userflow-实测-2026`（值确认循环防回写）+ 保存成功，保存后回读值一致 |
 | 4 | 界面·停录 | ✅ | "停止"按钮存在；点击后状态回"未录制" |
 | 5 | 数据落库 | ✅ | 13 事件（action 2/navigation 1/network 8/**snapshot 2**）；快照 forms=22/labels=20/tables=3/overflow=false |
