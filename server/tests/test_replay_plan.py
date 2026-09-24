@@ -1,4 +1,4 @@
-from app.replay.plan import compile_replay_plan, requires_confirmation
+from app.replay.plan import compile_replay_plan, compile_skeleton_plan, requires_confirmation
 
 
 def ev(kind, ptype=None, **payload):
@@ -50,3 +50,32 @@ def test_url_prefers_navigation_over_action():
         ev("action", "click", target={"label": "x"}, url="http://t/other"),
     ]
     assert compile_replay_plan(events, {})["url"] == "http://t/nav"
+
+
+def _win(anchor_label, wq):
+    return {"signature": f"click:{anchor_label}", "session_window_seqs": {"s1": wq}}
+
+
+EVENTS_SKELETON = [
+    ev("navigation", "page-load", url="http://t/form"),
+    ev("action", "input", name="字段A", value="old"),
+    ev("action", "click", target={"label": "打开"}),
+    ev("action", "click", target={"label": "保存"}),
+    ev("action", "click", target={"label": "多余操作"}),   # 非骨架步，不得进入计划
+]
+
+
+def test_skeleton_plan_only_skeleton_steps():
+    skeleton = [_win("打开", 0), _win("保存", 1)]
+    plan = compile_skeleton_plan(EVENTS_SKELETON, skeleton, "s1", {},
+                                 [{"name": "字段A", "values": {"s1": "old"}}])
+    kinds = [(s["kind"], s.get("label") or s.get("name")) for s in plan["steps"]]
+    assert kinds == [("input", "字段A"), ("click", "打开"), ("click", "保存")]
+    assert "多余操作" not in str(plan["steps"])
+
+
+def test_skeleton_plan_override_value():
+    skeleton = [_win("保存", 0)]
+    plan = compile_skeleton_plan(EVENTS_SKELETON, skeleton, "s1", {"字段A": "new"},
+                                 [{"name": "字段A", "values": {"s1": "old"}}])
+    assert plan["steps"][0]["value"] == "new" and plan["steps"][0]["original_value"] == "old"

@@ -11,7 +11,7 @@ from app.llm.gateway import complete
 from app.models import Alignment, OutcomeAssertion, RawEvent, ReplayRun, Skill
 from app.replay.assert_eval import evaluate_assertions
 from app.replay.locate import locate
-from app.replay.plan import compile_replay_plan, requires_confirmation
+from app.replay.plan import compile_skeleton_plan, requires_confirmation
 
 MAX_BODY = 8192
 ARTIFACT_DIR = os.environ.get(
@@ -78,7 +78,8 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
     rows = db.execute(select(RawEvent).where(RawEvent.session_id == ref_sid)
                       .order_by(RawEvent.ts, RawEvent.seq)).scalars().all()
     events = [{"seq": r.seq, "ts": r.ts, "kind": r.kind, "payload": r.payload or {}} for r in rows]
-    plan = compile_replay_plan(events, overrides or {})
+    plan = compile_skeleton_plan(events, skill.skeleton, ref_sid, overrides or {},
+                                 skill.input_variables)
 
     shadow = requires_confirmation(skill.skeleton) and not confirm_side_effect
     if shadow:
