@@ -90,6 +90,38 @@
 ### 13. 迁移噪音：autogenerate 反复报 raw_event 假 NOT NULL
 - 已第 3 次出现（Sprint 4 T1 又遇）。Sprint 5 待办：做一次对账迁移根治。
 
+## 五、Windows 移植与回放可靠性（2026-09-24）
+
+### 14. Windows 环境移植清单（macOS → Win11 实测）
+- **Node 版本**：系统 Node 22.10 不满足 vite 8 要求（≥22.12）；用便携版 Node 24
+  前缀 PATH 解决（放在仓库外 D:\github\.tools）。
+- **vite 8.3.0 Windows 回归**：config 加载时 rolldown `sourcemapPathTransform` 收到
+  Array → `path.resolve` 抛错，build/vitest 全挂；降 `~8.2.2` 后正常（已 pin 进
+  package.json）。
+- **npm 可选依赖 bug（npm/cli#4828）**：lockfile 缺 win32 原生绑定条目，`npm ci`
+  后仍缺——`npm i @rolldown/binding-win32-x64-msvc --no-save` 补装。
+- **Playwright 浏览器下载**：官方 CDN 国内不通，`PLAYWRIGHT_DOWNLOAD_HOST=
+  https://cdn.npmmirror.com/binaries/playwright` 镜像可解。
+- **脚本可移植性**：`pkill` 不存在（auto_record 的 finally 会吞掉落库验证段，
+  已加 shutil.which 守卫）；`/tmp` 在原生 Python 下解析为盘符根（D:\tmp）。
+- **品牌 Chrome（137+）封禁 `--load-extension`**：channel="chrome" 时插件被静默
+  拒载、SW 找不到——采集（需插件）必须用 playwright 自带 chromium；回放不需
+  插件，可用真 Chrome。
+- **uv 镜像重写 lock**：本机 uv 配置阿里云镜像会重写 uv.lock 的 URL（版本/哈希
+  不变），提交前 `git checkout -- server/uv.lock` 还原。
+
+### 15. 回放 fill 水合竞态：值被 SPA 回写 → 脏检查跳过保存 → observed 全空
+- **现象**（Windows 复现 2 次）：回放步骤全 ok，但 4 断言全 `observed_status=null`
+  且表单名未变——njmind 水合晚于 fill 把输入框改回旧值，保存的脏检查认为无变化
+  不发请求，网络观察自然为空（表象与经验 #1 相同，根因不同）。
+- **修复**：runner `execute_plan` 的 input 分支 fill 后轮询确认 `input_value ==
+  value`，被回写则重填（3 次上限）；确定性测试
+  `test_execute_plan_input_survives_hydration_overwrite`（JS 首次 input 事件改回
+  旧值）。
+- **预防**：回放"输入"步骤一律确认写入生效再点击保存；observed 为空时先分清
+  是"回调没收到"（#1）还是"请求根本没发"（本条，查表单值是否变化）。
+
 ---
 
-*更新记录：2026-09-24 初版（Sprint 0-4 + Sprint 4.5 全自动闭环的踩坑汇总）。*
+*更新记录：2026-09-24 初版（Sprint 0-4 + Sprint 4.5 全自动闭环的踩坑汇总）；
+2026-09-24 二版（Windows 移植清单 + 回放水合竞态，§五）。*

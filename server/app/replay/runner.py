@@ -24,12 +24,37 @@ def _launch():
     return async_playwright()
 
 
+def _headless() -> bool:
+    # REPLAY_HEADLESS=0 → 前台可见回放（演示/人工观察用）；默认无头，行为不变
+    return os.environ.get("REPLAY_HEADLESS", "1") != "0"
+
+
+def _channel() -> str:
+    # REPLAY_CHANNEL=chrome → 用系统真 Chrome 二进制；默认 playwright 自带 chromium
+    return os.environ.get("REPLAY_CHANNEL") or "chromium"
+
+
+def _cdp_url() -> str:
+    # REPLAY_CDP_URL=http://127.0.0.1:9222 → 连常驻浏览器执行回放（窗口不自动关）
+    return os.environ.get("REPLAY_CDP_URL", "")
+
+
 async def _open_browser(p):
     """浏览器入口：真实 Playwright 为 p.chromium.launch()，
     测试替身为扁平的 p.chromium_launch()，按能力分发。"""
     if hasattr(p, "chromium"):
-        return await p.chromium.launch()
+        if _cdp_url():
+            return await p.chromium.connect_over_cdp(_cdp_url())
+        return await p.chromium.launch(
+            headless=_headless(), channel=None if _channel() == "chromium" else _channel())
     return await p.chromium_launch()
+
+
+async def _open_context(browser):
+    """CDP 模式复用常驻 profile（带登录态与插件）；否则新开 context 注入登录态。"""
+    if _cdp_url() and browser.contexts:
+        return browser.contexts[0]
+    return await browser.new_context(storage_state=STORAGE_STATE or None)
 
 
 async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
@@ -63,7 +88,20 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                 executed.append({**step, "strategy": strategy, "ok": True})
             elif step["kind"] == "input":
                 locator, strategy = await locate(page, step["name"])
-                await locator.fill(step["value"], timeout=timeout_ms)
+                # 水合竞态防护：SPA 可能在 fill 后回写旧值（njmind 实测，
+                # 值被改回则保存的脏检查跳过、不发请求），确认值真的写入
+                filled = False
+                for _ in range(3):
+                    await locator.fill(step["value"], timeout=timeout_ms)
+                    for _ in range(4):
+                        await page.wait_for_timeout(250)
+                        if await locator.input_value() == step["value"]:
+                            filled = True
+                            break
+                    if filled:
+                        break
+                if not filled:
+                    raise RuntimeError(f"输入 {step['name']} 被页面回写覆盖")
                 executed.append({**step, "strategy": strategy, "ok": True})
             else:
                 executed.append({**step, "ok": False, "error": f"unknown kind {step['kind']}"})
@@ -112,7 +150,7 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
     try:
         async with _launch() as p:
             browser = await _open_browser(p)
-            ctx = await browser.new_context(storage_state=STORAGE_STATE or None)
+            ctx = await _open_context(browser)
             page = await ctx.new_page()
             await page.goto(plan["url"])
             await page.wait_for_load_state("domcontentloaded", timeout=15000)

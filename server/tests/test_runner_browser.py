@@ -84,3 +84,29 @@ async def test_execute_plan_stops_on_missing_element():
         await browser.close()
     assert result["executed"][0]["ok"] is False
     assert result["executed"][1]["ok"] is False and result["executed"][1]["error"] == "not attempted"
+
+
+async def test_execute_plan_input_survives_hydration_overwrite():
+    """水合竞态：SPA 在首次 input 后把值改回旧值，fill 必须确认值真的写入。"""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.route("http://mock.local/", lambda route: route.fulfill(
+            status=200, content_type="text/html; charset=utf-8", body=FORM_HTML))
+        await page.goto("http://mock.local/")
+        await page.evaluate("""() => {
+          let n = 0;
+          const input = document.querySelector('input');
+          input.addEventListener('input', () => {
+            if (n++ === 0) input.value = '旧值';
+          });
+        }""")
+        plan = {"url": "http://mock.local/", "steps": [
+            {"kind": "input", "name": "请输入", "value": "新值",
+             "original_value": "旧值"},
+        ]}
+        result = await execute_plan(page, plan)
+        final = await page.locator("input").input_value()
+        await browser.close()
+    assert result["executed"][0]["ok"] is True
+    assert final == "新值"

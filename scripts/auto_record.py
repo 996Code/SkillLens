@@ -37,13 +37,13 @@ async def login_in_page(page, user: str, password: str, login_url: str) -> None:
 
 
 async def find_service_worker(ctx) -> object:
-    for _ in range(20):
+    for _ in range(30):
         for w in ctx.service_workers:
             # SW 实际 URL 是构建产物名（service-worker-loader*.js）；
             # "uploader" 兜底匹配源码名，防构建产物改名
             if "service-worker-loader" in w.url or "uploader" in w.url:
                 return w
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1)
     raise RuntimeError("extension service worker 未找到")
 
 
@@ -78,21 +78,39 @@ async def main() -> None:
                  "缺凭据时会以表单定位超时的间接症状报错，这里显式报")
 
     try:
+        import os
+        channel = os.environ.get("PLAYWRIGHT_CHANNEL") or "chromium"
+        cdp = os.environ.get("RECORD_CDP_URL")
         async with async_playwright() as p:
-            ctx = await p.chromium.launch_persistent_context(
-                str(Path("/tmp/skilllens-ext-profile")),
-                headless=False,
-                args=[
-                    f"--disable-extensions-except={EXT_DIST}",
-                    f"--load-extension={EXT_DIST}",
-                ],
-                timeout=60000,
-            )
+            if cdp:
+                # 常驻窗口模式：连 CDP 复用现有 context（带插件与登录态），
+                # 结束只断连，窗口与标签页保留供观察
+                browser = await p.chromium.connect_over_cdp(cdp)
+                ctx = next((c for c in browser.contexts if c.service_workers),
+                           browser.contexts[0])
+                owns_ctx = False
+            else:
+                profile = Path(f"/tmp/skilllens-ext-profile"
+                               f"{'' if channel == 'chromium' else '-' + channel}")
+                ctx = await p.chromium.launch_persistent_context(
+                    str(profile),
+                    headless=False,
+                    channel=None if channel == "chromium" else channel,
+                    args=[
+                        f"--disable-extensions-except={EXT_DIST}",
+                        f"--load-extension={EXT_DIST}",
+                        "--no-first-run",
+                        "--no-default-browser-check",
+                    ],
+                    timeout=60000,
+                )
+                owns_ctx = True
             sw = await find_service_worker(ctx)
 
             # 1) 同浏览器内先登录（拿到 njmind 会话 cookie，后续表单页可访问）
             login_page = await ctx.new_page()
             await login_in_page(login_page, user, password, login_url)
+            await login_page.close()
 
             # 2) 开录制
             r = await ext_call(ctx, sw, {"type": "START_RECORDING", "note": note})
@@ -112,12 +130,18 @@ async def main() -> None:
             # 4) 停录制（SW 内先终报再清标记）
             r = await ext_call(ctx, sw, {"type": "STOP_RECORDING"})
             print("stop_recording:", r)
-            await ctx.close()
+            if owns_ctx:
+                await ctx.close()
+            else:
+                await browser.close()  # 仅断连：常驻窗口与表单标签页保留供观察
     finally:
+        import shutil
         import subprocess
-        # 独占运行：模式串会匹配并发第二实例的浏览器，本脚本设计为单实例
-        subprocess.run(["pkill", "-f", "skilllens-ext-profile"],
-                       capture_output=True)
+        # 独占运行：模式串会匹配并发第二实例的浏览器，本脚本设计为单实例。
+        # Windows 无 pkill，跳过（ctx.close() 已正常收尾）
+        if shutil.which("pkill"):
+            subprocess.run(["pkill", "-f", "skilllens-ext-profile"],
+                           capture_output=True)
 
     # 5) 落库验证：server 无事件查询端点，直接查 SQLite（与 server 同目录）
     import sqlite3
