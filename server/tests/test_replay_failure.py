@@ -17,8 +17,10 @@ async def test_fail_triggers_attribution(client, monkeypatch, tmp_path):
         async def wait_for_timeout(self, ms): ...
         async def screenshot(self, path): open(path, "w").write("png")
         async def title(self): return "测试页"
-    class FakeBrowser:
+    class FakeCtx:
         async def new_page(self): return FakePage()
+    class FakeBrowser:
+        async def new_context(self, storage_state=None): return FakeCtx()
         async def close(self): ...
     class FakePW:
         async def __aenter__(self): return self
@@ -60,8 +62,10 @@ async def test_pass_no_attribution(client, monkeypatch, tmp_path):
         async def wait_for_timeout(self, ms): ...
         async def screenshot(self, path): open(path, "w").write("png")
         async def title(self): return "测试页"
-    class FakeBrowser:
+    class FakeCtx:
         async def new_page(self): return FakePage()
+    class FakeBrowser:
+        async def new_context(self, storage_state=None): return FakeCtx()
         async def close(self): ...
     class FakePW:
         async def __aenter__(self): return self

@@ -16,6 +16,7 @@ from app.replay.plan import compile_skeleton_plan, requires_confirmation
 MAX_BODY = 8192
 ARTIFACT_DIR = os.environ.get(
     "REPLAY_ARTIFACT_DIR", str(Path(__file__).resolve().parents[2] / "artifacts"))
+STORAGE_STATE = os.environ.get("REPLAY_STORAGE_STATE", "")
 
 
 def _launch():
@@ -92,7 +93,8 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
 
     async with _launch() as p:
         browser = await _open_browser(p)
-        page = await browser.new_page()
+        ctx = await browser.new_context(storage_state=STORAGE_STATE or None)
+        page = await ctx.new_page()
         await page.goto(plan["url"])
         result = await execute_plan(page, plan)
 

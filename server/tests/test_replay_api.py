@@ -53,8 +53,10 @@ async def test_execute_mode_pass(client, monkeypatch):
         async def goto(self, url): ...
         def on(self, *a): ...
         async def wait_for_timeout(self, ms): ...
-    class FakeBrowser:
+    class FakeCtx:
         async def new_page(self): return FakePage()
+    class FakeBrowser:
+        async def new_context(self, storage_state=None): return FakeCtx()
         async def close(self): ...
     class FakePW:
         async def __aenter__(self): return self
@@ -75,3 +77,42 @@ async def test_execute_mode_pass(client, monkeypatch):
 async def test_replay_run_get_404(client):
     resp = await client.get("/api/v1/replay-runs/9999")
     assert resp.status_code == 404
+
+
+async def fake_execute_plan_ok(page, plan, **kw):
+    return {"executed": [{"kind": "click", "label": "保存", "ok": True}],
+            "observed": [{"url": "http://t/a/1/save", "status": 200, "body": '{"code":200}'}]}
+
+
+async def test_storage_state_passed_to_context(client, monkeypatch, tmp_path):
+    skill_id = await _seed_skill(client, monkeypatch)
+
+    captured = {}
+
+    class FakeCtx:
+        def __init__(self, storage_state=None): captured["state"] = storage_state
+        async def new_page(self):
+            class P:
+                async def goto(self, url): ...
+                def on(self, *a): ...
+                async def wait_for_timeout(self, ms): ...
+            return P()
+    class FakeBrowser:
+        async def new_context(self, storage_state=None): return FakeCtx(storage_state)
+        async def close(self): ...
+    class FakePW:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): ...
+        async def chromium_launch(self): return FakeBrowser()
+
+    import app.replay.runner as rm
+    state_file = tmp_path / "state.json"
+    state_file.write_text("{}")
+    monkeypatch.setattr(rm, "STORAGE_STATE", str(state_file))
+    monkeypatch.setattr(rm, "_launch", lambda: FakePW())  # 浏览器入口换成替身
+    monkeypatch.setattr(rm, "execute_plan", fake_execute_plan_ok)
+
+    resp = await client.post(f"/api/v1/skills/{skill_id}/replay",
+                             json={"overrides": {}, "confirm_side_effect": True})
+    assert resp.status_code == 200
+    assert captured["state"] == str(state_file)   # 模块常量透传到 new_context
