@@ -24,10 +24,21 @@ Chrome → `chrome://extensions` → 开发者模式 → 加载已解压的扩�
 
 ## 3. 全自动验证（可选，替代手动演示）
 ```bash
-uv run python scripts/njmind_login.py /tmp/njmind-state-auto.json   # 刷新回放登录态
-docker compose exec server sh -c 'echo $REPLAY_STORAGE_STATE'      # 容器内登录态路径（如挂载）
-# 带插件自动采集：scripts/auto_record.py（SW 消息经 popup 页中转，CDP 操作被采集层捕获）
+cd server && uv run python ../scripts/njmind_login.py /tmp/njmind-state-auto.json
 ```
+容器内回放需要登录态，挂载方式（compose override 或直接加进 docker-compose.yml volumes）：
+
+```yaml
+services:
+  server:
+    volumes:
+      - /tmp/njmind-state-auto.json:/data/njmind-state.json:ro
+    environment:
+      REPLAY_STORAGE_STATE: /data/njmind-state.json
+```
+
+注意：state 文件必须是有效的 storage_state JSON——空文件会令容器内 Playwright
+启动时抛 JSONDecodeError。重新登录即可刷新。
 手动路径：插件 popup → 开始录制 → 目标系统操作 → 停止录制；然后依次调用
 process → align → induce → assertions → expected-deltas（生成+confirm）→ observe → report。
 
@@ -37,6 +48,8 @@ process → align → induce → assertions → expected-deltas（生成+confirm
 
 ## 数据与备份
 ```bash
-docker run --rm -v skilllens-data:/data -v $PWD:/backup alpine \
+docker run --rm -v skilllens_skilllens-data:/data -v $PWD:/backup alpine \
   tar czf /backup/skilllens-data.tgz /data
 ```
+（volume 实名带 compose 项目前缀，可用 `docker volume ls | grep skilllens` 确认；
+打包后 `tar tzf` 抽查非空再归档。）
