@@ -1,0 +1,117 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { createApp, h } from "vue";
+import { createMemoryHistory, createRouter } from "vue-router";
+import DeltaReport from "../src/views/DeltaReport.vue";
+
+// Task 4 测试：mock fetch 后四栏计数与首项 value 上屏。
+const report = {
+  id: 1,
+  expected_delta_id: 5,
+  observed_delta_id: 6,
+  expected: [
+    { type: "api_status", value: "/api/save: 200" },
+    { type: "api_status", value: "/api/list: 200" },
+  ],
+  missing: [{ type: "ui_action", value: "点击[提交]" }],
+  unexpected: [
+    { type: "api_call", value: "DELETE /api/items/9" },
+    { type: "api_call", value: "POST /api/audit" },
+  ],
+  drift: [{ type: "api_status", value: "/api/save: 200 -> 500" }],
+  created_at: "2026-09-24T12:34:56",
+};
+
+const expectedDelta = {
+  id: 5,
+  requirement_id: "REQ-100",
+  feature: "保存",
+  changes: [{ type: "api_status", value: "/api/save: 200" }],
+  status: "confirmed",
+  reviewed_by: "alice",
+  notes: "",
+};
+
+async function mountReport(root: HTMLElement, path: string) {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: "/", component: { render: () => null } },
+      { path: "/reports/:deltaId", component: { render: () => null } },
+    ],
+  });
+  await router.push(path);
+  const app = createApp({ render: () => h(DeltaReport) });
+  app.use(router);
+  app.mount(root);
+  return app;
+}
+
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  document.body.innerHTML = "";
+});
+
+describe("DeltaReport", () => {
+  it("renders four columns with counts and first item values", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/reports/1")) {
+        return new Response(JSON.stringify(report), { status: 200 });
+      }
+      if (url.includes("/api/v1/expected-deltas/5")) {
+        return new Response(JSON.stringify(expectedDelta), { status: 200 });
+      }
+      return new Response("x", { status: 404 });
+    }));
+
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    await mountReport(root, "/reports/1");
+    await flush();
+    await flush();
+
+    // 需求上下文
+    expect(root.textContent).toContain("REQ-100");
+    expect(root.textContent).toContain("alice");
+    // 四栏计数
+    const cols = root.querySelectorAll(".qcol");
+    expect(cols.length).toBe(4);
+    const counts = Array.from(root.querySelectorAll(".count")).map((c) =>
+      c.textContent?.trim());
+    expect(counts).toEqual(["2", "1", "2", "1"]);
+    // 各栏类名（分色）
+    expect(cols[0].className).toContain("col-expected");
+    expect(cols[1].className).toContain("col-missing");
+    expect(cols[2].className).toContain("col-unexpected");
+    expect(cols[3].className).toContain("col-drift");
+    // 首项 value 上屏
+    expect(root.textContent).toContain("/api/save: 200");
+    expect(root.textContent).toContain("点击[提交]");
+    expect(root.textContent).toContain("DELETE /api/items/9");
+    expect(root.textContent).toContain("/api/save: 200 -> 500");
+    // type 徽标
+    expect(root.querySelectorAll(".chip-type").length).toBeGreaterThanOrEqual(6);
+    // footer 元数据
+    expect(root.textContent).toContain("report #1");
+    expect(root.textContent).toContain("2026-09-24 12:34:56");
+  });
+
+  it("renders query box (no list entry yet) on any state", async () => {
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    await mountReport(root, "/reports/1");
+    expect(root.querySelector(".query input")).not.toBeNull();
+    expect(root.querySelector(".query button")).not.toBeNull();
+  });
+
+  it("renders not-found state for missing report", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("x", { status: 404 })));
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    await mountReport(root, "/reports/1");
+    await flush();
+    expect(root.textContent).toContain("报告不存在");
+  });
+});

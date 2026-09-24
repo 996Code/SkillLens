@@ -1,0 +1,14 @@
+/* 手写最小全局样式（按计划：不引 UI 库） */
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  color: #222;
+  background: #fff;
+}
+a {
+  color: #185abc;
+}
