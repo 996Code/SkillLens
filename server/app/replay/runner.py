@@ -1,13 +1,21 @@
+import json
+import os
+import time
+from pathlib import Path
+
 from playwright.async_api import Page, async_playwright
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.llm.gateway import complete
 from app.models import Alignment, OutcomeAssertion, RawEvent, ReplayRun, Skill
 from app.replay.assert_eval import evaluate_assertions
 from app.replay.locate import locate
 from app.replay.plan import compile_replay_plan, requires_confirmation
 
 MAX_BODY = 8192
+ARTIFACT_DIR = os.environ.get(
+    "REPLAY_ARTIFACT_DIR", str(Path(__file__).resolve().parents[2] / "artifacts"))
 
 
 def _launch():
@@ -86,22 +94,47 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
         page = await browser.new_page()
         await page.goto(plan["url"])
         result = await execute_plan(page, plan)
-        await browser.close()
 
-    assertions = [{"kind": a.kind, "payload": a.payload} for a in
-                  db.query(OutcomeAssertion).filter(OutcomeAssertion.skill_id == skill_id).all()]
-    results = evaluate_assertions(assertions, result["observed"])
-    any_ok_step = any(s.get("ok") for s in result["executed"])
-    if not any_ok_step:
-        status = "error"
-    elif all(r["passed"] for r in results):
-        status = "pass"
-    else:
-        status = "fail"
+        assertions = [{"kind": a.kind, "payload": a.payload} for a in
+                      db.query(OutcomeAssertion).filter(
+                          OutcomeAssertion.skill_id == skill_id).all()]
+        results = evaluate_assertions(assertions, result["observed"])
+        any_ok_step = any(s.get("ok") for s in result["executed"])
+        if not any_ok_step:
+            status = "error"
+        elif all(r["passed"] for r in results):
+            status = "pass"
+        else:
+            status = "fail"
+
+        # FAIL/ERROR 时先截图并取页面 title（浏览器关闭前），归因待落库拿到 run 后再做
+        screenshot_path = None
+        page_title = None
+        if status in ("fail", "error"):
+            os.makedirs(ARTIFACT_DIR, exist_ok=True)
+            screenshot_path = f"{ARTIFACT_DIR}/replay-{int(time.time() * 1000)}.png"
+            await page.screenshot(path=screenshot_path)
+            page_title = await page.title()
+        await browser.close()
 
     run = ReplayRun(skill_id=skill_id, mode="execute", status=status, plan=plan,
                     executed=result["executed"], assertion_results=results)
     db.add(run)
     db.commit()
     db.refresh(run)
+
+    if status in ("fail", "error"):
+        failed_steps = [s for s in result["executed"] if not s.get("ok")]
+        failed_asserts = [r for r in results if not r.get("passed")]
+        prompt = (
+            f"回放失败归因。页面标题：{page_title}\n"
+            f"失败的步骤：{json.dumps(failed_steps, ensure_ascii=False)}\n"
+            f"失败的断言：{json.dumps(failed_asserts, ensure_ascii=False)}\n"
+            "只输出一段中文归因，不超过 100 字。"
+        )
+        r = complete(db, "replay_failure_attribution", prompt)
+        run.attribution = r.text
+        run.artifact_path = screenshot_path or ""
+        db.commit()
+        db.refresh(run)
     return run
