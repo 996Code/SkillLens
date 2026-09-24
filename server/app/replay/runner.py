@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.llm.gateway import complete
 from app.models import Alignment, OutcomeAssertion, RawEvent, ReplayRun, Skill
-from app.replay.assert_eval import evaluate_assertions
+from app.replay.assert_eval import evaluate_assertions, path_matches
 from app.replay.locate import locate
 from app.replay.plan import compile_skeleton_plan, requires_confirmation
 
@@ -32,7 +32,9 @@ async def _open_browser(p):
     return await p.chromium_launch()
 
 
-async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000) -> dict:
+async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
+                       awaited_templates: list[str] | None = None,
+                       settle_timeout_ms: int = 10000) -> dict:
     observed: list[dict] = []
 
     # 同步壳 + create_task：Playwright 的 on() 对 async 回调支持不稳（版本相关，
@@ -69,10 +71,21 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000) -> dict:
         except Exception as exc:
             executed.append({**step, "ok": False, "error": str(exc)[:200]})
             failed = True
-    try:
-        await page.wait_for_timeout(1500)  # 收尾等待尾随响应（njmind 保存链实测 ~600ms+）
-    except Exception:
-        pass
+    # 收尾：断言关心的模板全部命中即止，否则等满 settle_timeout_ms。
+    # 固定短窗口会漏掉保存后的链式请求（njmind 实测 saveTableConfig 晚于 1.5s）。
+    if awaited_templates:
+        deadline = time.monotonic() + settle_timeout_ms / 1000
+        while time.monotonic() < deadline:
+            hit = [t for t in awaited_templates
+                   if any(path_matches(o["url"], t) for o in observed)]
+            if len(hit) == len(awaited_templates):
+                break
+            await page.wait_for_timeout(200)
+    else:
+        try:
+            await page.wait_for_timeout(1500)  # 无目标模板时退回固定收尾
+        except Exception:
+            pass
     return {"executed": executed, "observed": observed}
 
 
@@ -103,11 +116,13 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
         await page.goto(plan["url"])
         await page.wait_for_load_state("domcontentloaded", timeout=15000)
         await page.wait_for_timeout(2000)
-        result = await execute_plan(page, plan)
-
         assertions = [{"kind": a.kind, "payload": a.payload} for a in
                       db.query(OutcomeAssertion).filter(
                           OutcomeAssertion.skill_id == skill_id).all()]
+        result = await execute_plan(
+            page, plan,
+            awaited_templates=[a["payload"]["api_template"] for a in assertions
+                               if "api_template" in a["payload"]])
         results = evaluate_assertions(assertions, result["observed"])
         any_ok_step = any(s.get("ok") for s in result["executed"])
         if not any_ok_step:

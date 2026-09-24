@@ -44,6 +44,33 @@ async def test_execute_plan_semantic_locate():
     assert len(calls) == 1
 
 
+async def test_execute_plan_waits_for_awaited_templates():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.route("http://mock.local/", lambda route: route.fulfill(
+            status=200, content_type="text/html; charset=utf-8", body=FORM_HTML))
+        await page.goto("http://mock.local/")
+        plan = {"url": "http://mock.local/", "steps": [
+            {"kind": "click", "label": "保存"},
+        ]}
+        # 保存后链式请求延迟 2.5s 才发出——超过旧固定 1.5s 收尾窗口
+        await page.route("**/api/slow",
+                         lambda route: route.fulfill(status=200, body='{"code":200}'))
+        await page.evaluate("""() => {
+          document.querySelector('button').addEventListener('click',
+            () => setTimeout(
+              () => fetch('http://mock.local/api/slow', {method: 'POST'}),
+              2500));
+        }""")
+        result = await execute_plan(
+            page, plan, awaited_templates=["/api/slow"], settle_timeout_ms=6000)
+        await browser.close()
+    assert result["executed"][0]["ok"] is True
+    assert any("/api/slow" in o["url"] for o in result["observed"]), \
+        f"延迟 2.5s 的链式请求未被等到: {result['observed']}"
+
+
 async def test_execute_plan_stops_on_missing_element():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
