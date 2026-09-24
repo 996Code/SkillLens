@@ -146,3 +146,40 @@ class ReplayRun(Base):
     attribution: Mapped[str | None] = mapped_column(Text, nullable=True)
     artifact_path: Mapped[str] = mapped_column(String(300), default="")
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class ExpectedDelta(Base):
+    __tablename__ = "expected_delta"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_id: Mapped[str] = mapped_column(String(100), index=True)
+    version: Mapped[str] = mapped_column()
+    requirement_text: Mapped[str] = mapped_column(Text)
+    feature: Mapped[str] = mapped_column(String(100), default="")
+    changes: Mapped[list] = mapped_column(JSON)          # [{"type","value"}]
+    status: Mapped[str] = mapped_column(String(20))      # draft|confirmed
+    reviewed_by: Mapped[str] = mapped_column(String(100), default="")
+    notes: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class ObservedDelta(Base):
+    __tablename__ = "observed_delta"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    expected_delta_id: Mapped[int] = mapped_column(index=True)
+    skill_id: Mapped[int] = mapped_column(index=True)
+    replay_run_id: Mapped[int] = mapped_column()
+    items: Mapped[list] = mapped_column(JSON)            # 同 changes 结构
+    duration_ms: Mapped[int] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class DeltaReport(Base):
+    __tablename__ = "delta_report"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    expected_delta_id: Mapped[int] = mapped_column(index=True)
+    observed_delta_id: Mapped[int] = mapped_column(index=True)
+    expected: Mapped[list] = mapped_column(JSON)
+    missing: Mapped[list] = mapped_column(JSON)
+    unexpected: Mapped[list] = mapped_column(JSON)
+    drift: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)

@@ -1,0 +1,25 @@
+=== expected_delta #1（confirmed，人工修订版）===
+{
+    "status": "confirmed",
+    "feature": "FormDesignerSaveTableConfig",
+    "changes": "[{\"type\": \"ui_action\", \"value\": \"\\u70b9\\u51fb \\u4fdd\\u5b58\"}, {\"type\": \"api_add\", \"value\": \"/codeBack/tableConfig/saveTableConfig\"}, {\"type\": \"api_status\", \"value\": \"/codeBack/tableConfig/saveTableConfig -> 200\"}, {\"type\": \"ui_action\", \"value\": \"\\u65b0\\u589e\\u590d\\u5236\\u6309\\u94ae\"}]",
+    "reviewed_by": "operator"
+}
+
+=== observed_delta #1（回放 run 13）===
+{
+    "replay_run_id": 13,
+    "duration_ms": 0,
+    "items": "[{\"type\": \"ui_action\", \"value\": \"\\u8f93\\u5165 \\u8bf7\\u8f93\\u5165=delta-demo-001\"}, {\"type\": \"ui_action\", \"value\": \"\\u70b9\\u51fb \\u4fdd\\u5b58\"}, {\"type\": \"api_add\", \"value\": \"/codeBack/formConfig/saveFormConfig\"}, {\"type\": \"api_status\", \"value\": \"/codeBack/formConfig/saveFormConfig -> 200\"}, {\"type\": \"api_add\", \"value\": \"/codeBack/tableConfig/getTableConfigByFormConfigId\"}, {\"type\": \"api_status\", \"value\": \"/codeBack/tableConfig/getTableConfigByFormConfigId -> 200\"}, {\"type\": \"api_add\", \"value\": \"/codeBack/tableConfig/saveTableConfig\"}, {\"type\": \"api_status\", \"value\": \"/codeBack/tableConfig/saveTableConfig -> 200\"}]"
+}
+
+=== delta_report #1（四分类）===
+{
+    "expected": "[{\"type\": \"ui_action\", \"value\": \"\\u70b9\\u51fb \\u4fdd\\u5b58\"}, {\"type\": \"api_add\", \"value\": \"/codeBack/tableConfig/saveTableConfig\"}, {\"type\": \"api_status\", \"value\": \"/codeBack/tableConfig/saveTableConfig -> 200\"}]",
+    "missing": "[{\"type\": \"ui_action\", \"value\": \"\\u65b0\\u589e\\u590d\\u5236\\u6309\\u94ae\"}]",
+    "unexpected": "[{\"type\": \"ui_action\", \"value\": \"\\u8f93\\u5165 \\u8bf7\\u8f93\\u5165=delta-demo-001\"}, {\"type\": \"api_add\", \"value\": \"/codeBack/formConfig/saveFormConfig\"}, {\"type\": \"api_status\", \"value\": \"/codeBack/formConfig/saveFormConfig -> 200\"}, {\"type\": \"api_add\", \"value\": \"/codeBack/tableConfig/getTableConfigByFormConfigId\"}, {\"type\": \"api_status\", \"value\": \"/codeBack/tableConfig/getTableConfigByFormConfigId -> 200\"}]",
+    "drift": "[]"
+}
+
+=== llm_call_log（expected_delta purpose）===
+7|expected_delta|qwen3.7-plus|19106|1055
