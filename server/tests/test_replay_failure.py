@@ -84,3 +84,38 @@ async def test_pass_no_attribution(client, monkeypatch, tmp_path):
     body = (await client.post(f"/api/v1/skills/{skill_id}/replay",
                               json={"overrides": {}, "confirm_side_effect": True})).json()
     assert body["status"] == "pass" and body["attribution"] is None
+
+
+async def test_execute_exception_lands_error_run(client, monkeypatch):
+    """浏览器阶段异常也必须落 error run（C3：执行审计不可缺）。"""
+    skill_id = await _seed_skill(client, monkeypatch)
+
+    class FakePage:
+        async def goto(self, url): raise RuntimeError("net reset")
+        async def wait_for_load_state(self, state, timeout=None): ...
+        def on(self, *a): ...
+        async def wait_for_timeout(self, ms): ...
+        async def screenshot(self, path): open(path, "w").write("png")
+        async def title(self): return "测试页"
+    class FakeCtx:
+        async def new_page(self): return FakePage()
+    class FakeBrowser:
+        async def new_context(self, storage_state=None): return FakeCtx()
+        async def close(self): ...
+    class FakePW:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): ...
+        async def chromium_launch(self): return FakeBrowser()
+    monkeypatch.setattr(rm, "_launch", lambda: FakePW())
+
+    def fail_complete(*a, **k):
+        raise AssertionError("error 归因本轮不触发（截图缺失，勿调 LLM）")
+    monkeypatch.setattr(rm, "complete", fail_complete)
+
+    resp = await client.post(f"/api/v1/skills/{skill_id}/replay",
+                             json={"overrides": {}, "confirm_side_effect": True})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["mode"] == "execute" and body["status"] == "error"
+    assert body["executed"] is None and body["assertion_results"] is None
+    assert "net reset" in (body.get("attribution") or "")

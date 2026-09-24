@@ -47,9 +47,9 @@ override 值），本轮 PASS 后为 `replay-e2e-005`。即"AI 替用户操作�
 
 | fix | 提交 | 问题 → 修复 |
 |-----|------|-------------|
-| fix1 | 6dd36e8 | 参考无 navigation 事件 → plan.url 空 → 兜底取首个 action.payload.url |
-| fix2 | 86e2fb2 | 计划混入非骨架步骤（8 步）→ compile_skeleton_plan 只从骨架窗口编译 |
-| fix3 | a4c0e64 | 回放无登录态 401 → REPLAY_STORAGE_STATE 注入 new_context |
+| fix1 | ec83255 | 参考无 navigation 事件 → plan.url 空 → 兜底取首个 action.payload.url |
+| fix2 | 65f9565 | 计划混入非骨架步骤（8 步）→ compile_skeleton_plan 只从骨架窗口编译 |
+| fix3 | 1f6f876 | 回放无登录态 401 → REPLAY_STORAGE_STATE 注入 new_context |
 | fix4 | c216b1e | goto 后立即执行 → 空白页 → domcontentloaded(15s)+2s 渲染等待 |
 | fix5 | d9318d0 | page.on("response") async 回调静默不触发（observed=0）→ 同步壳+create_task |
 | fix6 | 6a4befa | 固定 1.5s 收尾漏链式请求（saveTableConfig 晚到）→ 断言模板驱动收尾等待（全命中即止，上限 10s） |

@@ -109,38 +109,49 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
         db.refresh(run)
         return run
 
-    async with _launch() as p:
-        browser = await _open_browser(p)
-        ctx = await browser.new_context(storage_state=STORAGE_STATE or None)
-        page = await ctx.new_page()
-        await page.goto(plan["url"])
-        await page.wait_for_load_state("domcontentloaded", timeout=15000)
-        await page.wait_for_timeout(2000)
-        assertions = [{"kind": a.kind, "payload": a.payload} for a in
-                      db.query(OutcomeAssertion).filter(
-                          OutcomeAssertion.skill_id == skill_id).all()]
-        result = await execute_plan(
-            page, plan,
-            awaited_templates=[a["payload"]["api_template"] for a in assertions
-                               if "api_template" in a["payload"]])
-        results = evaluate_assertions(assertions, result["observed"])
-        any_ok_step = any(s.get("ok") for s in result["executed"])
-        if not any_ok_step:
-            status = "error"
-        elif all(r["passed"] for r in results):
-            status = "pass"
-        else:
-            status = "fail"
+    try:
+        async with _launch() as p:
+            browser = await _open_browser(p)
+            ctx = await browser.new_context(storage_state=STORAGE_STATE or None)
+            page = await ctx.new_page()
+            await page.goto(plan["url"])
+            await page.wait_for_load_state("domcontentloaded", timeout=15000)
+            await page.wait_for_timeout(2000)
+            assertions = [{"kind": a.kind, "payload": a.payload} for a in
+                          db.query(OutcomeAssertion).filter(
+                              OutcomeAssertion.skill_id == skill_id).all()]
+            result = await execute_plan(
+                page, plan,
+                awaited_templates=[a["payload"]["api_template"] for a in assertions
+                                   if "api_template" in a["payload"]])
 
-        # FAIL/ERROR 时先截图并取页面 title（浏览器关闭前），归因待落库拿到 run 后再做
-        screenshot_path = None
-        page_title = None
-        if status in ("fail", "error"):
-            os.makedirs(ARTIFACT_DIR, exist_ok=True)
-            screenshot_path = f"{ARTIFACT_DIR}/replay-{int(time.time() * 1000)}.png"
-            await page.screenshot(path=screenshot_path)
-            page_title = await page.title()
-        await browser.close()
+            results = evaluate_assertions(assertions, result["observed"])
+            any_ok_step = any(s.get("ok") for s in result["executed"])
+            if not any_ok_step:
+                status = "error"
+            elif all(r["passed"] for r in results):
+                status = "pass"
+            else:
+                status = "fail"
+
+            # FAIL/ERROR 时先截图并取页面 title（浏览器关闭前），归因待落库拿到 run 后再做
+            screenshot_path = None
+            page_title = None
+            if status in ("fail", "error"):
+                os.makedirs(ARTIFACT_DIR, exist_ok=True)
+                screenshot_path = f"{ARTIFACT_DIR}/replay-{int(time.time() * 1000)}.png"
+                await page.screenshot(path=screenshot_path)
+                page_title = await page.title()
+            await browser.close()
+    except Exception as exc:
+        # 浏览器阶段异常也必须落 error run（C3：执行审计不可缺）
+        run = ReplayRun(skill_id=skill_id, mode="execute", status="error",
+                        plan=plan, executed=None, assertion_results=None,
+                        attribution=str(exc)[:500])
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+        return run
 
     run = ReplayRun(skill_id=skill_id, mode="execute", status=status, plan=plan,
                     executed=result["executed"], assertion_results=results)

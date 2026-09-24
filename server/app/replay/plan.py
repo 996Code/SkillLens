@@ -103,5 +103,10 @@ def compile_skeleton_plan(events: list[dict], skeleton: list[dict], ref_session_
     return {"url": _plan_url(ordered), "steps": steps}
 
 
+_WRITE_METHODS = ("POST:", "PUT:", "PATCH:", "DELETE:")
+
+
 def requires_confirmation(skill_skeleton: list[dict]) -> bool:
-    return any("POST:" in (step.get("signature") or "") for step in skill_skeleton)
+    """任一骨架窗口含写方法 API 即需确认（C1）。GET 查询无副作用不算。"""
+    return any(any(m in (step.get("signature") or "") for m in _WRITE_METHODS)
+               for step in skill_skeleton)

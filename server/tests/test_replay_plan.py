@@ -37,6 +37,15 @@ def test_requires_confirmation_on_post():
     assert requires_confirmation([]) is False
 
 
+def test_requires_confirmation_on_write_methods():
+    # PUT/PATCH/DELETE 同为副作用方法，未确认一律影子（C1 本意，非仅 POST）
+    assert requires_confirmation([{"signature": "click:改|PUT:/a/1"}]) is True
+    assert requires_confirmation([{"signature": "click:改|PATCH:/a/1"}]) is True
+    assert requires_confirmation([{"signature": "click:删|DELETE:/a/1"}]) is True
+    # GET 查询无副作用，不需确认
+    assert requires_confirmation([{"signature": "click:查|GET:/a/1"}]) is False
+
+
 def test_url_fallback_from_action_event():
     events = [
         ev("action", "click", target={"label": "保存"}, url="http://t/from-action"),
