@@ -1,8 +1,25 @@
-from playwright.async_api import Page
+from playwright.async_api import Page, async_playwright
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
+from app.models import Alignment, OutcomeAssertion, RawEvent, ReplayRun, Skill
+from app.replay.assert_eval import evaluate_assertions
 from app.replay.locate import locate
+from app.replay.plan import compile_replay_plan, requires_confirmation
 
 MAX_BODY = 8192
+
+
+def _launch():
+    return async_playwright()
+
+
+async def _open_browser(p):
+    """浏览器入口：真实 Playwright 为 p.chromium.launch()，
+    测试替身为扁平的 p.chromium_launch()，按能力分发。"""
+    if hasattr(p, "chromium"):
+        return await p.chromium.launch()
+    return await p.chromium_launch()
 
 
 async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000) -> dict:
@@ -43,3 +60,48 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000) -> dict:
     except Exception:
         pass
     return {"executed": executed, "observed": observed}
+
+
+async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
+                     confirm_side_effect: bool) -> ReplayRun:
+    skill = db.get(Skill, skill_id)
+    alignment = db.get(Alignment, skill.alignment_id)
+    ref_sid = alignment.session_ids[0]
+    rows = db.execute(select(RawEvent).where(RawEvent.session_id == ref_sid)
+                      .order_by(RawEvent.ts, RawEvent.seq)).scalars().all()
+    events = [{"seq": r.seq, "ts": r.ts, "kind": r.kind, "payload": r.payload or {}} for r in rows]
+    plan = compile_replay_plan(events, overrides or {})
+
+    shadow = requires_confirmation(skill.skeleton) and not confirm_side_effect
+    if shadow:
+        run = ReplayRun(skill_id=skill_id, mode="shadow", status="shadow",
+                        plan=plan, executed=None, assertion_results=None)
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+        return run
+
+    async with _launch() as p:
+        browser = await _open_browser(p)
+        page = await browser.new_page()
+        await page.goto(plan["url"])
+        result = await execute_plan(page, plan)
+        await browser.close()
+
+    assertions = [{"kind": a.kind, "payload": a.payload} for a in
+                  db.query(OutcomeAssertion).filter(OutcomeAssertion.skill_id == skill_id).all()]
+    results = evaluate_assertions(assertions, result["observed"])
+    any_ok_step = any(s.get("ok") for s in result["executed"])
+    if not any_ok_step:
+        status = "error"
+    elif all(r["passed"] for r in results):
+        status = "pass"
+    else:
+        status = "fail"
+
+    run = ReplayRun(skill_id=skill_id, mode="execute", status=status, plan=plan,
+                    executed=result["executed"], assertion_results=results)
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return run
