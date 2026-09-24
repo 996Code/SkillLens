@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.change.expected import generate_expected_delta, verify_delta
 from app.db import SessionLocal
-from app.models import ExpectedDelta
+from app.models import ExpectedDelta, ReplayRun
 
 router = APIRouter()
 
@@ -50,6 +50,29 @@ async def confirm_expected(delta_id: int, body: ConfirmRequest,
     row.reviewed_by = body.reviewed_by
     db.commit(); db.refresh(row)
     return {"id": row.id, "status": row.status, "changes": row.changes}
+
+
+class ObserveRequest(BaseModel):
+    skill_id: int
+    overrides: dict[str, str] = {}
+    confirm_side_effect: bool = False
+
+
+@router.post("/expected-deltas/{delta_id}/observe", status_code=201)
+async def observe(delta_id: int, body: ObserveRequest,
+                  db: Session = Depends(get_db)) -> dict:
+    from app.change.observed import run_observe
+    try:
+        row = await run_observe(db, delta_id, body.skill_id,
+                                body.overrides, body.confirm_side_effect)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except PermissionError as e:
+        raise HTTPException(409, str(e))
+    return {"id": row.id, "items": row.items, "replay_run_id": row.replay_run_id,
+            "replay_status": db.get(ReplayRun, row.replay_run_id).status}
 
 
 @router.get("/expected-deltas/{delta_id}")
