@@ -35,3 +35,18 @@ def test_requires_confirmation_on_post():
     assert requires_confirmation([{"signature": "click:保存|POST:/a/save"}]) is True
     assert requires_confirmation([{"signature": "click:查"}]) is False
     assert requires_confirmation([]) is False
+
+
+def test_url_fallback_from_action_event():
+    events = [
+        ev("action", "click", target={"label": "保存"}, url="http://t/from-action"),
+    ]
+    assert compile_replay_plan(events, {})["url"] == "http://t/from-action"
+
+
+def test_url_prefers_navigation_over_action():
+    events = [
+        ev("navigation", "page-load", url="http://t/nav"),
+        ev("action", "click", target={"label": "x"}, url="http://t/other"),
+    ]
+    assert compile_replay_plan(events, {})["url"] == "http://t/nav"
