@@ -31,10 +31,27 @@ def _extract_field(body: str, field: str) -> object:
     return node
 
 
-def evaluate_assertions(assertions: list[dict], observed: list[dict]) -> list[dict]:
+def evaluate_assertions(assertions: list[dict], observed: list[dict],
+                        after_snapshot: dict | None = None) -> list[dict]:
     out: list[dict] = []
     for a in assertions:
         p = a["payload"]
+        if a["kind"] == "ui_text":
+            # UI 文本断言不走网络观察：用回放 after 快照的 forms 对比。
+            # 无快照（采集能力缺失）→ skipped/passed=True 不计失败；
+            # 快照存在但 label 缺失 → FAIL（字段消失是真实回归信号，不吞掉）。
+            forms = ((after_snapshot or {}).get("forms") or [])
+            hit = next((f for f in forms if f.get("label") == p.get("label")), None)
+            if after_snapshot is None:
+                out.append({"payload": p, "observed_status": None, "passed": True,
+                            "skipped": "ui_text 无回放快照，跳过"})
+            elif hit is None:
+                out.append({"payload": p, "observed_status": None, "passed": False,
+                            "skipped": "回放快照中字段缺失"})
+            else:
+                out.append({"payload": p, "observed_status": None,
+                            "passed": hit.get("value") == p.get("after")})
+            continue
         matched = [o for o in observed if path_matches(o["url"], p["api_template"])]
         if a["kind"] == "api_status":
             statuses = [o["status"] for o in matched]

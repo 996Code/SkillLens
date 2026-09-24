@@ -64,9 +64,12 @@ server Ingestion
 |---|---|---|
 | 插件 | `snapshot.test.ts`（6 用例） | forms/tables 采集、50 上限+overflow、密码框跳过、1KB 截断、敏感 label 脱敏 |
 | server | `test_process.py`（+3 用例） | before/after 归属 + api_calls 防污染、无快照全 None、多 after 取最后 |
+| server | `test_outcome.py`（+2 用例） | state_before≠after 生成 ui_text 断言（去重+verify 回验）、无差集不生成 |
+| server | `test_assert_eval.py`（4 用例） | ui_text match/mismatch、无快照 skipped、快照存在 label 缺失 → FAIL |
+| server | `test_runner_browser.py`（+3 用例） | 采集 forms/红线截断、label 文本兜底 100 截断、detach 容错 + hidden 祖先过滤、run_replay 前后快照落库 |
 
-## 7. 后续（T3-T5）
+## 7. 后续（T3/T4 已落地）
 
-- ui_text 断言：`generate_assertions` 从 state_before≠after 生成；回放 `after_snapshot` 对比评估。
-- 回放前后快照：runner 采同 schema 快照入 replay_run。
-- E2E 盲区实测：njmind 改字段默认值 → ui_text 断言 FAIL（本 Sprint 核心价值证明）。
+- [x] ui_text 断言（T3）：`generate_assertions` 从 state_before≠after 生成；回放 `after_snapshot` 对比评估。
+- [x] 回放前后快照（T4）：runner 执行前后各采同 schema 快照，旁挂 replay_run.plan 的 before/after_snapshot。
+- [ ] E2E 盲区实测（T5）：njmind 改字段默认值 → ui_text 断言 FAIL（本 Sprint 核心价值证明；改默认值需人工在 njmind 网页操作，自动化侧以"ui_text 断言生成+评估链路"验收）。

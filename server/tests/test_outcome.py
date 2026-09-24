@@ -110,6 +110,64 @@ async def _first_alignment_session(client, skill_id):
     return alignment.session_ids[0]
 
 
+async def _make_snapshot_skill(client, monkeypatch,
+                               before_value="旧值", after_value="新值") -> int:
+    """带 before/after 快照事件的录制→归纳（ui_text 断言的证据源）。
+    快照归属：before(ts=0) ≤ 锚点(ts=50) → 归该窗；after(ts=250) ≥ 锚点 → 归该窗。"""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_FAKE_RESPONSE",
+                       json.dumps({"name": "SaveOrder", "description": "保存订单"}))
+    sids = []
+    for oid in (111, 222):
+        sid = (await client.post("/api/v1/sessions", json={})).json()["session_id"]
+        events = [
+            {"seq": 0, "ts": 0, "kind": "snapshot",
+             "payload": {"phase": "before", "ts": 0,
+                         "forms": [{"label": "备注", "value": before_value}],
+                         "labels": [], "tables": []}},
+            {"seq": 1, "ts": 50, "kind": "action",
+             "payload": {"type": "click", "target": {"label": "保存"}}},
+            {"seq": 2, "ts": 100, "kind": "network",
+             "payload": {"method": "POST", "url": f"/orders/{oid}/save",
+                         "status": 200, "reqBody": "{}", "resBody": '{"code":200}'}},
+            {"seq": 3, "ts": 250, "kind": "snapshot",
+             "payload": {"phase": "after", "ts": 250,
+                         "forms": [{"label": "备注", "value": after_value}],
+                         "labels": [], "tables": []}},
+        ]
+        await client.post(f"/api/v1/sessions/{sid}/events", json=events)
+        await client.post(f"/api/v1/sessions/{sid}/process")
+        sids.append(sid)
+    aid = (await client.post("/api/v1/align", json={"session_ids": sids})).json()["alignment_id"]
+    skill = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
+    return skill["id"]
+
+
+async def test_generate_ui_text_from_state_diff(client, monkeypatch):
+    """Sprint 8 T3：骨架窗 state_before/after 同 label 不同 value → ui_text 断言。
+    两 session 各生成一条同 label 断言 → (kind, template="", label) 去重后仅 1 条。"""
+    skill_id = await _make_snapshot_skill(client, monkeypatch)
+    await client.post(f"/api/v1/skills/{skill_id}/assertions")
+    rows = (await client.get(f"/api/v1/skills/{skill_id}/assertions")).json()
+    ui = [r for r in rows if r["kind"] == "ui_text"]
+    assert len(ui) == 1, rows
+    assert ui[0]["layer"] == 2
+    assert ui[0]["api_template"] == ""
+    assert ui[0]["payload"] == {"label": "备注", "before": "旧值", "after": "新值"}
+    # session 回验：源 session 的快照差集存在 → verify 通过
+    v = (await client.post(f"/api/v1/assertions/{ui[0]['id']}/verify")).json()
+    assert v["passed"] is True, v
+
+
+async def test_no_ui_text_without_state_diff(client, monkeypatch):
+    """before/after 同值（无差集）→ 不生成 ui_text。"""
+    skill_id = await _make_snapshot_skill(client, monkeypatch,
+                                          before_value="同值", after_value="同值")
+    await client.post(f"/api/v1/skills/{skill_id}/assertions")
+    rows = (await client.get(f"/api/v1/skills/{skill_id}/assertions")).json()
+    assert all(r["kind"] != "ui_text" for r in rows), rows
+
+
 async def test_truncated_marker_not_asserted(client, monkeypatch):
     """FINDING A：_truncated 标记行不得生成 field_change 断言（污染 C2 锚）。"""
     import json as _json
