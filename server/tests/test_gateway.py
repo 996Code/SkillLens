@@ -106,3 +106,32 @@ def test_complete_logs_on_provider_error(monkeypatch):
         assert row.latency_ms >= 0
     finally:
         db.close()
+
+
+def test_complete_error_summary_masks_gateway_url(monkeypatch):
+    """红线：异常摘要不得把网关 URL 落进 llm_call_log（httpx str(e) 内嵌 URL）。"""
+    import app.llm.gateway as gw
+    from app.db import engine
+    from app.models import Base
+    Base.metadata.create_all(engine)
+    class FakeExplode:
+        name = "openai-compat"
+        model = "m"
+        def complete(self, prompt):
+            import httpx
+            req = httpx.Request("POST", "http://secret-gateway.local:18080/v1/chat/completions")
+            resp = httpx.Response(401, request=req)
+            raise httpx.HTTPStatusError("bad", request=req, response=resp)
+    monkeypatch.setattr(gw, "get_provider", lambda: FakeExplode())
+    from app.db import SessionLocal
+    db = SessionLocal()
+    try:
+        import pytest as _p
+        with _p.raises(Exception):
+            gw.complete(db, "skill_naming", "p")
+        from sqlalchemy import select
+        row = db.execute(select(gw.LlmCallLog).order_by(gw.LlmCallLog.id.desc())).scalars().first()
+        assert "secret-gateway.local" not in row.response
+        assert "HTTPStatusError" in row.response
+    finally:
+        db.close()

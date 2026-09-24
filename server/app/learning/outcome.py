@@ -35,6 +35,10 @@ def generate_assertions(db: Session, skill_id: int) -> list[OutcomeAssertion]:
         ).scalars().all()
         for fc in changes:
             for ch in fc.changes:
+                # _truncated 是截断标记行而非业务字段变化，不得生成断言
+                # （否则污染 C2 基线锚的 assertion_count/pass_rate）
+                if ch.get("field") == "_truncated":
+                    continue
                 rows.append(("field_change", fc.api_template, 2,
                              {"api_template": fc.api_template, "field": ch["field"],
                               "before": ch["before"], "after": ch["after"]}))

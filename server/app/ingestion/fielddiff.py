@@ -1,4 +1,5 @@
 import hashlib
+import json
 
 
 TRUNCATE_LIMIT_BYTES = 8192
@@ -35,6 +36,10 @@ def truncate_req_body(raw: str) -> dict:
 
 def cap_value(v) -> object:
     """changes 落库值的全文不入库保护：超限字符串截断存前缀。"""
-    if isinstance(v, str) and len(v.encode("utf-8")) > TRUNCATE_LIMIT_BYTES:
-        return v.encode("utf-8")[:TRUNCATE_LIMIT_BYTES].decode("utf-8", errors="ignore") + "…[truncated]"
-    return v
+    if isinstance(v, str):
+        data = v.encode("utf-8")
+    else:
+        data = json.dumps(v, ensure_ascii=False, default=str).encode("utf-8")
+    if len(data) <= TRUNCATE_LIMIT_BYTES:
+        return v
+    return data[:TRUNCATE_LIMIT_BYTES].decode("utf-8", errors="ignore") + "…[truncated]"

@@ -108,3 +108,39 @@ async def _first_alignment_session(client, skill_id):
     alignment = db.get(Alignment, skill.alignment_id)
     db.close()
     return alignment.session_ids[0]
+
+
+async def test_truncated_marker_not_asserted(client, monkeypatch):
+    """FINDING A：_truncated 标记行不得生成 field_change 断言（污染 C2 锚）。"""
+    import json as _json
+    from app.db import SessionLocal
+    from app.models import FieldChange
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_FAKE_RESPONSE", _json.dumps({"name": "S", "description": "d"}))
+    sid = (await client.post("/api/v1/sessions", json={})).json()["session_id"]
+    ev = []
+    for i, note in enumerate(("a", "b")):
+        ev += [
+            {"seq": i*2, "ts": i*200, "kind": "action",
+             "payload": {"type": "click", "target": {"label": "保存"}}},
+            {"seq": i*2+1, "ts": i*200+100, "kind": "network",
+             "payload": {"method": "POST", "url": "/orders/1/save", "status": 200,
+                         "reqBody": _json.dumps({"note": note}), "resBody": '{"code":200}'}},
+        ]
+    await client.post(f"/api/v1/sessions/{sid}/events", json=ev)
+    await client.post(f"/api/v1/sessions/{sid}/process")
+    db = SessionLocal()
+    fc = FieldChange(session_id=sid, api_template="/orders/1/save", before_seq=1,
+                     after_seq=3, changes=[
+                         {"field": "note", "before": "a", "after": "b"},
+                         {"field": "_truncated", "truncated": True,
+                          "sha256": {"before": "h1", "after": "h2"}}])
+    db.add(fc); db.commit(); db.close()
+    sid2 = (await client.post("/api/v1/sessions", json={})).json()["session_id"]
+    await client.post(f"/api/v1/sessions/{sid2}/events", json=[dict(e, seq=e["seq"]) for e in ev])
+    await client.post(f"/api/v1/sessions/{sid2}/process")
+    aid = (await client.post("/api/v1/align", json={"session_ids": [sid, sid2]})).json()["alignment_id"]
+    skill = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
+    await client.post(f"/api/v1/skills/{skill['id']}/assertions")
+    rows = (await client.get(f"/api/v1/skills/{skill['id']}/assertions")).json()
+    assert all(r["payload"].get("field") != "_truncated" for r in rows), rows

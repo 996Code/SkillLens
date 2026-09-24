@@ -103,3 +103,22 @@ async def test_field_changes_small_body_not_truncated(client):
     assert len(rows) == 1
     # 小 body：无任何 _truncated 标记（回归不变）
     assert all(c.get("field") != "_truncated" for c in rows[0]["changes"])
+
+
+def test_cap_value_truncates_non_string_large_values():
+    """FINDING B：非 str 大值（list/大数字）也必须截断，不得全文入库。"""
+    from app.ingestion.fielddiff import cap_value
+    big_list = ["x" * 100] * 200  # 序列化后远超 8KB
+    capped = cap_value(big_list)
+    assert capped != big_list
+    assert len(str(capped).encode("utf-8")) <= 8192 + 100
+
+
+def test_truncate_exact_8192_boundary():
+    """恰好 8192 字节不截断（边界测试，审查建议项）。"""
+    from app.ingestion.fielddiff import truncate_req_body
+    exact = "a" * 8192
+    r = truncate_req_body(exact)
+    assert r["truncated"] is False and r["sha256"] is None
+    r2 = truncate_req_body("a" * 8193)
+    assert r2["truncated"] is True and r2["sha256"] is not None
