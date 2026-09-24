@@ -1,0 +1,18 @@
+=== run 10 (PASS) ===
+{
+    "id": 10,
+    "mode": "execute",
+    "status": "pass",
+    "executed": "[{\"kind\": \"input\", \"name\": \"\\u8bf7\\u8f93\\u5165\", \"value\": \"replay-e2e-005\", \"original_value\": \"wenbenshurukuang2321\", \"strategy\": \"placeholder\", \"ok\": true}, {\"kind\": \"click\", \"label\": \"\\u8bf7\\u8f93\\u5165\", \"strategy\": \"placeholder\", \"ok\": true}, {\"kind\": \"click\", \"label\": \"\\u4fdd\\u5b58\", \"strategy\": \"role-button\", \"ok\": true}]",
+    "assertion_results": "[{\"payload\": {\"api_template\": \"/codeBack/formConfig/saveFormConfig\", \"expect_status\": 200}, \"observed_status\": 200, \"passed\": true}, {\"payload\": {\"api_template\": \"/codeBack/tableConfig/getTableConfigByFormConfigId\", \"expect_status\": 200}, \"observed_status\": 200, \"passed\": true}, {\"payload\": {\"api_template\": \"/codeBack/tableConfig/saveTableConfig\", \"expect_status\": 200}, \"observed_status\": 200, \"passed\": true}, {\"payload\": {\"api_template\": \"/codeBack/tableConfig/saveTableConfig\", \"field\": \"code\", \"expect_value\": 200}, \"observed_status\": 200, \"passed\": true}]"
+}
+
+=== run 11 (FAIL, sabotage-assert) ===
+{
+    "id": 11,
+    "mode": "execute",
+    "status": "fail",
+    "assertion_results": "[{\"payload\": {\"api_template\": \"/codeBack/formConfig/saveFormConfig\", \"expect_status\": 200}, \"observed_status\": 200, \"passed\": true}, {\"payload\": {\"api_template\": \"/codeBack/tableConfig/getTableConfigByFormConfigId\", \"expect_status\": 500}, \"observed_status\": 200, \"passed\": false}, {\"payload\": {\"api_template\": \"/codeBack/tableConfig/saveTableConfig\", \"expect_status\": 200}, \"observed_status\": 200, \"passed\": true}, {\"payload\": {\"api_template\": \"/codeBack/tableConfig/saveTableConfig\", \"field\": \"code\", \"expect_value\": 200}, \"observed_status\": 200, \"passed\": true}]",
+    "attribution": "获取表格配置接口实际返回状态码200，与断言期望的500不符导致失败。可能是预期的服务器错误场景未触发，或该接口已修复正常。",
+    "artifact_path": "/Users/xiaotaotao/cyble-code/SkillLens/server/artifacts/replay-1790215799581.png"
+}
