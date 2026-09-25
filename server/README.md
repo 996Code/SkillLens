@@ -24,7 +24,8 @@ schemas.py         上报协议 Pydantic（RawEventIn.kind = action|network|navi
 
 api/               端点层（薄，业务在 ingestion/learning/change）
   ingest.py        POST /sessions、/events、/{sid}/process、/align、GET alignments、semantic-actions、field-changes
-  llm_skills.py    POST /alignments/{aid}/induce、/skills/{sid}/assertions、/assertions/{id}/verify、GET /skills
+  llm_skills.py    POST /alignments/{aid}/induce、/skills/{sid}/assertions、/assertions/{id}/verify、GET /skills（排除 superseded）
+  reviews.py       POST/GET /reviews（夜间 agent_run 评审门户）+ GET /reviews/pending（未评审队列）
   replay.py        POST /skills/{sid}/replay、GET /replay-runs/{rid}
   change.py        expected-deltas（draft/confirm/observe/report 四段）
   baseline.py      GET /baseline/skills（C2 对比锚指标）
@@ -41,7 +42,7 @@ ingestion/         ② 确定性数据处理管道（每级产物落库，C3）
   fieldchange.py   字段级 Before/After（层 2a，同 session 相邻同模板 POST diff）
 
 learning/          ③ 学习引擎（③）
-  skill.py         induce：LLM 命名 + 确定性回查降级 candidate；re-induce 前清孤儿断言
+  skill.py         induce：LLM 命名 + 确定性回查降级 candidate；re-induce 版本演化（旧行 superseded 保留，v3 §29）
   outcome.py       generate_assertions（api_status/state_signal/field_change，只取骨架证据范围）
 
 llm/               ④ LLM Gateway（自研薄封装）

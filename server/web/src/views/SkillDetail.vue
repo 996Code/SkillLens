@@ -96,6 +96,8 @@ onMounted(async () => {
             </dd>
           </div>
         </dl>
+        <p v-if="card.superseded_by" class="notes superseded-hint">
+          ⚠ 该版本已被 v{{ card.superseded_by }} 取代——回放/断言/验证请使用新版本（历史版本仅作审计）</p>
         <p v-if="card.notes" class="notes">备注：{{ card.notes }}</p>
       </header>
 
@@ -214,6 +216,11 @@ onMounted(async () => {
 .meta dd {
   margin: 2px 0 0;
 }
+.superseded-hint {
+  color: #b45309;
+  font-weight: 600;
+}
+
 .notes {
   font-size: 13px;
   color: #8a6d3b;

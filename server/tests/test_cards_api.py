@@ -55,10 +55,12 @@ async def test_card_full_fields(client, monkeypatch):
     resp = await client.get(f"/api/v1/skills/{skill_id}/card")
     assert resp.status_code == 200
     card = resp.json()
+    # S15：card 加 superseded_by（superseded 行前端提示用；活跃行为 None）
     assert set(card) == {"id", "name", "description", "status", "confidence",
                          "evidence_count", "alignment_id", "skeleton", "input_variables",
                          "param_variables", "assertions", "strategies", "last_run", "window_params",
-                         "notes"}
+                         "notes", "superseded_by"}
+    assert card["superseded_by"] is None
     assert card["id"] == skill_id
     assert card["name"] == "SaveForm"
     assert card["status"] == "learned"

@@ -3,7 +3,8 @@ import { createApp, h } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
 import App from "../src/App.vue";
 
-// vitest 起步用例：App 壳渲染顶部导航（Skills / Reports / 审计 / 画布）——不依赖额外测试库。
+// vitest 起步用例：App 壳渲染顶部导航（Skills / Reports / 审计 / 画布 / 评审）——不依赖额外测试库。
+// S15：导航加"评审"（/reviews-portal，夜间 agent_run 评审，区别于 Reports 四分类）。
 function mountTo(root: HTMLElement) {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -25,7 +26,7 @@ describe("App shell", () => {
     const links = Array.from(root.querySelectorAll("nav a")).map(
       (a) => a.textContent?.trim(),
     );
-    expect(links).toEqual(["Skills", "Reports", "审计", "画布"]);
+    expect(links).toEqual(["Skills", "Reports", "审计", "画布", "评审"]);
     expect(root.textContent).toContain("SkillLens");
     expect(root.querySelector("main")).not.toBeNull(); // router-view 出口存在
   });

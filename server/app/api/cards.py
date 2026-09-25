@@ -48,6 +48,8 @@ async def get_skill_card(skill_id: int, db: Session = Depends(get_db)) -> dict:
         "name": skill.name,
         "description": skill.description,
         "status": skill.status,
+        # S15：superseded 行返回 200 + superseded_by（前端提示用）；活跃行为 None
+        "superseded_by": skill.superseded_by,
         "confidence": skill.confidence,
         "evidence_count": skill.evidence_count,
         "alignment_id": skill.alignment_id,

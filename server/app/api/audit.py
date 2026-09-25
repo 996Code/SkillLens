@@ -187,8 +187,11 @@ async def session_trace(session_id: str, db: Session = Depends(get_db)) -> dict:
     alignment_ids = [a.id for a in alignments]
     skills = (db.query(Skill).filter(Skill.alignment_id.in_(alignment_ids)).all()
               if alignment_ids else [])
+    # S15：skills 段默认排除 superseded（历史版本不进链路视图）；
+    # replay_runs 段仍取全量 skill（含 superseded）——C3 审计不丢历史
     skill_items = [{"id": s.id, "name": s.name, "status": s.status,
-                    "confidence": s.confidence} for s in skills]
+                    "confidence": s.confidence}
+                   for s in skills if s.status != "superseded"]
 
     skill_ids = [s.id for s in skills]
     runs = (db.query(ReplayRun).filter(ReplayRun.skill_id.in_(skill_ids))

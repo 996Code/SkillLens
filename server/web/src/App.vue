@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// 工作台壳：顶部导航（Skills / Reports / 审计 / 画布）+ 路由出口。
-// 只读边界：S14 起画布为唯一编排入口（主计划块 H 授权），其余导航保持只读。
+// 工作台壳：顶部导航（Skills / Reports / 审计 / 画布 / 评审）+ 路由出口。
+// 只读边界：S14 起画布为唯一编排入口（主计划块 H 授权），其余导航保持只读；
+// S15 评审为夜间 agent_run 的 PR 式评审流（区别于 Reports 发版四分类）。
 </script>
 
 <template>
@@ -12,6 +13,7 @@
         <RouterLink to="/reports/1">Reports</RouterLink>
         <RouterLink to="/audit">审计</RouterLink>
         <RouterLink to="/canvas">画布</RouterLink>
+        <RouterLink to="/reviews-portal">评审</RouterLink>
       </nav>
     </header>
     <main class="content">

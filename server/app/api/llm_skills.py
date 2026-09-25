@@ -65,7 +65,9 @@ async def list_skills(db: Session = Depends(get_db)) -> list:
                 return sources[sid] or "demo"
         return "demo"
 
-    rows = db.query(Skill).order_by(Skill.id.desc()).all()
+    # S15：列表默认排除 superseded（历史版本不进工作台列表）
+    rows = db.query(Skill).filter(Skill.status != "superseded") \
+        .order_by(Skill.id.desc()).all()
     return [{"id": r.id, "alignment_id": r.alignment_id, "name": r.name,
              "description": r.description, "status": r.status,
              "confidence": r.confidence, "evidence_count": r.evidence_count,
@@ -74,8 +76,11 @@ async def list_skills(db: Session = Depends(get_db)) -> list:
 
 @router.post("/skills/{skill_id}/assertions")
 async def create_assertions(skill_id: int, db: Session = Depends(get_db)) -> dict:
-    if not db.get(Skill, skill_id):
+    skill = db.get(Skill, skill_id)
+    if not skill:
         raise HTTPException(status_code=404, detail="skill not found")
+    if skill.status == "superseded":
+        raise HTTPException(409, f"该 Skill 版本已被取代（v{skill.superseded_by}），请使用新版本")
     rows = generate_assertions(db, skill_id)
     return {"assertions": len(rows)}
 
@@ -85,8 +90,16 @@ async def verify_assertion(assertion_id: int, db: Session = Depends(get_db)) -> 
     assertion = db.get(OutcomeAssertion, assertion_id)
     if not assertion:
         raise HTTPException(status_code=404, detail="assertion not found")
-    if not db.get(Skill, assertion.skill_id):
+    skill = db.get(Skill, assertion.skill_id)
+    if not skill:
         raise HTTPException(status_code=404, detail="skill not found")
+    if skill.status == "superseded":
+        # S15 版本演化：superseded 行断言保留作历史但不可再验证——提示走新版本
+        new_skill = db.get(Skill, skill.superseded_by) if skill.superseded_by else None
+        new_version = new_skill.version if new_skill else "?"
+        raise HTTPException(
+            status_code=409,
+            detail=f"该版本已被取代（v{new_version}），请验证新版本")
     result = verify_against_session(db, assertion_id)
     # S12 N4 层4：verify 通过即累加历史成功样本。累加放 API 层而非库函数
     # verify_against_session——保持库函数纯查询零写（回放评估走独立的

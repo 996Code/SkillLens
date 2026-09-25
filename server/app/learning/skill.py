@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.llm.gateway import complete
 from app.learning.evidence import sync_evidence_edges
-from app.models import Alignment, OutcomeAssertion, Skill, SkillStrategy
+from app.models import Alignment, Skill, SkillStrategy
 
 PASCAL = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 
@@ -69,22 +69,25 @@ def induce_skill(db: Session, alignment_id: int) -> Skill:
         else:
             notes = why
     confidence = _confidence(alignment)
-    # 先删旧 Skill 的断言再删 Skill：否则断言行 skill_id 悬空，verify 会 500（孤儿根治）
-    old_skill_ids = [s.id for s in db.query(Skill).filter(Skill.alignment_id == alignment_id).all()]
-    if old_skill_ids:
-        db.query(OutcomeAssertion).filter(OutcomeAssertion.skill_id.in_(old_skill_ids)).delete(
-            synchronize_session=False)
-        db.query(SkillStrategy).filter(SkillStrategy.skill_id.in_(old_skill_ids)).delete(
-            synchronize_session=False)
-    db.query(Skill).filter(Skill.alignment_id == alignment_id).delete()
+    # S15 版本演化（v3 §29 不覆盖旧版本）：re-induce 不再删除旧 skill——旧行
+    # status→"superseded" + superseded_by=新行 id（只取代当前活跃行，链式指向
+    # 直接后继），新行 version=旧最大 version+1；断言/策略只写新行，旧行的
+    # 断言/策略保留作历史（原"先删断言再删 skill"孤儿治理随之整体移除）。
+    old_skills = db.query(Skill).filter(Skill.alignment_id == alignment_id).all()
+    max_version = max((s.version or 1) for s in old_skills) if old_skills else 0
     skill = Skill(
         alignment_id=alignment_id, name=name, description=desc, status=status,
         skeleton=alignment.skeleton, param_variables=alignment.param_variables,
         input_variables=alignment.input_variables, confidence=confidence,
         evidence_count=len(alignment.session_ids), notes=notes,
+        version=max_version + 1,
     )
     db.add(skill)
     db.flush()
+    for old in old_skills:
+        if old.status != "superseded":  # 已 superseded 的行保持原链指向不变
+            old.status = "superseded"
+            old.superseded_by = skill.id
     # 多路径分桶落地：每桶一条策略（主桶亦记录），签名=桶内骨架序列
     for bucket in alignment.buckets or [{"sessions": alignment.session_ids,
                                          "skeleton": alignment.skeleton}]:

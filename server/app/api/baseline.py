@@ -88,7 +88,9 @@ def _baseline_item(db: Session, skill: Skill,
 @router.get("/baseline/skills")
 async def list_baseline_skills(db: Session = Depends(get_db)) -> list:
     sources = _session_sources(db)
-    rows = db.query(Skill).order_by(Skill.id).all()
+    # S15：基线列表默认排除 superseded（历史版本不参与基线/C2 对比锚）
+    rows = db.query(Skill).filter(Skill.status != "superseded") \
+        .order_by(Skill.id).all()
     return [_baseline_item(db, s, sources) for s in rows]
 
 
@@ -121,7 +123,10 @@ async def compare_baseline(db: Session = Depends(get_db)) -> dict:
     /为 None）时为 False——语义=「尚不能宣称达标」，而非「失败」。
     """
     sources = _session_sources(db)
-    rows = db.query(Skill).order_by(Skill.id).all()
+    # S15：compare 聚合与 /baseline/skills 同口径——排除 superseded，避免同
+    # alignment 多版本重复计数
+    rows = db.query(Skill).filter(Skill.status != "superseded") \
+        .order_by(Skill.id).all()
     groups: dict[str, list[dict]] = {"demo": [], "real_traffic": []}
     for s in rows:
         item = _baseline_item(db, s, sources)

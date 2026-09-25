@@ -37,7 +37,9 @@ async def select_skills(state: NightlyState) -> dict:
         result = impact.analyze_impact(db, api_templates, anchor_labels)
         skills = [s["skill_id"] for s in result.get("affected_skills") or []]
     else:
-        skills = [s.id for s in db.query(Skill).all()]  # 无变更集 → 全量回归
+        # 排除 superseded：全量回归也只回放活跃版本
+        skills = [s.id for s in db.query(Skill).filter(
+            Skill.status != "superseded").all()]
     return {"skills": skills}
 
 
