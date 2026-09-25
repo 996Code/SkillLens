@@ -159,3 +159,47 @@ async def test_process_multiple_after_snapshots_takes_last(client):
     rows = (await client.get(f"/api/v1/sessions/{sid}/semantic-actions")).json()
     assert rows[0]["state_before"]["forms"][0]["value"] == "v0"
     assert rows[0]["state_after"]["forms"][0]["value"] == "v2"
+
+
+async def test_process_toast_signal_from_after_snapshot(client):
+    """S12 N3 层1：after 快照 toasts → state_signals 生成 field=toast 信号。
+    api 用窗口首个 API 模板（extract_state_signals 只管 resBody，toast 单独挂接）。"""
+    sid = (await client.post("/api/v1/sessions", json={})).json()["session_id"]
+    events = [
+        {"seq": 0, "ts": 950, "kind": "snapshot",
+         "payload": {"phase": "before", "forms": [], "labels": [], "tables": []}},
+        {"seq": 1, "ts": 1000, "kind": "action",
+         "payload": {"type": "click", "target": {"label": "保存", "tag": "button"}}},
+        {"seq": 2, "ts": 1600, "kind": "network",
+         "payload": {"method": "POST", "url": "/codeBack/formConfig/saveFormConfig",
+                     "status": 200, "duration": 74, "reqBody": "{}",
+                     "resBody": '{"code":200}'}},
+        {"seq": 3, "ts": 4200, "kind": "snapshot",
+         "payload": {"phase": "after", "forms": [], "labels": [], "tables": [],
+                     "toasts": ["保存成功"]}},
+    ]
+    await client.post(f"/api/v1/sessions/{sid}/events", json=events)
+    await client.post(f"/api/v1/sessions/{sid}/process")
+    rows = (await client.get(f"/api/v1/sessions/{sid}/semantic-actions")).json()
+    assert len(rows) == 1
+    assert {"api": "/codeBack/formConfig/saveFormConfig", "field": "toast",
+            "value": "保存成功"} in rows[0]["state_signals"]
+
+
+async def test_process_toast_signal_anchor_label_without_api(client):
+    """S12 N3：无 API 成员的纯 UI 窗（快照使其免于孤儿点击过滤）——
+    toast 信号 api 退回锚点 label（窗口可能无 API，不能假设有 api 模板）。"""
+    sid = (await client.post("/api/v1/sessions", json={})).json()["session_id"]
+    events = [
+        {"seq": 0, "ts": 1000, "kind": "action",
+         "payload": {"type": "click", "target": {"label": "刷新缓存", "tag": "button"}}},
+        {"seq": 1, "ts": 4200, "kind": "snapshot",
+         "payload": {"phase": "after", "forms": [], "labels": [], "tables": [],
+                     "toasts": ["缓存已刷新"]}},
+    ]
+    await client.post(f"/api/v1/sessions/{sid}/events", json=events)
+    resp = await client.post(f"/api/v1/sessions/{sid}/process")
+    assert resp.json()["kept"] == 1
+    rows = (await client.get(f"/api/v1/sessions/{sid}/semantic-actions")).json()
+    assert rows[0]["state_signals"] == [{"api": "刷新缓存", "field": "toast",
+                                         "value": "缓存已刷新"}]

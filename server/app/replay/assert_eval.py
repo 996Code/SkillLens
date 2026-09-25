@@ -58,6 +58,16 @@ def evaluate_assertions(assertions: list[dict], observed: list[dict],
             passed = bool(statuses) and all(s == p["expect_status"] for s in statuses)
             out.append({"payload": p, "observed_status": statuses[0] if statuses else None,
                         "passed": passed})
+        elif a["kind"] == "state_signal" and p.get("field") == "toast":
+            # 层1 toast 信号不走响应体（toast 是 UI 元素，body 里永远没有）：
+            # 用回放 after 快照的 toasts 通道对比；无快照能力 → skipped（fail-open）。
+            toasts = ((after_snapshot or {}).get("toasts") or [])
+            if after_snapshot is None:
+                out.append({"payload": p, "observed_status": None, "passed": True,
+                            "skipped": "toast 无回放快照，跳过"})
+            else:
+                out.append({"payload": p, "observed_status": None,
+                            "passed": p.get("expect_value") in toasts})
         elif a["kind"] == "state_signal":
             values = [_extract_field(o.get("body", ""), p["field"]) for o in matched]
             passed = bool(matched) and all(v == p["expect_value"] for v in values)

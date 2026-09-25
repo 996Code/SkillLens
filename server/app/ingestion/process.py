@@ -1,11 +1,12 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ingestion.discovery import sync_discoveries
 from app.ingestion.noise_filter import classify_windows
 from app.ingestion.signals import extract_state_signals
 from app.ingestion.url_template import split_url, templatize_path
 from app.ingestion.windows import IDLE_MS, MAX_WINDOW_MS, build_windows
-from app.models import FilteredWindow, NormalizedEvent, RawEvent, SemanticAction, TransactionWindow
+from app.models import EvidenceEdge, FilteredWindow, NormalizedEvent, RawEvent, SemanticAction, TransactionWindow
 
 
 def normalize_event(e: dict) -> str:
@@ -103,6 +104,7 @@ def process_session(db: Session, session_id: str) -> dict:
                                seq=e["seq"], ts=e["ts"]))
 
     kept = 0
+    kept_actions: list[dict] = []  # S12 N1：发现步输入（semantic_action 落库同款字段）
     for i, w in enumerate(windows):
         member_ids = [m["event_id"] for m in w["members"]]
         db.add(TransactionWindow(session_id=session_id, window_seq=i,
@@ -120,14 +122,29 @@ def process_session(db: Session, session_id: str) -> dict:
         for m, call in zip(w["members"], api_calls):
             for s in extract_state_signals((m.get("payload") or {}).get("resBody")):
                 state_signals.append({"api": call["template"], **s})
+        # S12 N3 层1：after 快照 toasts → toast 信号（field="toast"）。
+        # extract_state_signals 只管 resBody（假设有 api 模板），toast 在此单独
+        # append：api 用窗口首个 API 模板，无 API 成员的纯 UI 窗退回锚点 label。
         snaps = snapshots[i]
+        anchor_label = ((w["anchor"].get("payload") or {}).get("target") or {}).get("label", "")
+        toast_api = api_calls[0]["template"] if api_calls else anchor_label
+        for t in ((snaps["after"] or {}).get("toasts") or []):
+            state_signals.append({"api": toast_api, "field": "toast", "value": t})
+        anchor_target = (w["anchor"].get("payload") or {}).get("target")
+        anchor_type = (w["anchor"].get("payload") or {}).get("type", "")
         db.add(SemanticAction(
             session_id=session_id, window_seq=i,
             anchor_seq=w["anchor"]["seq"],
-            anchor_type=(w["anchor"].get("payload") or {}).get("type", ""),
-            target=(w["anchor"].get("payload") or {}).get("target"),
+            anchor_type=anchor_type,
+            target=anchor_target,
             api_calls=api_calls, state_signals=state_signals,
             state_before=snaps["before"], state_after=snaps["after"],
         ))
+        kept_actions.append({"anchor_type": anchor_type, "target": anchor_target,
+                             "api_calls": api_calls})
     db.commit()
+    # S12 N1 发现步：semantic_action 落库后，与 evidence_edge.dst 全局已知集合差分。
+    # discovery 是全局累加资产（同 evidence_edge），不随上面的重 process 删除而清。
+    known_templates = set(db.execute(select(EvidenceEdge.dst).distinct()).scalars())
+    sync_discoveries(db, session_id, kept_actions, known_templates)
     return {"windows": len(windows), "kept": kept}

@@ -131,6 +131,17 @@
 - **预防**：改插件代码后要让它生效，一律"重 build → 重启常驻浏览器"，不要指望
   热替换；诊断法——通过 CDP 在 SW 上下文 fetch 自身资产检查关键字符串是否在。
 
+### 17. dist 重建即废已加载扩展：CS 引用旧 hash 文件名 → 404 静默零采集
+- **现象**（S12 T3 实战）：extension `npm run build` 后（未重启浏览器），
+  新开页面 CS 全部失效——console 报 `Failed to fetch dynamically imported
+  module: chrome-extension://.../capture.ts-<旧hash>.js`（ERR_FILE_NOT_FOUND），
+  表现为**静默 0 事件**，SW/popup 一切正常。
+- **根因**：构建产物文件名带内容 hash，重建后新文件名替换旧文件；已加载扩展的
+  manifest/CS loader 仍引用旧 hash 文件名，而旧文件已被删除。
+- **修复**：重启常驻浏览器（同 #16）。
+- **预防**：**任何** `npm run build`（哪怕不打算用新功能）之后都要重启常驻浏览器；
+  采集健康检查法——录一个已知流程看事件数，或抓目标页 console 找 404。
+
 ---
 
 *更新记录：2026-09-24 初版（Sprint 0-4 + Sprint 4.5 全自动闭环的踩坑汇总）；

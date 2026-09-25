@@ -19,6 +19,9 @@ export interface Snapshot {
   labels: { text: string }[];
   tables: { label: string; rows: number }[];
   overflow?: boolean;
+  // S12 N3 层1：锚点后可见的 n-message/[class*=message] 提示文本（≤3 条×100 字符）。
+  // 有值才带键（体积红线）；文本命中敏感词表的整条丢弃（脱敏红线）。
+  toasts?: string[];
 }
 
 // content script -> service worker 的事件消息类型（MV3 中 CS 与 SW 不共享 IndexedDB，

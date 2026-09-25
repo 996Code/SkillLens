@@ -87,7 +87,18 @@ async def verify_assertion(assertion_id: int, db: Session = Depends(get_db)) -> 
         raise HTTPException(status_code=404, detail="assertion not found")
     if not db.get(Skill, assertion.skill_id):
         raise HTTPException(status_code=404, detail="skill not found")
-    return verify_against_session(db, assertion_id)
+    result = verify_against_session(db, assertion_id)
+    # S12 N4 层4：verify 通过即累加历史成功样本。累加放 API 层而非库函数
+    # verify_against_session——保持库函数纯查询零写（回放评估走独立的
+    # assert_eval.evaluate_assertions，与本端点无共享路径）。
+    # 达 3 次在 payload 标 layer4_verified=true（晋升规则：历史成功样本背书）。
+    if result["passed"]:
+        assertion.evidence_count = (assertion.evidence_count or 0) + 1
+        assertion.payload = {**assertion.payload,
+                             "layer4_verified": assertion.evidence_count >= 3}
+        db.commit()
+    result["evidence_count"] = assertion.evidence_count
+    return result
 
 
 @router.get("/skills/{skill_id}/assertions")

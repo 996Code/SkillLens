@@ -151,6 +151,25 @@ class EvidenceEdge(Base):
                                         name="uq_evidence_edge"),)
 
 
+class DiscoveredFeature(Base):
+    """S12 N1：新功能增量发现（全局累加资产，同 evidence_edge 语义——不随 re-process 清）。
+
+    - api_template 非空 = API 模板发现；为空 = 纯 UI 锚点 label 发现（anchor_label）；
+    - session_id 记录最近一次贡献的会话（同会话重跑跳过累加，跨会话累加 observed_count）；
+    - status: new（待确认）| linked（N2 confirm 对齐到 expected_delta）| dismissed。
+    """
+    __tablename__ = "discovered_feature"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    api_template: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    anchor_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    observed_count: Mapped[int] = mapped_column(default=1)
+    first_seen: Mapped[datetime] = mapped_column(default=utcnow)
+    last_seen: Mapped[datetime] = mapped_column(default=utcnow)
+    status: Mapped[str] = mapped_column(String(20), default="new")
+    linked_delta_id: Mapped[int | None] = mapped_column(nullable=True)
+
+
 class LlmCallLog(Base):
     __tablename__ = "llm_call_log"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -173,6 +192,8 @@ class OutcomeAssertion(Base):
     kind: Mapped[str] = mapped_column(String(30))
     api_template: Mapped[str] = mapped_column(String(500))
     payload: Mapped[dict] = mapped_column(JSON)
+    # S12 N4 层4：verify 通过次数（历史成功样本背书，>=3 → payload.layer4_verified）
+    evidence_count: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 

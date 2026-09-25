@@ -4,14 +4,15 @@
 // 只读：无报告列表入口，空 delta 时用输入框查询。
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { getExpectedDelta, getReport } from "../api";
-import type { DeltaItem, ExpectedDelta, Report } from "../api";
+import { getExpectedDelta, getLinkedDiscoveries, getReport } from "../api";
+import type { DeltaItem, DiscoveredFeatureItem, ExpectedDelta, Report } from "../api";
 
 const route = useRoute();
 const router = useRouter();
 
 const report = ref<Report | null>(null);
 const expectedDelta = ref<ExpectedDelta | null>(null);
+const linkedDiscoveries = ref<DiscoveredFeatureItem[]>([]);
 const loading = ref(false);
 const notFound = ref(false);
 const error = ref("");
@@ -42,6 +43,7 @@ async function load(id: string | number) {
   error.value = "";
   report.value = null;
   expectedDelta.value = null;
+  linkedDiscoveries.value = [];
   try {
     report.value = await getReport(id);
     // 需求上下文：报告行带 expected_delta_id，失败不阻塞四分类展示
@@ -49,6 +51,13 @@ async function load(id: string | number) {
       expectedDelta.value = await getExpectedDelta(report.value.expected_delta_id);
     } catch {
       /* expected delta 可能已删，四分类仍可评审 */
+    }
+    // S12 N2：已发现实现（confirm 时对齐到该 delta 的 discovery），失败不阻塞
+    try {
+      linkedDiscoveries.value = await getLinkedDiscoveries(
+        report.value.expected_delta_id);
+    } catch {
+      /* discoveries 端点异常时徽标隐藏 */
     }
   } catch (e) {
     if (e instanceof Error && "status" in e && (e as { status: number }).status === 404) {
@@ -127,6 +136,15 @@ watch(() => route.params.deltaId, (v) => {
             <span class="mono">{{ c.value }}</span>
           </li>
         </ol>
+        <!-- S12 N2：已发现实现——confirm 时对齐到该 delta 的 discovery（模板/锚点） -->
+        <div v-if="linkedDiscoveries.length" class="linked">
+          <span class="badge-linked">已发现实现 ×{{ linkedDiscoveries.length }}</span>
+          <ul class="linked-list">
+            <li v-for="d in linkedDiscoveries" :key="d.id" class="mono">
+              {{ d.api_template || d.anchor_label }}
+            </li>
+          </ul>
+        </div>
       </div>
 
       <!-- 四栏 -->
@@ -201,6 +219,26 @@ watch(() => route.params.deltaId, (v) => {
 }
 .changes li {
   margin-bottom: 4px;
+}
+.linked {
+  margin-top: 10px;
+}
+.badge-linked {
+  display: inline-block;
+  font-size: 12px;
+  color: #1b5e20;
+  background: #e8f5e9;
+  border: 1px solid #a5d6a7;
+  border-radius: 10px;
+  padding: 1px 10px;
+}
+.linked-list {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  font-size: 13px;
+}
+.linked-list li {
+  margin-bottom: 2px;
 }
 .quad {
   display: grid;

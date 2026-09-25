@@ -75,9 +75,36 @@ async def collect_page_snapshot(page: Page, phase: str = "after") -> dict:
             "forms": forms,
             "labels": await _collect_labels(page),
             "tables": await _collect_tables(page)}
+    toasts = await _collect_toasts(page)
+    if toasts:
+        snap["toasts"] = toasts
     if overflow:
         snap["overflow"] = True
     return snap
+
+
+async def _collect_toasts(page: Page) -> list[str]:
+    """层1 显式提示：可见 toast/消息文本（≤3 条×100 字符，敏感词整条丢弃）。
+    与插件 collectToasts 同规则；可见性近似（fixed 定位 offsetParent 为 null）。"""
+    out: list[str] = []
+    try:
+        els = await page.query_selector_all(".n-message, [class*=message]")
+    except Exception:
+        return out
+    for el in els:
+        if len(out) >= 3:
+            break
+        try:
+            hidden = await el.get_attribute("hidden")
+            aria = await el.get_attribute("aria-hidden")
+            if hidden is not None or aria == "true":
+                continue
+            text = ((await el.inner_text() or "").strip())[:100]
+        except Exception:
+            continue  # detach 容错
+        if text and not SENSITIVE_KEY_RE.search(text):
+            out.append(text)
+    return out
 
 
 async def _collect_labels(page: Page) -> list[dict]:
