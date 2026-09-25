@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -13,6 +14,7 @@ from app.api import (
     discoveries,
     events,
     health,
+    impact,
     ingest,
     llm_skills,
     replay,
@@ -39,7 +41,15 @@ class SPAStaticFiles(StaticFiles):
                 return await super().get_response("index.html", scope)
             raise
 
-app = FastAPI(title="SkillLens Local Agent")
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # S13 F1：NIGHTLY_CRON=nightly 时拉起夜间图调度循环（默认 off 不启动）
+    from app.agents.scheduler import start_nightly_scheduler
+    await start_nightly_scheduler()
+    yield
+
+
+app = FastAPI(title="SkillLens Local Agent", lifespan=_lifespan)
 # CORS 由 ALLOWED_ORIGINS 配置（默认 * 兼容插件直连；私有化收紧见 deploy/README.md）。
 app.add_middleware(
     CORSMiddleware,
@@ -58,6 +68,7 @@ app.include_router(cards.router, prefix=API_PREFIX)
 app.include_router(reports.router, prefix=API_PREFIX)
 app.include_router(audit.router, prefix=API_PREFIX)
 app.include_router(discoveries.router, prefix=API_PREFIX)
+app.include_router(impact.router, prefix=API_PREFIX)
 
 # StaticFiles mount 在 "/" 会拦截一切路径——必须放在全部 include_router 之后，
 # FastAPI 按注册顺序匹配路由，/api/v1/* 先命中 API，其余落到静态托管（SPA fallback）。

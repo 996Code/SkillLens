@@ -236,6 +236,19 @@ class ObservedDelta(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
+class AgentRun(Base):
+    """S13 F1：Agent 图执行记录（C3——节点产物逐段落库，含失败运行）。"""
+    __tablename__ = "agent_run"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    graph_name: Mapped[str] = mapped_column(String(50))
+    input: Mapped[dict] = mapped_column(JSON)
+    node_outputs: Mapped[list] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(20))  # started|finished|error
+    started_at: Mapped[datetime] = mapped_column(default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    error_text: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
 class DeltaReport(Base):
     __tablename__ = "delta_report"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
