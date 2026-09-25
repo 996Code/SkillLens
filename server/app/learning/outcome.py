@@ -14,6 +14,9 @@ def _ui_text_rows(action: SemanticAction) -> list[tuple]:
     a_map = {f.get("label"): f.get("value") for f in (after.get("forms") or [])}
     out: list[tuple] = []
     for label in sorted(set(b_map) & set(a_map)):
+        # 空 label 无法定位字段（框架无语义元素），生成断言必误判——跳过
+        if not label:
+            continue
         if b_map[label] != a_map[label]:
             out.append(("ui_text", "", 2,
                         {"label": label, "before": b_map[label], "after": a_map[label]}))

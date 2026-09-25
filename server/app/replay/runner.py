@@ -178,6 +178,14 @@ async def _execute_skill(db: Session, browser, skill_id: int,
         assertions = [{"kind": a.kind, "payload": a.payload} for a in
                       db.query(OutcomeAssertion).filter(
                           OutcomeAssertion.skill_id == skill_id).all()]
+        # 被覆盖变量的 ui_text 期望跟随覆盖值（录制值是旧参数的 UI 状态，
+        # 换参回放时按注入值判定——否则换参必 FAIL，语义错误）
+        for a in assertions:
+            if a["kind"] == "ui_text":
+                label = a["payload"].get("label")
+                if label in (overrides or {}):
+                    a["payload"] = {**a["payload"],
+                                    "after": overrides[label]}
         # T4：执行前采 before 快照（水合竞态防护在 execute_plan 的 fill 确认内，
         # 不与本采集竞争）
         before_snapshot = await collect_page_snapshot(page, phase="before")
@@ -285,21 +293,23 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
     if shadow_run is not None:
         return shadow_run  # C1：shadow 未确认不启浏览器
     try:
+        # 执行必须整体在 _launch() 上下文内——with 块退出即断开 Playwright
+        # 连接，浏览器对象随之失效（S13 重构曾把执行移出 with 块导致
+        # 真实 execute 回放必 error，S15 公网实测抓出）
         async with _launch() as p:
             browser = await _open_browser(p)
+            try:
+                return await _execute_skill(db, browser, skill_id, overrides,
+                                            confirm_side_effect)
+            finally:
+                # 关闭异常不掩盖已落库结果/原始异常
+                try:
+                    await browser.close()
+                except Exception:
+                    pass
     except Exception as exc:
-        # 启动阶段异常也必须落 error run（C3：执行审计不可缺）
+        # 启动/执行阶段异常都落 error run（C3：执行审计不可缺）
         return _error_run(db, skill_id, exc)
-    try:
-        return await _execute_skill(db, browser, skill_id, overrides,
-                                    confirm_side_effect)
-    finally:
-        # 关闭异常不掩盖已落库结果/原始异常（重构前 close 在 try 内，
-        # 成功路径已 commit 后的关闭失败不应再改写成 error run）
-        try:
-            await browser.close()
-        except Exception:
-            pass
 
 
 async def run_replay_batch(db: Session, skill_ids: list[int],
@@ -325,22 +335,23 @@ async def run_replay_batch(db: Session, skill_ids: list[int],
     if not pending:
         return runs  # 全 shadow：不启浏览器
     try:
+        # 同 run_replay：执行必须整体在 _launch() 上下文内（连接生命周期）
         async with _launch() as p:
             browser = await _open_browser(p)
+            try:
+                for sid in pending:
+                    try:
+                        runs.append(await _execute_skill(
+                            db, browser, sid, (overrides_map or {}).get(sid) or {},
+                            confirm_side_effect))
+                    except Exception as exc:  # 计划编译等前置异常：落 error run 继续
+                        runs.append(_error_run(db, sid, exc))
+                return runs
+            finally:
+                try:
+                    await browser.close()
+                except Exception:
+                    pass
     except Exception as exc:
         runs.extend(_error_run(db, sid, exc) for sid in pending)
         return runs
-    try:
-        for sid in pending:
-            try:
-                runs.append(await _execute_skill(
-                    db, browser, sid, (overrides_map or {}).get(sid) or {},
-                    confirm_side_effect))
-            except Exception as exc:  # 计划编译等前置异常：落 error run 继续
-                runs.append(_error_run(db, sid, exc))
-        return runs
-    finally:
-        try:
-            await browser.close()
-        except Exception:
-            pass
