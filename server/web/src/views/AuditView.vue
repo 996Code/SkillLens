@@ -286,7 +286,7 @@ onMounted(async () => {
             @keyup.enter="loadEdges"
           />
         </label>
-        <button type="button" @click="loadEdges">过滤</button>
+        <button type="button" class="btn btn-secondary" @click="loadEdges">过滤</button>
       </div>
       <p v-if="edgesLoading" class="muted">加载中…</p>
       <p v-else-if="edgesError" class="error">加载失败：{{ edgesError }}</p>
@@ -354,98 +354,20 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.page-desc {
-  margin-top: 0;
-  font-size: 13px;
-}
-.block {
-  margin-top: 28px;
-}
-.block h2 {
-  font-size: 16px;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 6px;
-}
-.block h3 {
-  font-size: 14px;
-  margin: 18px 0 6px;
-}
+/* S16 块 Q：表格/徽标/chip/圆点/代码块/分区块卡片走全局令牌类，这里只留布局差异 */
 .hint {
   font-size: 12px;
-  margin: 6px 0 0;
+  margin: var(--space-1) 0 0;
 }
 .empty-line {
-  margin: 8px 0;
-}
-.tbl {
-  border-collapse: collapse;
-  width: 100%;
-  font-size: 13px;
-}
-.tbl th,
-.tbl td {
-  border: 1px solid #e3e6ea;
-  text-align: left;
-  padding: 6px 10px;
-  vertical-align: top;
-}
-.tbl th {
-  background: #f6f8fa;
+  margin: var(--space-2) 0;
 }
 .row-click {
   cursor: pointer;
 }
-.row-click:hover {
-  background: #f6f8fa;
-}
 .row-selected,
 .row-selected:hover {
-  background: #e8f0fe;
-}
-.badge {
-  font-size: 12px;
-  padding: 1px 8px;
-  border-radius: 10px;
-  white-space: nowrap;
-}
-.badge-demo {
-  color: #555;
-  background: #eee;
-}
-.badge-real {
-  color: #1e7e34;
-  background: #e6f4ea;
-}
-.badge-learned {
-  color: #1e7e34;
-  background: #e6f4ea;
-}
-.badge-candidate {
-  color: #555;
-  background: #eee;
-}
-.badge-kept {
-  color: #1e7e34;
-  background: #e6f4ea;
-}
-.badge-filtered {
-  color: #c62828;
-  background: #fdecea;
-}
-.chip {
-  display: inline-block;
-  background: #eef2f7;
-  border-radius: 4px;
-  padding: 0 6px;
-  margin: 0 6px 2px 0;
-  font-size: 12px;
-}
-.chip-kind {
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
-}
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
-  word-break: break-all;
+  background: var(--color-primary-soft);
 }
 .sa-list {
   list-style: none;
@@ -453,15 +375,16 @@ onMounted(async () => {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .sa-item {
-  border: 1px solid #e3e6ea;
-  border-radius: 6px;
-  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-gray-1);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .sa-anchor {
   font-weight: 600;
@@ -481,13 +404,13 @@ onMounted(async () => {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1);
   font-size: 13px;
 }
 .skill-list li {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .edge-filter {
   display: flex;
@@ -501,71 +424,22 @@ onMounted(async () => {
   align-items: center;
   gap: 6px;
 }
-.edge-filter select,
-.edge-filter input {
-  padding: 5px 8px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font-size: 13px;
-}
 .edge-filter input {
   width: 180px;
 }
-.edge-filter button {
-  padding: 5px 16px;
-  border: 1px solid #185abc;
-  background: #185abc;
-  color: #fff;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-}
 .log-detail-row td {
-  background: #fafafa;
+  background: var(--color-gray-1);
 }
 .log-head {
-  margin: 6px 0 4px;
+  margin: var(--space-1) 0;
   font-size: 12px;
-  color: #888;
+  color: var(--color-gray-5);
   font-weight: 600;
 }
+/* 日志摘要块：覆盖全局 .code 的紧凑排布（双块上下排） */
 .code {
-  background: #f6f8fa;
-  border: 1px solid #e3e6ea;
-  border-radius: 6px;
-  padding: 10px 12px;
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
-  font-size: 13px;
-  white-space: pre-wrap;
-  word-break: break-all;
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
   max-height: 220px;
   overflow-y: auto;
-}
-.dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 4px;
-  vertical-align: middle;
-}
-.dot-pass {
-  background: #1e7e34;
-}
-.dot-fail {
-  background: #c62828;
-}
-.dot-shadow {
-  background: #9e9e9e;
-}
-.dot-error {
-  background: #e65100;
-}
-.muted {
-  color: #666;
-}
-.error {
-  color: #c62828;
 }
 </style>

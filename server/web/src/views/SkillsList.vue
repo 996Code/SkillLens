@@ -63,12 +63,13 @@ onMounted(async () => {
   <section>
     <h1>Skills</h1>
 
-    <!-- S10 Task5：基线对比区块（demo vs 真实流量，C2 = 置信度比 ≥ 80%） -->
-    <div v-if="compare" class="compare" data-testid="baseline-compare">
+    <!-- S10 Task5：基线对比区块（demo vs 真实流量，C2 = 置信度比 ≥ 80%）
+         S16 块 Q：升级为醒目横幅卡（主色渐变 + 左侧色条） -->
+    <div v-if="compare" class="compare-banner" data-testid="baseline-compare">
       <div class="compare-head">
-        <span>基线对比</span>
+        <span class="compare-title">基线对比</span>
         <span
-          class="c2-badge"
+          class="badge"
           :class="compare.vs_baseline.meets_c2 ? 'c2-met' : 'c2-not'"
           data-testid="c2-status"
         >
@@ -79,15 +80,15 @@ onMounted(async () => {
         暂无真实流量数据
       </p>
       <dl v-else class="compare-meta">
-        <div class="meta-row">
+        <div class="meta-item">
           <dt>演示 / 真实流量</dt>
           <dd>{{ compare.demo.count }} / {{ compare.real_traffic.count }}</dd>
         </div>
-        <div class="meta-row">
+        <div class="meta-item">
           <dt>置信度比</dt>
           <dd data-testid="confidence-ratio">{{ ratioPct(compare.vs_baseline.confidence_ratio) }}</dd>
         </div>
-        <div class="meta-row">
+        <div class="meta-item">
           <dt>断言通过率比</dt>
           <dd>{{ ratioPct(compare.vs_baseline.pass_rate_ratio) }}</dd>
         </div>
@@ -97,16 +98,18 @@ onMounted(async () => {
 
     <p v-if="loading" class="muted">加载中…</p>
     <p v-else-if="error" class="error">加载失败：{{ error }}</p>
-    <p v-else-if="skills.length === 0" class="empty">
-      暂无 Skill，先录制并归纳
-    </p>
+    <div v-else-if="skills.length === 0" class="empty">
+      <span class="empty-icon">◇</span>
+      <p class="empty-title">暂无 Skill，先录制并归纳</p>
+      <p class="empty-sub">录制一轮真实操作并完成归纳后，Skill 卡片会出现在这里</p>
+    </div>
 
     <div v-else class="grid">
       <RouterLink
         v-for="s in skills"
         :key="s.id"
         :to="`/skills/${s.id}`"
-        class="card"
+        class="card skill-card"
       >
         <div class="card-head">
           <span class="skill-name">{{ s.name }}</span>
@@ -152,40 +155,32 @@ onMounted(async () => {
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
 }
-.card {
-  display: block;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 14px 16px;
-  text-decoration: none;
+.skill-card {
+  padding: var(--space-3) var(--space-4);
   color: inherit;
-  background: #fff;
-}
-.card:hover {
-  border-color: #185abc;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  text-decoration: none;
 }
 .card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .skill-name {
   font-weight: 600;
 }
 .desc {
-  color: #666;
+  color: var(--color-text-secondary);
   font-size: 13px;
-  margin: 8px 0;
+  margin: var(--space-2) 0;
   min-height: 1.2em;
 }
 .meta {
   margin: 0;
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .meta-row {
   display: flex;
@@ -193,108 +188,56 @@ onMounted(async () => {
   font-size: 13px;
 }
 .meta-row dt {
-  color: #888;
+  color: var(--color-gray-5);
 }
 .badges {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 0;
 }
-.badge {
-  font-size: 12px;
-  padding: 1px 8px;
-  border-radius: 10px;
-  white-space: nowrap;
-}
-.badge-learned {
-  color: #1e7e34;
-  background: #e6f4ea;
-}
-.badge-candidate {
-  color: #555;
-  background: #eee;
-}
-.badge-demo {
-  color: #555;
-  background: #eee;
-}
-.badge-real {
-  color: #1e7e34;
-  background: #e6f4ea;
-}
-.compare {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 10px 14px;
-  margin-bottom: 16px;
-  background: #fafafa;
-  max-width: 420px;
+/* 基线对比横幅卡：主色渐变 + 左色条，醒目置顶 */
+.compare-banner {
+  border: 1px solid var(--color-primary-border);
+  border-left: 4px solid var(--color-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  background: linear-gradient(90deg, var(--color-primary-soft), var(--color-surface) 55%);
 }
 .compare-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: var(--space-1);
+}
+.compare-title {
   font-weight: 600;
-  margin-bottom: 6px;
-}
-.c2-badge {
-  font-size: 12px;
-  font-weight: normal;
-  padding: 1px 8px;
-  border-radius: 10px;
-}
-.c2-met {
-  color: #1e7e34;
-  background: #e6f4ea;
-}
-.c2-not {
-  color: #c62828;
-  background: #fdecea;
 }
 .compare-meta {
   margin: 0;
-  display: grid;
-  gap: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+.meta-item dt {
+  font-size: 12px;
+  color: var(--color-gray-5);
+}
+.meta-item dd {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-gray-8);
 }
 .compare-empty {
   margin: 0;
-  color: #666;
+  color: var(--color-text-secondary);
   font-size: 13px;
 }
 .compare-error {
   font-size: 13px;
-  margin-bottom: 12px;
-}
-.dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 4px;
-  vertical-align: middle;
-}
-.dot-pass {
-  background: #1e7e34;
-}
-.dot-fail {
-  background: #c62828;
-}
-.dot-shadow {
-  background: #9e9e9e;
-}
-.dot-error {
-  background: #e65100;
-}
-.dot-none {
-  background: transparent;
-  border: 1px solid #ccc;
-}
-.muted,
-.empty {
-  color: #666;
-}
-.error {
-  color: #c62828;
+  margin-bottom: var(--space-3);
 }
 </style>

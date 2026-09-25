@@ -303,10 +303,10 @@ onMounted(async () => {
         <input v-model="name" type="text" placeholder="画布名称"
                data-testid="canvas-name" />
       </label>
-      <button type="button" data-testid="save-btn" :disabled="saving"
-              @click="onSave">保存</button>
-      <button type="button" data-testid="run-btn" :disabled="running"
-              @click="onRun">运行</button>
+      <button type="button" class="btn btn-secondary" data-testid="save-btn"
+              :disabled="saving" @click="onSave">保存</button>
+      <button type="button" class="btn btn-primary" data-testid="run-btn"
+              :disabled="running" @click="onRun">运行</button>
       <span v-if="savedHint" class="muted">{{ savedHint }}</span>
       <span v-if="runHint" class="run-hint" data-testid="run-hint">{{ runHint }}</span>
     </div>
@@ -319,7 +319,7 @@ onMounted(async () => {
       <!-- 左：节点面板 -->
       <div class="palette" data-testid="node-palette">
         <h2>节点</h2>
-        <div v-for="t in NODE_TYPES" :key="t.type" class="palette-card"
+        <div v-for="t in NODE_TYPES" :key="t.type" class="palette-card card-hoverable"
              :data-testid="`palette-${t.type}`" @click="addNode(t.type)">
           <span class="palette-label">{{ t.label }}</span>
           <span class="muted palette-desc">{{ t.desc }}</span>
@@ -421,15 +421,12 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.page-desc {
-  margin-top: 0;
-  font-size: 13px;
-}
+/* S16 块 Q：按钮/表格/代码块/分区块卡片走全局令牌类，这里只留画布布局与 SVG 着色 */
 .toolbar {
   display: flex;
   align-items: center;
   gap: 14px;
-  margin-top: 16px;
+  margin-top: var(--space-4);
   font-size: 13px;
   flex-wrap: wrap;
 }
@@ -438,37 +435,17 @@ onMounted(async () => {
   align-items: center;
   gap: 6px;
 }
-.toolbar select,
-.toolbar input {
-  padding: 5px 8px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font-size: 13px;
-}
 .toolbar input {
   width: 180px;
 }
-.toolbar button {
-  padding: 5px 16px;
-  border: 1px solid #185abc;
-  background: #185abc;
-  color: #fff;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-}
-.toolbar button:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
 .run-hint {
-  color: #1e7e34;
+  color: var(--color-success);
   font-size: 13px;
 }
 .canvas-layout {
   display: flex;
-  gap: 16px;
-  margin-top: 16px;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
   align-items: flex-start;
 }
 .palette {
@@ -478,23 +455,25 @@ onMounted(async () => {
 .palette h2,
 .params h2 {
   font-size: 14px;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 6px;
+  border-bottom: 1px solid var(--color-gray-3);
+  padding-bottom: var(--space-1);
   margin-top: 0;
 }
 .palette-card {
-  border: 1px solid #e3e6ea;
-  border-radius: 6px;
-  padding: 8px 10px;
-  margin-bottom: 8px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 .palette-card:hover {
-  background: #f6f8fa;
-  border-color: #185abc;
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary-border);
 }
 .palette-label {
   font-weight: 600;
@@ -506,65 +485,67 @@ onMounted(async () => {
 .canvas-wrap {
   flex: 1;
   min-width: 0;
-  border: 1px solid #e3e6ea;
-  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
+  background: var(--color-surface);
 }
 .canvas-svg {
   width: 100%;
   height: auto;
   display: block;
-  background: #fafbfc;
+  background: var(--color-gray-1);
 }
 .edge {
-  stroke: #666;
+  stroke: var(--color-gray-6);
   stroke-width: 2;
 }
 .edge-arrow {
-  fill: #666;
+  fill: var(--color-gray-6);
 }
 .cnode {
   cursor: pointer;
 }
 .cnode .node-rect {
-  fill: #fff;
-  stroke: #185abc;
+  fill: var(--color-surface);
+  stroke: var(--color-primary);
   stroke-width: 1.5;
 }
 .cnode.node-selected .node-rect {
   stroke-width: 3;
 }
 .cnode.node-ok .node-rect {
-  stroke: #1e7e34;
+  stroke: var(--color-success);
   stroke-width: 3;
 }
 .cnode.node-error .node-rect {
-  stroke: #c62828;
+  stroke: var(--color-danger);
   stroke-width: 3;
 }
 .node-text {
   font-size: 13px;
   text-anchor: middle;
-  fill: #333;
+  fill: var(--color-gray-7);
   user-select: none;
 }
 .port {
-  fill: #185abc;
+  fill: var(--color-primary);
   cursor: crosshair;
 }
 .port-active {
-  fill: #e65100;
+  fill: var(--color-warning);
   r: 8;
 }
 .node-del {
   font-size: 16px;
-  fill: #c62828;
+  fill: var(--color-danger);
   cursor: pointer;
   user-select: none;
 }
 .empty-hint {
   font-size: 14px;
-  fill: #999;
+  fill: var(--color-gray-5);
   text-anchor: middle;
 }
 .params {
@@ -573,77 +554,35 @@ onMounted(async () => {
 }
 .params h3 {
   font-size: 13px;
-  margin: 12px 0 8px;
+  margin: var(--space-3) 0 var(--space-2);
 }
 .param-label {
   display: block;
   font-size: 12px;
-  color: #555;
+  color: var(--color-gray-6);
   margin-bottom: 10px;
 }
 .param-label textarea {
   width: 100%;
-  box-sizing: border-box;
-  margin-top: 4px;
-  padding: 6px 8px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
+  margin-top: var(--space-1);
   font-size: 12px;
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
+  font-family: var(--font-mono);
 }
 .warn-note {
-  color: #c62828;
+  color: var(--color-danger);
   font-size: 12px;
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
 }
 .artifact {
   margin-top: 14px;
 }
 .artifact h3 {
-  margin: 8px 0 6px;
+  margin: var(--space-2) 0 6px;
 }
+/* 产物 JSON：覆盖全局 .code 限高 */
 .code {
-  background: #f6f8fa;
-  border: 1px solid #e3e6ea;
-  border-radius: 6px;
-  padding: 10px 12px;
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
   font-size: 12px;
-  white-space: pre-wrap;
-  word-break: break-all;
-  margin: 0;
   max-height: 260px;
   overflow-y: auto;
-}
-.block {
-  margin-top: 28px;
-}
-.block h2 {
-  font-size: 16px;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 6px;
-}
-.tbl {
-  border-collapse: collapse;
-  width: 100%;
-  font-size: 13px;
-}
-.tbl th,
-.tbl td {
-  border: 1px solid #e3e6ea;
-  text-align: left;
-  padding: 6px 10px;
-}
-.tbl th {
-  background: #f6f8fa;
-}
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
-}
-.muted {
-  color: #666;
-}
-.error {
-  color: #c62828;
 }
 </style>

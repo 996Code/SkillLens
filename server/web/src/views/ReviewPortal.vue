@@ -118,13 +118,15 @@ onMounted(async () => {
       <h2>评审队列</h2>
       <p v-if="loading" class="muted">加载中…</p>
       <p v-else-if="error" class="error">加载失败：{{ error }}</p>
-      <p
+      <div
         v-else-if="pending.length === 0"
-        class="muted empty-line"
+        class="empty"
         data-testid="pending-empty"
       >
-        夜间无待评审运行
-      </p>
+        <span class="empty-icon">☾</span>
+        <p class="empty-title">夜间无待评审运行</p>
+        <p class="empty-sub">夜间流水线结束后，待评审运行会出现在这里</p>
+      </div>
       <table v-else class="tbl" data-testid="pending-table">
         <thead>
           <tr>
@@ -202,6 +204,7 @@ onMounted(async () => {
                   </label>
                   <button
                     type="submit"
+                    class="btn btn-primary"
                     :disabled="submitting"
                     data-testid="submit-btn"
                   >
@@ -222,7 +225,7 @@ onMounted(async () => {
       <h2>已评审</h2>
       <p v-if="loading" class="muted">加载中…</p>
       <p v-else-if="reviews.length === 0" class="muted empty-line">暂无评审记录</p>
-      <table v-else class="tbl" data-testid="reviewed-table">
+      <table v-else class="tbl zebra" data-testid="reviewed-table">
         <thead>
           <tr>
             <th>#</th><th>运行</th><th>图</th><th>状态</th>
@@ -255,98 +258,26 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.page-desc {
-  margin-top: 0;
-  font-size: 13px;
-}
-.block {
-  margin-top: 28px;
-}
-.block h2 {
-  font-size: 16px;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 6px;
-}
+/* S16 块 Q：表格/徽标/chip/代码块/分区块卡片走全局令牌类，这里只留布局差异 */
 .hint {
   font-size: 12px;
-  margin: 6px 0 0;
+  margin: var(--space-1) 0 0;
 }
 .empty-line {
-  margin: 8px 0;
-}
-.tbl {
-  border-collapse: collapse;
-  width: 100%;
-  font-size: 13px;
-}
-.tbl th,
-.tbl td {
-  border: 1px solid #e3e6ea;
-  text-align: left;
-  padding: 6px 10px;
-  vertical-align: top;
-}
-.tbl th {
-  background: #f6f8fa;
+  margin: var(--space-2) 0;
 }
 .row-click {
   cursor: pointer;
 }
-.row-click:hover {
-  background: #f6f8fa;
-}
 .row-selected,
 .row-selected:hover {
-  background: #e8f0fe;
+  background: var(--color-primary-soft);
 }
 .panel-row td {
-  background: #fafafa;
+  background: var(--color-gray-1);
 }
-.badge {
-  font-size: 12px;
-  padding: 1px 8px;
-  border-radius: 10px;
-  white-space: nowrap;
-}
-.badge-has-review {
-  color: #185abc;
-  background: #e8f0fe;
-}
-.badge-approved {
-  color: #1e7e34;
-  background: #e6f4ea;
-}
-.badge-rejected {
-  color: #c62828;
-  background: #fdecea;
-}
-.badge-changes_requested {
-  color: #e65100;
-  background: #fff3e0;
-}
-.chip {
-  display: inline-block;
-  background: #eef2f7;
-  border-radius: 4px;
-  padding: 0 6px;
-  font-size: 12px;
-}
-.chip-kind {
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
-}
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
-  word-break: break-all;
-}
+/* 评审摘要 markdown：覆盖全局 .code 排布 */
 .code {
-  background: #f6f8fa;
-  border: 1px solid #e3e6ea;
-  border-radius: 6px;
-  padding: 10px 12px;
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
-  font-size: 13px;
-  white-space: pre-wrap;
-  word-break: break-all;
   margin: 0 0 10px;
   max-height: 220px;
   overflow-y: auto;
@@ -360,16 +291,8 @@ onMounted(async () => {
 .form-row {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: 13px;
-}
-.form-row input[type="text"],
-.form-row textarea {
-  padding: 6px 8px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font-size: 13px;
-  font-family: inherit;
 }
 .decision-row {
   flex-direction: row;
@@ -382,33 +305,11 @@ onMounted(async () => {
 .decision-option {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: 13px;
   cursor: pointer;
 }
 .review-form button {
   align-self: flex-start;
-  padding: 6px 20px;
-  border: 1px solid #185abc;
-  background: #185abc;
-  color: #fff;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-}
-.review-form button:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-.muted {
-  color: #666;
-}
-.error {
-  color: #c62828;
-  margin: 0;
-}
-.ok {
-  color: #1e7e34;
-  font-size: 13px;
 }
 </style>

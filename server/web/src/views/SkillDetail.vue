@@ -68,14 +68,15 @@ onMounted(async () => {
   <section>
     <p v-if="loading" class="muted">加载中…</p>
     <div v-else-if="notFound" class="empty">
-      <h1>404</h1>
-      <p>Skill 不存在（可能已被 re-induce 重建，<RouterLink to="/skills">返回列表</RouterLink>）。</p>
+      <span class="empty-icon">∅</span>
+      <h1 class="empty-title">404</h1>
+      <p class="empty-sub">Skill 不存在（可能已被 re-induce 重建，<RouterLink to="/skills">返回列表</RouterLink>）。</p>
     </div>
     <p v-else-if="error" class="error">加载失败：{{ error }}</p>
 
     <template v-else-if="card">
-      <!-- 概要 -->
-      <header class="summary">
+      <!-- 概要（S16 块 Q：卡片化） -->
+      <header class="summary card">
         <h1>
           {{ card.name }}
           <span class="badge" :class="card.status === 'learned' ? 'badge-learned' : 'badge-candidate'">
@@ -139,7 +140,7 @@ onMounted(async () => {
         </template>
       </div>
 
-      <!-- 断言表 -->
+      <!-- 断言表（S16 块 Q：kind 徽标列） -->
       <div class="block">
         <h2>断言（{{ card.assertions.length }}）</h2>
         <p v-if="card.assertions.length === 0" class="muted">无</p>
@@ -147,7 +148,7 @@ onMounted(async () => {
           <thead><tr><th>kind</th><th>layer</th><th>期望</th></tr></thead>
           <tbody>
             <tr v-for="a in card.assertions" :key="a.id">
-              <td><span class="chip chip-kind">{{ a.kind }}</span></td>
+              <td><span class="badge badge-kind">{{ a.kind }}</span></td>
               <td>L{{ a.layer }}</td>
               <td class="mono">{{ payloadSummary(a) }}</td>
             </tr>
@@ -185,7 +186,7 @@ onMounted(async () => {
 
       <!-- 页脚：回放入口（Task 5，U1 缓解：详情页给"接下来做什么"的显式引导） -->
       <footer class="replay-cta">
-        <RouterLink :to="`/replay/${card.id}`" class="replay-btn">回放此 Skill</RouterLink>
+        <RouterLink :to="`/replay/${card.id}`" class="replay-btn btn btn-primary">回放此 Skill</RouterLink>
         <span class="muted">触发 shadow/execute 回放并查看断言结果、前后快照对比。</span>
       </footer>
     </template>
@@ -193,159 +194,54 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* S16 块 Q：颜色/表格/徽标/圆点/代码块走全局令牌类，这里只留布局差异 */
+.summary {
+  padding: var(--space-4) var(--space-6);
+}
 .summary h1 {
-  margin: 0 0 4px;
+  margin: 0 0 var(--space-1);
   display: flex;
   align-items: center;
   gap: 10px;
 }
 .desc {
-  color: #666;
+  color: var(--color-text-secondary);
   margin-top: 0;
 }
 .meta {
-  margin: 8px 0;
+  margin: var(--space-2) 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 24px;
+  gap: var(--space-6);
 }
 .meta dt {
   font-size: 12px;
-  color: #888;
+  color: var(--color-gray-5);
 }
 .meta dd {
   margin: 2px 0 0;
 }
 .superseded-hint {
-  color: #b45309;
+  color: var(--color-warning);
   font-weight: 600;
 }
-
 .notes {
   font-size: 13px;
-  color: #8a6d3b;
-}
-.block {
-  margin-top: 28px;
-}
-.block h2 {
-  font-size: 16px;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 6px;
-}
-.block h3 {
-  font-size: 14px;
-  margin-bottom: 4px;
-}
-.code {
-  background: #f6f8fa;
-  border: 1px solid #e3e6ea;
-  border-radius: 6px;
-  padding: 10px 12px;
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
-  font-size: 13px;
-  overflow-x: auto;
-}
-.code code {
-  display: block;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-.tbl {
-  border-collapse: collapse;
-  width: 100%;
-  font-size: 13px;
-}
-.tbl th,
-.tbl td {
-  border: 1px solid #e3e6ea;
-  text-align: left;
-  padding: 6px 10px;
-  vertical-align: top;
-}
-.tbl th {
-  background: #f6f8fa;
-}
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
-  word-break: break-all;
-}
-.chip {
-  display: inline-block;
-  background: #eef2f7;
-  border-radius: 4px;
-  padding: 0 6px;
-  margin: 0 6px 2px 0;
-  font-size: 12px;
-}
-.chip-kind {
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
-}
-.badge {
-  font-size: 12px;
-  font-weight: normal;
-  padding: 1px 8px;
-  border-radius: 10px;
-}
-.badge-learned {
-  color: #1e7e34;
-  background: #e6f4ea;
-}
-.badge-candidate {
-  color: #555;
-  background: #eee;
-}
-.dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 4px;
-  vertical-align: middle;
-}
-.dot-pass {
-  background: #1e7e34;
-}
-.dot-fail {
-  background: #c62828;
-}
-.dot-shadow {
-  background: #9e9e9e;
-}
-.dot-error {
-  background: #e65100;
-}
-.muted {
-  color: #666;
-}
-.ok {
-  color: #1e7e34;
-}
-.error {
-  color: #c62828;
-}
-.empty h1 {
-  margin-bottom: 4px;
+  color: var(--color-text-secondary);
 }
 .replay-cta {
-  margin-top: 36px;
-  padding-top: 14px;
-  border-top: 1px solid #eee;
+  margin-top: var(--space-8);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-gray-3);
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .replay-btn {
-  display: inline-block;
-  padding: 6px 18px;
-  border: 1px solid #185abc;
-  background: #185abc;
-  color: #fff;
-  border-radius: 6px;
   text-decoration: none;
-  font-size: 13px;
 }
-.replay-btn:hover {
-  background: #1249a8;
+/* 骨架步骤流：pre.code 内逐行 code 块 */
+.code code {
+  display: block;
 }
 </style>
