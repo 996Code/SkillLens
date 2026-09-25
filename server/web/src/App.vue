@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// 工作台壳：顶部导航（Skills / Reports）+ 路由出口。
-// 只读边界：导航不出现任何编辑入口（宪法 §0.3 / 计划 Global Constraints）。
+// 工作台壳：顶部导航（Skills / Reports / 审计 / 画布）+ 路由出口。
+// 只读边界：S14 起画布为唯一编排入口（主计划块 H 授权），其余导航保持只读。
 </script>
 
 <template>
@@ -11,6 +11,7 @@
         <RouterLink to="/skills">Skills</RouterLink>
         <RouterLink to="/reports/1">Reports</RouterLink>
         <RouterLink to="/audit">审计</RouterLink>
+        <RouterLink to="/canvas">画布</RouterLink>
       </nav>
     </header>
     <main class="content">

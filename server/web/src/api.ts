@@ -305,6 +305,70 @@ export interface SessionTrace {
   replay_runs: TraceReplayRun[];
 }
 
+// ---------- 类型（S14 块H：编排画布） ----------
+
+export interface CanvasSummary {
+  id: number;
+  name: string;
+  created_at: string;
+}
+
+export interface CanvasNode {
+  id: string;
+  type: string; // change_source | impact_select | replay_batch | aggregate | review_output
+  params: Record<string, unknown>;
+  x: number;
+  y: number;
+}
+
+export interface CanvasEdge {
+  from: string;
+  to: string;
+}
+
+export interface CanvasDag {
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+}
+
+export interface CanvasDetail {
+  id: number;
+  name: string;
+  dag: CanvasDag;
+  created_at: string;
+}
+
+export interface CanvasRunSummary {
+  id: number;
+  status: string; // started | finished | error
+  started_at: string | null;
+  finished_at: string | null;
+  node_count: number;
+}
+
+export interface CanvasNodeOutput {
+  node: string;
+  output: Record<string, unknown>;
+}
+
+export interface AgentRunDetail {
+  id: number;
+  status: string; // started | finished | error
+  node_outputs: CanvasNodeOutput[] | null;
+  input: Record<string, unknown> | null;
+  error_text: string | null;
+}
+
+/** POST /canvas/{id}/run 实际返回体（后端 test_canvas.py 为规格）。 */
+export interface CanvasRunResponse {
+  id: number; // agent_run id
+  canvas_id: number;
+  status: string;
+  graph_name: string;
+  node_outputs: CanvasNodeOutput[] | null;
+  error_text: string | null;
+}
+
 // ---------- API 函数 ----------
 
 export function getSkills(): Promise<SkillListItem[]> {
@@ -392,6 +456,64 @@ export async function replayObserve(
     throw new ApiError(resp.status, detail);
   }
   return resp.json() as Promise<ObserveResponse>;
+}
+
+/** S14 块H：画布 CRUD / 运行 / 运行详情。 */
+export function listCanvases(): Promise<CanvasSummary[]> {
+  return get<CanvasSummary[]>("/api/v1/canvas");
+}
+
+export function getCanvas(id: number | string): Promise<CanvasDetail> {
+  return get<CanvasDetail>(`/api/v1/canvas/${id}`);
+}
+
+/** 保存画布（版本化新行）。422 = DAG 校验错误（detail 透出给界面）。 */
+export async function saveCanvas(
+  name: string,
+  dag: CanvasDag,
+): Promise<{ id: number }> {
+  const resp = await fetch(BASE + "/api/v1/canvas", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, dag }),
+  });
+  if (!resp.ok) {
+    let detail = `POST /canvas -> ${resp.status}`;
+    try {
+      const j = (await resp.json()) as { detail?: string };
+      if (j?.detail) detail = j.detail;
+    } catch {
+      /* 非 JSON 错误体，保留状态行 */
+    }
+    throw new ApiError(resp.status, detail);
+  }
+  return resp.json() as Promise<{ id: number }>;
+}
+
+export async function runCanvas(id: number | string): Promise<CanvasRunResponse> {
+  const resp = await fetch(BASE + `/api/v1/canvas/${id}/run`, { method: "POST" });
+  if (!resp.ok) {
+    let detail = `POST /canvas/${id}/run -> ${resp.status}`;
+    try {
+      const j = (await resp.json()) as { detail?: string };
+      if (j?.detail) detail = j.detail;
+    } catch {
+      /* 非 JSON 错误体，保留状态行 */
+    }
+    throw new ApiError(resp.status, detail);
+  }
+  return resp.json() as Promise<CanvasRunResponse>;
+}
+
+export function listCanvasRuns(
+  canvasId: number | string,
+): Promise<CanvasRunSummary[]> {
+  return get<CanvasRunSummary[]>(`/api/v1/canvas/${canvasId}/runs`);
+}
+
+/** agent_run 详情（节点着色/产物下钻）。404 = 非 canvas 图或不存在的 run。 */
+export function getAgentRun(agentRunId: number | string): Promise<AgentRunDetail> {
+  return get<AgentRunDetail>(`/api/v1/canvas/runs/${agentRunId}`);
 }
 
 export { ApiError };

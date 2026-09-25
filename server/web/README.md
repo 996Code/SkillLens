@@ -64,3 +64,13 @@ overrides 留空 = 沿用录制时采集值（空值前端剔除后不发送）�
 
 工作台不出现任何编辑 Skill / 断言 / Expected 的入口（宪法 §0.3 / 主计划块 C
 Global Constraints）；执行类仅 observe 触发。
+
+## S14 画布（/canvas）
+
+| 端点 | 用途 |
+| --- | --- |
+| `GET/POST /api/v1/canvas` | 画布列表/保存（版本化新行，validate 不过 422） |
+| `GET /api/v1/canvas/{id}` | 画布详情（含 DAG JSON） |
+| `POST /api/v1/canvas/{id}/run` | 运行（同步返回 node_outputs；C1：confirm 编译期定格） |
+| `GET /api/v1/canvas/{id}/runs` | 运行历史 |
+| `GET /api/v1/canvas/runs/{run_id}` | run 详情（graph_name 前缀隔离） |
