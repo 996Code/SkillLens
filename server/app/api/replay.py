@@ -24,8 +24,11 @@ class ReplayRequest(BaseModel):
 
 @router.post("/skills/{skill_id}/replay")
 async def replay(skill_id: int, body: ReplayRequest, db: Session = Depends(get_db)) -> dict:
-    if not db.get(Skill, skill_id):
+    skill = db.get(Skill, skill_id)
+    if not skill:
         raise HTTPException(status_code=404, detail="skill not found")
+    if skill.status == "superseded":
+        raise HTTPException(409, f"该 Skill 版本已被取代（v{skill.superseded_by}），请使用新版本")
     run = await run_replay(db, skill_id, body.overrides, body.confirm_side_effect)
     return {"id": run.id, "skill_id": run.skill_id, "mode": run.mode, "status": run.status,
             "plan": run.plan, "executed": run.executed,

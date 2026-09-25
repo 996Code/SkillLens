@@ -86,6 +86,7 @@ export interface SkillCard {
   assertions: AssertionRow[];
   last_run: LastRun | null;
   window_params: WindowParams | null;
+  superseded_by: number | null;
   notes: string;
 }
 
@@ -369,6 +370,43 @@ export interface CanvasRunResponse {
   error_text: string | null;
 }
 
+// ---------- 类型（S15 块 I：评审门户——夜间 agent_run 的 PR 式评审） ----------
+
+export type ReviewDecision = "approved" | "rejected" | "changes_requested";
+
+/** GET /reviews/pending 队列项：node_outputs 摘要透传，
+ * review_output 段的 output.review 为 markdown 评审摘要（若有）。 */
+export interface PendingRun {
+  id: number;
+  graph_name: string;
+  status: string; // started | finished | error
+  started_at: string;
+  node_outputs: CanvasNodeOutput[];
+}
+
+export interface ReviewRunSummary {
+  graph_name: string;
+  status: string;
+  started_at: string;
+}
+
+export interface ReviewItem {
+  id: number;
+  agent_run_id: number;
+  reviewer: string;
+  decision: ReviewDecision;
+  comment: string | null;
+  created_at: string;
+  agent_run: ReviewRunSummary | null;
+}
+
+export interface CreateReviewRequest {
+  agent_run_id: number;
+  reviewer: string;
+  decision: ReviewDecision;
+  comment?: string;
+}
+
 // ---------- API 函数 ----------
 
 export function getSkills(): Promise<SkillListItem[]> {
@@ -514,6 +552,41 @@ export function listCanvasRuns(
 /** agent_run 详情（节点着色/产物下钻）。404 = 非 canvas 图或不存在的 run。 */
 export function getAgentRun(agentRunId: number | string): Promise<AgentRunDetail> {
   return get<AgentRunDetail>(`/api/v1/canvas/runs/${agentRunId}`);
+}
+
+// ---------- S15 块 I：评审门户端点 ----------
+
+/** 未评审的 agent_run 队列（评审门户首页数据源）。 */
+export function getPendingRuns(): Promise<PendingRun[]> {
+  return get<PendingRun[]>("/api/v1/reviews/pending");
+}
+
+/** 已评审列表（id 倒序）。decision 过滤参数同样枚举校验（非法 422）。 */
+export function getReviews(decision?: ReviewDecision): Promise<ReviewItem[]> {
+  const qs = decision ? `?decision=${decision}` : "";
+  return get<ReviewItem[]>(`/api/v1/reviews${qs}`);
+}
+
+/** 提交评审。422 = decision 非法；404 = agent_run 不存在；409 = 同 run 重复评审。 */
+export async function createReview(
+  body: CreateReviewRequest,
+): Promise<ReviewItem> {
+  const resp = await fetch(BASE + "/api/v1/reviews", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    let detail = `POST /reviews -> ${resp.status}`;
+    try {
+      const j = (await resp.json()) as { detail?: string };
+      if (j?.detail) detail = j.detail;
+    } catch {
+      /* 非 JSON 错误体，保留状态行 */
+    }
+    throw new ApiError(resp.status, detail);
+  }
+  return resp.json() as Promise<ReviewItem>;
 }
 
 export { ApiError };

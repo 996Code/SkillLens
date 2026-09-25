@@ -68,6 +68,10 @@ class ObserveRequest(BaseModel):
 @router.post("/expected-deltas/{delta_id}/observe", status_code=201)
 async def observe(delta_id: int, body: ObserveRequest,
                   db: Session = Depends(get_db)) -> dict:
+    from app.models import Skill
+    _skill = db.get(Skill, body.skill_id)
+    if _skill and _skill.status == "superseded":
+        raise HTTPException(409, f"该 Skill 版本已被取代（v{_skill.superseded_by}），请使用新版本")
     from app.change.observed import run_observe
     try:
         row = await run_observe(db, delta_id, body.skill_id,

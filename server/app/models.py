@@ -123,6 +123,10 @@ class Skill(Base):
     confidence: Mapped[float] = mapped_column()
     evidence_count: Mapped[int] = mapped_column()
     notes: Mapped[str] = mapped_column(String(500), default="")
+    # S15 版本演化（v3 §29 不覆盖旧版本）：re-induce 旧行 status→superseded 保留，
+    # 新行 version=旧最大+1；superseded_by 链式指向直接后继（nullable，活跃行为 NULL）
+    version: Mapped[int] = mapped_column(default=1, server_default="1")
+    superseded_by: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
@@ -267,4 +271,19 @@ class DeltaReport(Base):
     missing: Mapped[list] = mapped_column(JSON)
     unexpected: Mapped[list] = mapped_column(JSON)
     drift: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class Review(Base):
+    """S15 I1：夜间 agent_run 的人工评审行（C3——决策落库可审计）。
+
+    同一 agent_run 仅允许一条评审（DB 唯一约束 + API 层 409 双保险）；decision 三选一
+    approved|rejected|changes_requested（API 层 Literal 校验 422）。
+    """
+    __tablename__ = "review"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    agent_run_id: Mapped[int] = mapped_column(index=True, unique=True)
+    reviewer: Mapped[str] = mapped_column(String(100))
+    decision: Mapped[str] = mapped_column(String(20))
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)

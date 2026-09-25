@@ -70,7 +70,9 @@ def analyze_impact(db: Session, api_templates: list[str],
     anchor_to_actions = _anchor_to_actions(db, anchor_labels or [])
 
     affected: list[dict] = []
-    skills = db.query(Skill).order_by(Skill.id).all()
+    # 排除 superseded：夜间定向回归只回放当前活跃版本（旧版本保留作历史，不执行）
+    skills = db.query(Skill).filter(
+        Skill.status != "superseded").order_by(Skill.id).all()
     for skill in skills:
         sig_actions = _skeleton_actions(skill)
         paths: list[str] = []

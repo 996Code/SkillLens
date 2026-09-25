@@ -61,7 +61,10 @@ async def test_induce_candidate_on_bad_name(client, monkeypatch):
     assert "PascalCase" in body["notes"]
 
 
-async def test_induce_idempotent(client, fake_llm):
+async def test_reinduce_list_shows_only_active_version(client, fake_llm):
+    # S15 语义变更（v3 §29 不覆盖旧版本）：re-induce 不再是"删旧建新"的幂等替换——
+    # 旧行 superseded 保留在 DB；列表默认排除 superseded，故 /skills 每 alignment
+    # 仍只见一条（最新版）。
     aid = await _make_alignment(client)
     await client.post(f"/api/v1/alignments/{aid}/induce")
     await client.post(f"/api/v1/alignments/{aid}/induce")
@@ -69,29 +72,104 @@ async def test_induce_idempotent(client, fake_llm):
     assert len([s for s in skills if s["alignment_id"] == aid]) == 1
 
 
-async def test_reinduce_removes_old_assertions(client, fake_llm):
-    # re-induce 删旧 Skill 前必须先删其断言：否则旧行 skill_id 悬空，verify 500
+async def test_reinduce_supersedes_keeps_old_assertions(client, fake_llm):
+    # S15 语义变更（v3 §29）：re-induce 不再删除旧 Skill 及其断言——旧行
+    # status→superseded + superseded_by=新行 id，断言保留作历史；verify 旧行
+    # 断言 → 409 提示验证新版本。（原孤儿治理测试断言旧行被删/旧断言 404，
+    # 随"先删断言再删 skill"逻辑整体移除而按新语义改写。）
     aid = await _make_alignment(client)
-    skill = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
-    await client.post(f"/api/v1/skills/{skill['id']}/assertions")
-    rows = (await client.get(f"/api/v1/skills/{skill['id']}/assertions")).json()
+    v1 = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
+    await client.post(f"/api/v1/skills/{v1['id']}/assertions")
+    rows = (await client.get(f"/api/v1/skills/{v1['id']}/assertions")).json()
     assert rows
     old_ids = [r["id"] for r in rows]
 
-    await client.post(f"/api/v1/alignments/{aid}/induce")
+    v2 = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
 
     from app.db import SessionLocal
-    from app.models import OutcomeAssertion
+    from app.models import OutcomeAssertion, Skill
     db = SessionLocal()
     try:
         for oid in old_ids:
-            assert db.get(OutcomeAssertion, oid) is None  # 旧断言行已删除
+            assert db.get(OutcomeAssertion, oid) is not None  # 旧断言行保留作历史
+        old = db.get(Skill, v1["id"])
+        assert old.status == "superseded"
+        assert old.superseded_by == v2["id"]
+        new = db.get(Skill, v2["id"])
+        assert new.status == "learned"
+        assert new.version == 2
+        assert (old.version or 1) == 1
     finally:
         db.close()
 
     for oid in old_ids:
         resp = await client.post(f"/api/v1/assertions/{oid}/verify")
-        assert resp.status_code == 404                    # 404，而非孤儿 500
+        assert resp.status_code == 409                    # 已取代 → 409，而非 404/500
+        assert "已被取代" in resp.json()["detail"]
+        assert "v2" in resp.json()["detail"]
+
+
+async def test_reinduce_twice_version_chain(client, fake_llm):
+    # S15：re-induce 两次 → 三行 v1(superseded)→v2(superseded)→v3(learned)；
+    # superseded_by 链式指向直接后继；各版断言均仍在 DB（历史保留）。
+    aid = await _make_alignment(client)
+    v1 = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
+    await client.post(f"/api/v1/skills/{v1['id']}/assertions")
+    v2 = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
+    await client.post(f"/api/v1/skills/{v2['id']}/assertions")
+    v3 = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
+
+    from app.db import SessionLocal
+    from app.models import OutcomeAssertion, Skill
+    db = SessionLocal()
+    try:
+        rows = db.query(Skill).filter(Skill.alignment_id == aid).order_by(Skill.id).all()
+        assert [r.id for r in rows] == [v1["id"], v2["id"], v3["id"]]
+        assert [r.version for r in rows] == [1, 2, 3]
+        assert [r.status for r in rows] == ["superseded", "superseded", "learned"]
+        assert rows[0].superseded_by == v2["id"]   # 链式：指向直接后继
+        assert rows[1].superseded_by == v3["id"]
+        assert rows[2].superseded_by is None
+        # 旧行断言仍在 DB（历史保留，superseded 行一切保留）
+        assert db.query(OutcomeAssertion).filter(
+            OutcomeAssertion.skill_id == v1["id"]).count() > 0
+        assert db.query(OutcomeAssertion).filter(
+            OutcomeAssertion.skill_id == v2["id"]).count() > 0
+    finally:
+        db.close()
+
+
+async def test_lists_and_trace_exclude_superseded(client, fake_llm):
+    # S15：/skills、/baseline/skills（含 compare 聚合）、audit trace 的 skills 段
+    # 默认排除 superseded；card 端点对 superseded 行返回 200 + superseded_by
+    # （前端提示用，不 404）。
+    aid = await _make_alignment(client)
+    v1 = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
+    v2 = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
+
+    skills = (await client.get("/api/v1/skills")).json()
+    assert [s["id"] for s in skills if s["alignment_id"] == aid] == [v2["id"]]
+
+    baseline = (await client.get("/api/v1/baseline/skills")).json()
+    assert [i["skill_id"] for i in baseline
+            if i["skill_id"] in (v1["id"], v2["id"])] == [v2["id"]]
+
+    compare = (await client.get("/api/v1/baseline/compare")).json()
+    assert compare["demo"]["count"] == 1   # superseded 不参与基线聚合
+
+    from app.db import SessionLocal
+    from app.models import Alignment
+    db = SessionLocal()
+    try:
+        sid = (db.get(Alignment, aid).session_ids or [])[0]
+    finally:
+        db.close()
+    trace = (await client.get(f"/api/v1/audit/sessions/{sid}/trace")).json()
+    assert [s["id"] for s in trace["skills"]] == [v2["id"]]
+
+    card = (await client.get(f"/api/v1/skills/{v1['id']}/card")).json()
+    assert card["status"] == "superseded"
+    assert card["superseded_by"] == v2["id"]
 
 
 async def test_verify_assertion_missing_skill_404(client):
