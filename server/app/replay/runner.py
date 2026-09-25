@@ -128,8 +128,26 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
     return {"executed": executed, "observed": observed}
 
 
-async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
-                     confirm_side_effect: bool) -> ReplayRun:
+async def _close_ctx_quietly(ctx) -> None:
+    """批回放逐 skill 收尾：关本次 context（替身无 close 时跳过；关闭异常不掩盖已落库结果）。"""
+    closer = getattr(ctx, "close", None)
+    if closer is None:
+        return
+    try:
+        await closer()
+    except Exception:
+        pass
+
+
+async def _execute_skill(db: Session, browser, skill_id: int,
+                         overrides: dict[str, str],
+                         confirm_side_effect: bool) -> ReplayRun:
+    """单 skill 回放执行体——browser 已由调用方开启，本函数不碰浏览器生命周期。
+
+    shadow 门控在内：shadow 直接落库返回，不触 browser/context。
+    计划编译异常（如 skill 不存在）向上抛——与重构前 run_replay 语义一致
+    （run_graph 依赖该异常收敛图状态为 error，见 test_run_graph_error_captured）。
+    """
     skill = db.get(Skill, skill_id)
     alignment = db.get(Alignment, skill.alignment_id)
     ref_sid = alignment.session_ids[0]
@@ -148,48 +166,48 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
         db.refresh(run)
         return run
 
+    # CDP 常驻 context 由 _open_context 复用返回，逐 skill 收尾时不能关
+    shared_ctx = bool(_cdp_url() and getattr(browser, "contexts", None))
+    ctx = None
     try:
-        async with _launch() as p:
-            browser = await _open_browser(p)
-            ctx = await _open_context(browser)
-            page = await ctx.new_page()
-            await page.goto(plan["url"])
-            await page.wait_for_load_state("domcontentloaded", timeout=15000)
-            await page.wait_for_timeout(2000)
-            assertions = [{"kind": a.kind, "payload": a.payload} for a in
-                          db.query(OutcomeAssertion).filter(
-                              OutcomeAssertion.skill_id == skill_id).all()]
-            # T4：执行前采 before 快照（水合竞态防护在 execute_plan 的 fill 确认内，
-            # 不与本采集竞争）
-            before_snapshot = await collect_page_snapshot(page, phase="before")
-            result = await execute_plan(
-                page, plan,
-                awaited_templates=[a["payload"]["api_template"] for a in assertions
-                                   if "api_template" in a["payload"]])
-            # T4：断言评估前采 after 快照（ui_text 用它对比）
-            after_snapshot = await collect_page_snapshot(page, phase="after")
+        ctx = await _open_context(browser)
+        page = await ctx.new_page()
+        await page.goto(plan["url"])
+        await page.wait_for_load_state("domcontentloaded", timeout=15000)
+        await page.wait_for_timeout(2000)
+        assertions = [{"kind": a.kind, "payload": a.payload} for a in
+                      db.query(OutcomeAssertion).filter(
+                          OutcomeAssertion.skill_id == skill_id).all()]
+        # T4：执行前采 before 快照（水合竞态防护在 execute_plan 的 fill 确认内，
+        # 不与本采集竞争）
+        before_snapshot = await collect_page_snapshot(page, phase="before")
+        result = await execute_plan(
+            page, plan,
+            awaited_templates=[a["payload"]["api_template"] for a in assertions
+                               if "api_template" in a["payload"]])
+        # T4：断言评估前采 after 快照（ui_text 用它对比）
+        after_snapshot = await collect_page_snapshot(page, phase="after")
 
-            results = evaluate_assertions(assertions, result["observed"],
-                                          after_snapshot=after_snapshot)
-            any_ok_step = any(s.get("ok") for s in result["executed"])
-            if not any_ok_step:
-                status = "error"
-            elif all(r["passed"] for r in results):
-                status = "pass"
-            else:
-                status = "fail"
+        results = evaluate_assertions(assertions, result["observed"],
+                                      after_snapshot=after_snapshot)
+        any_ok_step = any(s.get("ok") for s in result["executed"])
+        if not any_ok_step:
+            status = "error"
+        elif all(r["passed"] for r in results):
+            status = "pass"
+        else:
+            status = "fail"
 
-            # FAIL/ERROR 时先截图并取页面 title（浏览器关闭前），归因待落库拿到 run 后再做
-            screenshot_path = None
-            page_title = None
-            if status in ("fail", "error"):
-                os.makedirs(ARTIFACT_DIR, exist_ok=True)
-                screenshot_path = f"{ARTIFACT_DIR}/replay-{int(time.time() * 1000)}.png"
-                await page.screenshot(path=screenshot_path)
-                page_title = await page.title()
-            await browser.close()
+        # FAIL/ERROR 时先截图并取页面 title（context 关闭前），归因待落库拿到 run 后再做
+        screenshot_path = None
+        page_title = None
+        if status in ("fail", "error"):
+            os.makedirs(ARTIFACT_DIR, exist_ok=True)
+            screenshot_path = f"{ARTIFACT_DIR}/replay-{int(time.time() * 1000)}.png"
+            await page.screenshot(path=screenshot_path)
+            page_title = await page.title()
     except Exception as exc:
-        # 浏览器阶段异常也必须落 error run（C3：执行审计不可缺）
+        # 执行阶段异常也必须落 error run（C3：执行审计不可缺）
         run = ReplayRun(skill_id=skill_id, mode="execute", status="error",
                         plan=plan, executed=None, assertion_results=None,
                         attribution=str(exc)[:500])
@@ -197,6 +215,9 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
         db.commit()
         db.refresh(run)
         return run
+    finally:
+        if ctx is not None and not shared_ctx:
+            await _close_ctx_quietly(ctx)
 
     # T4：前后快照旁挂 plan（plan 消费方只读 url/steps，加法变更零破坏面，
     # 优于包装 executed——后者被 extract_observed 按步骤列表遍历）
@@ -223,3 +244,103 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
         db.commit()
         db.refresh(run)
     return run
+
+
+def _error_run(db: Session, skill_id: int, exc: Exception) -> ReplayRun:
+    """启动阶段异常的兜底 error run（C3：此阶段 plan 未编译，落 None）。"""
+    run = ReplayRun(skill_id=skill_id, mode="execute", status="error",
+                    plan=None, executed=None, assertion_results=None,
+                    attribution=str(exc)[:500])
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return run
+
+
+async def _shadow_run_if_gated(db: Session, skill_id: int,
+                               confirm_side_effect: bool) -> ReplayRun | None:
+    """C1 前置门控：shadow 在开浏览器之前判定并落库（Sprint 4 验收语义：
+    shadow 未确认绝不启浏览器）。非 shadow 场景返回 None 由调用方继续执行。
+    计划编译纯 DB 无浏览器依赖；skill 不存在向上抛（与 _execute_skill 一致）。"""
+    skill = db.get(Skill, skill_id)
+    if not requires_confirmation(skill.skeleton) or confirm_side_effect:
+        return None
+    alignment = db.get(Alignment, skill.alignment_id)
+    ref_sid = alignment.session_ids[0]
+    rows = db.execute(select(RawEvent).where(RawEvent.session_id == ref_sid)
+                      .order_by(RawEvent.ts, RawEvent.seq)).scalars().all()
+    events = [{"seq": r.seq, "ts": r.ts, "kind": r.kind, "payload": r.payload or {}} for r in rows]
+    plan = compile_skeleton_plan(events, skill.skeleton, ref_sid, {}, skill.input_variables)
+    run = ReplayRun(skill_id=skill_id, mode="shadow", status="shadow",
+                    plan=plan, executed=None, assertion_results=None)
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return run
+
+
+async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
+                     confirm_side_effect: bool) -> ReplayRun:
+    shadow_run = await _shadow_run_if_gated(db, skill_id, confirm_side_effect)
+    if shadow_run is not None:
+        return shadow_run  # C1：shadow 未确认不启浏览器
+    try:
+        async with _launch() as p:
+            browser = await _open_browser(p)
+    except Exception as exc:
+        # 启动阶段异常也必须落 error run（C3：执行审计不可缺）
+        return _error_run(db, skill_id, exc)
+    try:
+        return await _execute_skill(db, browser, skill_id, overrides,
+                                    confirm_side_effect)
+    finally:
+        # 关闭异常不掩盖已落库结果/原始异常（重构前 close 在 try 内，
+        # 成功路径已 commit 后的关闭失败不应再改写成 error run）
+        try:
+            await browser.close()
+        except Exception:
+            pass
+
+
+async def run_replay_batch(db: Session, skill_ids: list[int],
+                           overrides_map: dict[int, dict],
+                           confirm_side_effect: bool) -> list[ReplayRun]:
+    """S13 F3 批回放：browser 实例复用——一次 launch，逐 skill 新 context 串行执行。
+
+    C1：confirm_side_effect 批级——false 时各 skill 独立走 shadow 门控；
+    shadow 项前置落库不触浏览器（全 shadow 批次零 launch）。
+    单 skill 异常（如 skill 不存在）不中断批次：落 error run 继续（C3）。
+    """
+    runs: list[ReplayRun] = []
+    pending: list[int] = []
+    for sid in skill_ids:
+        try:
+            shadow_run = await _shadow_run_if_gated(db, sid, confirm_side_effect)
+            if shadow_run is not None:
+                runs.append(shadow_run)
+            else:
+                pending.append(sid)
+        except Exception as exc:
+            runs.append(_error_run(db, sid, exc))
+    if not pending:
+        return runs  # 全 shadow：不启浏览器
+    try:
+        async with _launch() as p:
+            browser = await _open_browser(p)
+    except Exception as exc:
+        runs.extend(_error_run(db, sid, exc) for sid in pending)
+        return runs
+    try:
+        for sid in pending:
+            try:
+                runs.append(await _execute_skill(
+                    db, browser, sid, (overrides_map or {}).get(sid) or {},
+                    confirm_side_effect))
+            except Exception as exc:  # 计划编译等前置异常：落 error run 继续
+                runs.append(_error_run(db, sid, exc))
+        return runs
+    finally:
+        try:
+            await browser.close()
+        except Exception:
+            pass
