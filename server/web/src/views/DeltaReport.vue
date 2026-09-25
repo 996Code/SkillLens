@@ -105,7 +105,7 @@ watch(() => route.params.deltaId, (v) => {
         placeholder="输入 report id"
         aria-label="report id"
       />
-      <button type="submit">查询</button>
+      <button type="submit" class="btn btn-primary">查询</button>
     </form>
 
     <p v-if="loading" class="muted">加载中…</p>
@@ -116,13 +116,15 @@ watch(() => route.params.deltaId, (v) => {
     </p>
 
     <div v-else-if="notFound" class="empty">
-      <p>报告不存在（id={{ route.params.deltaId }}）。</p>
+      <span class="empty-icon">∅</span>
+      <p class="empty-title">报告不存在</p>
+      <p class="empty-sub">id={{ route.params.deltaId }}——报告可能尚未生成，先走 observe → report 流程。</p>
     </div>
     <p v-else-if="error" class="error">加载失败：{{ error }}</p>
 
     <template v-else-if="report">
-      <!-- 需求上下文 -->
-      <div v-if="expectedDelta" class="ctx">
+      <!-- 需求上下文（S16 块 Q：卡片化） -->
+      <div v-if="expectedDelta" class="ctx block">
         <h2>需求上下文</h2>
         <dl class="meta">
           <div><dt>requirement</dt><dd class="mono">{{ expectedDelta.requirement_id }}</dd></div>
@@ -138,7 +140,7 @@ watch(() => route.params.deltaId, (v) => {
         </ol>
         <!-- S12 N2：已发现实现——confirm 时对齐到该 delta 的 discovery（模板/锚点） -->
         <div v-if="linkedDiscoveries.length" class="linked">
-          <span class="badge-linked">已发现实现 ×{{ linkedDiscoveries.length }}</span>
+          <span class="badge badge-success">已发现实现 ×{{ linkedDiscoveries.length }}</span>
           <ul class="linked-list">
             <li v-for="d in linkedDiscoveries" :key="d.id" class="mono">
               {{ d.api_template || d.anchor_label }}
@@ -147,10 +149,18 @@ watch(() => route.params.deltaId, (v) => {
         </div>
       </div>
 
-      <!-- 四栏 -->
+      <!-- S16 块 Q：四分类统计卡（大数字 + 标签）置顶 -->
+      <div class="stats">
+        <div v-for="col in columns" :key="col.key" class="stat-card" :class="col.cls">
+          <span class="stat-num count">{{ col.items.length }}</span>
+          <span class="stat-label">{{ col.label }}</span>
+        </div>
+      </div>
+
+      <!-- 四栏明细列表 -->
       <div class="quad">
         <div v-for="col in columns" :key="col.key" class="qcol" :class="col.cls">
-          <h3>{{ col.label }} <span class="count">{{ col.items.length }}</span></h3>
+          <h3>{{ col.label }}</h3>
           <p v-if="col.items.length === 0" class="muted">（空）</p>
           <ul v-else>
             <li v-for="(item, i) in col.items" :key="i">
@@ -170,126 +180,132 @@ watch(() => route.params.deltaId, (v) => {
 </template>
 
 <style scoped>
+/* S16 块 Q：表格/徽标/chip 走全局类，这里只留布局与四分类分色 */
 .query {
   display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 .query input {
   width: 200px;
-  padding: 6px 10px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font-size: 14px;
-}
-.query button {
-  padding: 6px 16px;
-  border: 1px solid #185abc;
-  background: #185abc;
-  color: #fff;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
 }
 .ctx {
-  margin-bottom: 20px;
-}
-.ctx h2 {
-  font-size: 16px;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 6px;
+  margin-bottom: var(--space-4);
 }
 .meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 24px;
-  margin: 8px 0;
+  gap: var(--space-6);
+  margin: var(--space-2) 0;
 }
 .meta dt {
   font-size: 12px;
-  color: #888;
+  color: var(--color-gray-5);
 }
 .meta dd {
   margin: 2px 0 0;
 }
 .changes {
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
   padding-left: 20px;
   font-size: 13px;
 }
 .changes li {
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 .linked {
   margin-top: 10px;
 }
-.badge-linked {
-  display: inline-block;
-  font-size: 12px;
-  color: #1b5e20;
-  background: #e8f5e9;
-  border: 1px solid #a5d6a7;
-  border-radius: 10px;
-  padding: 1px 10px;
-}
 .linked-list {
-  margin: 6px 0 0;
+  margin: var(--space-1) 0 0;
   padding-left: 20px;
   font-size: 13px;
 }
 .linked-list li {
   margin-bottom: 2px;
 }
+/* 四分类统计卡：4 色（expected=主色 / missing=危险 / unexpected=警告 / drift=中性）*/
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.stat-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-top: 3px solid var(--color-gray-4);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stat-num {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.stat-label {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.stat-card.col-expected {
+  border-top-color: var(--color-primary);
+}
+.stat-card.col-expected .stat-num {
+  color: var(--color-primary);
+}
+.stat-card.col-missing {
+  border-top-color: var(--color-danger);
+}
+.stat-card.col-missing .stat-num {
+  color: var(--color-danger);
+}
+.stat-card.col-unexpected {
+  border-top-color: var(--color-warning);
+}
+.stat-card.col-unexpected .stat-num {
+  color: var(--color-warning);
+}
+.stat-card.col-drift {
+  border-top-color: var(--color-gray-5);
+}
+.stat-card.col-drift .stat-num {
+  color: var(--color-gray-6);
+}
+/* 明细四栏 */
 .quad {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 14px;
+  gap: var(--space-3);
 }
 .qcol {
-  border: 1px solid #e3e6ea;
-  border-radius: 8px;
-  padding: 10px 12px;
-  background: #fff;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-3) var(--space-4);
 }
 .qcol h3 {
-  margin: 0 0 8px;
-  font-size: 14px;
+  margin: 0 0 var(--space-2);
+  font-size: 13px;
+  color: var(--color-gray-7);
   border-bottom: 2px solid transparent;
-  padding-bottom: 6px;
+  padding-bottom: var(--space-1);
 }
-.count {
-  display: inline-block;
-  min-width: 20px;
-  text-align: center;
-  border-radius: 10px;
-  font-size: 12px;
-  padding: 0 6px;
-  color: #fff;
-  background: #999;
+.qcol.col-expected h3 {
+  border-color: var(--color-primary);
 }
-.col-expected h3 {
-  border-color: #185abc;
+.qcol.col-missing h3 {
+  border-color: var(--color-danger);
 }
-.col-expected .count {
-  background: #185abc;
+.qcol.col-unexpected h3 {
+  border-color: var(--color-warning);
 }
-.col-missing h3 {
-  border-color: #c62828;
-}
-.col-missing .count {
-  background: #c62828;
-}
-.col-unexpected h3 {
-  border-color: #e65100;
-}
-.col-unexpected .count {
-  background: #e65100;
-}
-.col-drift h3 {
-  border-color: #9e9e9e;
-}
-.col-drift .count {
-  background: #9e9e9e;
+.qcol.col-drift h3 {
+  border-color: var(--color-gray-5);
 }
 .qcol ul {
   list-style: none;
@@ -297,39 +313,18 @@ watch(() => route.params.deltaId, (v) => {
   padding: 0;
 }
 .qcol li {
-  padding: 6px 0;
-  border-bottom: 1px dashed #eee;
+  padding: var(--space-1) 0;
+  border-bottom: 1px dashed var(--color-gray-3);
   font-size: 13px;
 }
 .qcol li:last-child {
   border-bottom: none;
 }
-.chip-type {
-  display: inline-block;
-  font-size: 11px;
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
-  background: #eef2f7;
-  border-radius: 4px;
-  padding: 0 6px;
-  margin-right: 6px;
-}
 .value {
   word-break: break-all;
 }
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
-}
 .footer {
-  margin-top: 16px;
+  margin-top: var(--space-4);
   font-size: 12px;
-}
-.muted {
-  color: #666;
-}
-.error {
-  color: #c62828;
-}
-.empty p {
-  color: #666;
 }
 </style>

@@ -139,8 +139,9 @@ onMounted(async () => {
   <section>
     <p v-if="loading" class="muted">加载中…</p>
     <div v-else-if="notFound" class="empty">
-      <h1>404</h1>
-      <p>Skill 不存在（<RouterLink to="/skills">返回列表</RouterLink>）。</p>
+      <span class="empty-icon">∅</span>
+      <h1 class="empty-title">404</h1>
+      <p class="empty-sub">Skill 不存在（<RouterLink to="/skills">返回列表</RouterLink>）。</p>
     </div>
     <p v-else-if="error" class="error">加载失败：{{ error }}</p>
 
@@ -200,7 +201,7 @@ onMounted(async () => {
                  placeholder="expected_delta_id" aria-label="expected_delta_id" />
         </div>
 
-        <button type="submit" :disabled="!canSubmit">
+        <button type="submit" class="btn btn-primary" :disabled="!canSubmit">
           {{ submitting ? "回放中…（回放在常驻浏览器窗口执行，完成后此处显示结果）" : "触发回放" }}
         </button>
         <p v-if="mode === 'execute' && !confirmed" class="muted gate-hint">
@@ -285,40 +286,17 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* S16 块 Q：表格/chip/代码块/分区块卡片/按钮走全局令牌类，这里只留回放布局 */
 header h1 {
-  margin: 0 0 4px;
+  margin: 0 0 var(--space-1);
   font-size: 20px;
 }
 header p {
   margin-top: 0;
 }
-.launch button[type="submit"] {
-  padding: 8px 24px;
-  border: 1px solid #185abc;
-  background: #185abc;
-  color: #fff;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-}
-.launch button[type="submit"]:disabled {
-  border-color: #bbb;
-  background: #eee;
-  color: #999;
-  cursor: not-allowed;
-}
 .gate-hint {
-  margin-top: 6px;
+  margin-top: var(--space-1);
   font-size: 12px;
-}
-.block {
-  margin-top: 20px;
-}
-.block h2 {
-  font-size: 15px;
-  border-bottom: 1px solid #eee;
-  padding-bottom: 6px;
-  margin-bottom: 8px;
 }
 .hint {
   margin-top: 0;
@@ -327,7 +305,7 @@ header p {
 .override-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   max-width: 480px;
 }
 .override-row {
@@ -341,10 +319,6 @@ header p {
 }
 .override-row input {
   flex: 1;
-  padding: 6px 10px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font-size: 13px;
 }
 .modes {
   display: flex;
@@ -354,127 +328,79 @@ header p {
 .mode {
   font-size: 13px;
 }
+/* C1 副作用确认：警示框 */
 .confirm-box {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   margin-top: 10px;
-  padding: 8px 10px;
-  border: 1px solid #e65100;
-  border-radius: 6px;
-  background: #fff3e0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-md);
+  background: var(--color-warning-soft);
   font-size: 13px;
-  color: #a04a00;
+  color: var(--color-warning);
   max-width: 520px;
 }
 .block input[type="text"] {
-  padding: 6px 10px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font-size: 13px;
   width: 220px;
 }
+/* 409 等安全拒绝：醒目拒绝卡 */
 .reject {
-  margin-top: 20px;
-  border: 1px solid #c62828;
-  border-radius: 8px;
-  padding: 10px 14px;
-  background: #fdecea;
+  margin-top: var(--space-6);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-danger-soft);
 }
 .reject h3 {
   margin: 0 0 6px;
   font-size: 14px;
-  color: #c62828;
+  color: var(--color-danger);
 }
 .reject-409 {
-  border-color: #e65100;
-  background: #fff3e0;
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-soft);
 }
 .reject-409 h3 {
-  color: #a04a00;
+  color: var(--color-warning);
 }
 .run-line {
   font-size: 15px;
 }
+/* run 状态大字：四态分色 */
 .run-status {
   display: inline-block;
   font-size: 22px;
   font-weight: 700;
   padding: 0 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   vertical-align: middle;
 }
 .st-pass {
-  color: #1e7e34;
+  color: var(--color-success);
 }
 .st-fail {
-  color: #c62828;
+  color: var(--color-danger);
 }
 .st-shadow {
-  color: #9e9e9e;
+  color: var(--color-gray-5);
 }
 .st-error {
-  color: #e65100;
+  color: var(--color-warning);
 }
 .status-legend {
   font-size: 12px;
 }
-.tbl {
-  border-collapse: collapse;
-  width: 100%;
-  font-size: 13px;
-}
-.tbl th,
-.tbl td {
-  border: 1px solid #e3e6ea;
-  text-align: left;
-  padding: 6px 10px;
-  vertical-align: top;
-}
-.tbl th {
-  background: #f6f8fa;
-}
-.chip {
-  display: inline-block;
-  background: #eef2f7;
-  border-radius: 4px;
-  padding: 0 6px;
-  font-size: 12px;
-}
-.chip-kind {
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
-}
+/* 断言结果三态 */
 .ok {
-  color: #1e7e34;
+  color: var(--color-success);
 }
 .ng {
-  color: #c62828;
+  color: var(--color-danger);
   font-weight: 700;
 }
 .skipped {
-  color: #9e9e9e;
-}
-.code {
-  background: #f6f8fa;
-  border: 1px solid #e3e6ea;
-  border-radius: 6px;
-  padding: 10px 12px;
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
-  font-size: 13px;
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
-  word-break: break-all;
-}
-.muted {
-  color: #666;
-}
-.error {
-  color: #c62828;
-}
-.empty h1 {
-  margin-bottom: 4px;
+  color: var(--color-gray-5);
 }
 </style>
