@@ -5,14 +5,19 @@ from app.db import SessionLocal
 from app.models import ReplayRun
 
 
-async def _seed_skill(client, monkeypatch, llm_name="SaveForm"):
-    """参考 test_replay_api._seed_skill：两 session 输入值不同 → 有 input_variables。"""
+async def _seed_skill(client, monkeypatch, llm_name="SaveForm", source=None,
+                      values=("旧甲", "旧乙")):
+    """参考 test_replay_api._seed_skill：两 session 输入值不同 → 有 input_variables。
+
+    S10 Task5 扩展：source 标记会话来源（None=缺省 demo）；values 相同时
+    无 input_variables → confidence 降为 0.6（对比比率的区分度来源）。"""
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     monkeypatch.setenv("LLM_FAKE_RESPONSE",
                        json.dumps({"name": llm_name, "description": "d"}))
     sids = []
-    for value in ("旧甲", "旧乙"):
-        sid = (await client.post("/api/v1/sessions", json={})).json()["session_id"]
+    for value in values:
+        body = {"source": source} if source else {}
+        sid = (await client.post("/api/v1/sessions", json=body)).json()["session_id"]
         events = [
             {"seq": 0, "ts": 0, "kind": "navigation", "payload": {"type": "page-load", "url": "http://t/f"}},
             {"seq": 1, "ts": 100, "kind": "action",
@@ -94,6 +99,72 @@ async def test_baseline_single_skill_and_404(client, monkeypatch):
     assert item["skill_id"] == skill_id
     assert set(item) == {"skill_id", "name", "status", "confidence",
                          "evidence_count", "assertion_count", "assertion_pass_rate",
-                         "input_var_names", "window_params"}
+                         "input_var_names", "window_params", "source"}
 
     assert (await client.get("/api/v1/baseline/skills/99999")).status_code == 404
+
+
+async def test_baseline_source_field(client, monkeypatch):
+    """S10 Task5：/baseline/skills 每项带 source（取首个 session 的来源，缺省 demo）。"""
+    demo_id = await _seed_skill(client, monkeypatch, llm_name="DemoSkill")
+    real_id = await _seed_skill(client, monkeypatch, llm_name="RealSkill",
+                                source="real_traffic", values=("新甲", "新乙"))
+    items = {i["skill_id"]: i for i in
+             (await client.get("/api/v1/baseline/skills")).json()}
+    assert items[demo_id]["source"] == "demo"
+    assert items[real_id]["source"] == "real_traffic"
+
+
+async def test_baseline_compare(client, monkeypatch):
+    """S10 Task5：compare 端点——demo/real_traffic 聚合 + C2 比率。
+
+    demo skill（有输入变量）confidence=1.0；real_traffic skill（同值输入→无变量）
+    confidence=0.6 → ratio=0.6 < 0.8 不达标。"""
+    demo_id = await _seed_skill(client, monkeypatch, llm_name="DemoSkill")
+    real_id = await _seed_skill(client, monkeypatch, llm_name="RealSkill",
+                                source="real_traffic", values=("同值", "同值"))
+    _add_replay_run(demo_id, [{"passed": True}, {"passed": True}])      # pass_rate 1.0
+    _add_replay_run(real_id, [{"passed": True}, {"passed": False}])    # pass_rate 0.5
+
+    body = (await client.get("/api/v1/baseline/compare")).json()
+    assert body["demo"] == {"count": 1, "avg_confidence": 1.0, "avg_pass_rate": 1.0}
+    assert body["real_traffic"] == {"count": 1, "avg_confidence": 0.6,
+                                    "avg_pass_rate": 0.5}
+    assert body["vs_baseline"]["confidence_ratio"] == 0.6
+    assert body["vs_baseline"]["pass_rate_ratio"] == 0.5
+    assert body["vs_baseline"]["meets_c2"] is False
+
+
+async def test_baseline_compare_no_real_traffic(client, monkeypatch):
+    """无 real_traffic skill：比率 null（分母侧缺失，meets_c2=False 语义=不可判达标）。"""
+    await _seed_skill(client, monkeypatch, llm_name="DemoSkill")
+    body = (await client.get("/api/v1/baseline/compare")).json()
+    assert body["demo"]["count"] == 1
+    assert body["real_traffic"]["count"] == 0
+    assert body["real_traffic"]["avg_confidence"] is None
+    assert body["real_traffic"]["avg_pass_rate"] is None
+    assert body["vs_baseline"]["confidence_ratio"] is None
+    assert body["vs_baseline"]["pass_rate_ratio"] is None
+    assert body["vs_baseline"]["meets_c2"] is False
+
+
+async def test_baseline_compare_empty_db(client):
+    """空库：两侧 count=0，全部 null，meets_c2=False。"""
+    body = (await client.get("/api/v1/baseline/compare")).json()
+    assert body["demo"]["count"] == 0
+    assert body["real_traffic"]["count"] == 0
+    assert body["vs_baseline"]["confidence_ratio"] is None
+    assert body["vs_baseline"]["meets_c2"] is False
+
+
+async def test_baseline_compare_meets_c2(client, monkeypatch):
+    """达标侧：real/demo 置信度比 >= 0.8 → meets_c2=True。"""
+    demo_id = await _seed_skill(client, monkeypatch, llm_name="DemoSkill")
+    real_id = await _seed_skill(client, monkeypatch, llm_name="RealSkill",
+                                source="real_traffic")
+    body = (await client.get("/api/v1/baseline/compare")).json()
+    assert body["demo"]["avg_confidence"] == 1.0
+    assert body["real_traffic"]["avg_confidence"] == 1.0
+    assert body["vs_baseline"]["confidence_ratio"] == 1.0
+    assert body["vs_baseline"]["pass_rate_ratio"] is None   # 两侧都无有效 run
+    assert body["vs_baseline"]["meets_c2"] is True

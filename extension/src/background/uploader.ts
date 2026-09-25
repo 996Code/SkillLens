@@ -125,7 +125,10 @@ chrome.runtime.onMessage.addListener((msg) => {
 // 与上方 events-pending 监听并存（两个监听器都会被调用）。
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "START_RECORDING") {
-    startRecording(String(msg.note ?? "")).then(sendResponse).catch((e) => sendResponse({ error: String(e) }));
+    // source 透传：popup 不带 → 缺省 real_traffic；auto_record 显式带 demo
+    startRecording(String(msg.note ?? ""), String(msg.source ?? "real_traffic"))
+      .then(sendResponse)
+      .catch((e) => sendResponse({ error: String(e) }));
     return true;
   }
   if (msg?.type === "STOP_RECORDING") {

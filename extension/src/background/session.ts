@@ -7,11 +7,15 @@ export interface RecordingState {
   note: string;
 }
 
-export async function startRecording(note: string): Promise<{ id: string }> {
+export async function startRecording(
+  note: string,
+  source: string = "real_traffic",
+): Promise<{ id: string }> {
+  // popup 用户手动开录 = 真实用户流量（S10 C2 标记）；auto_record 经消息显式传 demo
   const res = await fetch(`${AGENT_URL}/sessions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ target_system: "njmind", note }),
+    body: JSON.stringify({ target_system: "njmind", note, source }),
   });
   if (!res.ok) throw new Error(`create session failed: ${res.status}`);
   const session = await res.json();

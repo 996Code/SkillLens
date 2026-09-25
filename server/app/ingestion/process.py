@@ -1,10 +1,11 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.ingestion.noise_filter import classify_windows
 from app.ingestion.signals import extract_state_signals
 from app.ingestion.url_template import split_url, templatize_path
 from app.ingestion.windows import IDLE_MS, MAX_WINDOW_MS, build_windows
-from app.models import NormalizedEvent, RawEvent, SemanticAction, TransactionWindow
+from app.models import FilteredWindow, NormalizedEvent, RawEvent, SemanticAction, TransactionWindow
 
 
 def normalize_event(e: dict) -> str:
@@ -88,8 +89,12 @@ def process_session(db: Session, session_id: str) -> dict:
     events = _events_of(db, session_id)
     windows = build_windows(events)
     snapshots = assign_snapshots(events, windows)
+    # S10 Task2：噪声过滤——快照归属一并交给分类器（孤儿点击判定需要它）
+    for i, w in enumerate(windows):
+        w["snapshots"] = [s for s in (snapshots[i]["before"], snapshots[i]["after"]) if s]
+    decisions = classify_windows(windows)
 
-    for model in (NormalizedEvent, TransactionWindow, SemanticAction):
+    for model in (NormalizedEvent, TransactionWindow, SemanticAction, FilteredWindow):
         db.query(model).filter(model.session_id == session_id).delete()
 
     for e in events:
@@ -97,12 +102,19 @@ def process_session(db: Session, session_id: str) -> dict:
                                template=normalize_event(e), page_id=e["page_id"],
                                seq=e["seq"], ts=e["ts"]))
 
+    kept = 0
     for i, w in enumerate(windows):
         member_ids = [m["event_id"] for m in w["members"]]
         db.add(TransactionWindow(session_id=session_id, window_seq=i,
                                  anchor_event_id=w["anchor"]["event_id"],
                                  member_event_ids=member_ids,
                                  idle_ms=IDLE_MS, max_window_ms=MAX_WINDOW_MS))
+        d = decisions[i]
+        if not d["kept"]:
+            # C3：kept=False 不生成 semantic_action，但决策落库可审计可回放
+            db.add(FilteredWindow(session_id=session_id, window_seq=i, reason=d["reason"]))
+            continue
+        kept += 1
         api_calls = [summarize_api(m) for m in w["members"]]
         state_signals = []
         for m, call in zip(w["members"], api_calls):
@@ -118,4 +130,4 @@ def process_session(db: Session, session_id: str) -> dict:
             state_before=snaps["before"], state_after=snaps["after"],
         ))
     db.commit()
-    return {"windows": len(windows)}
+    return {"windows": len(windows), "kept": kept}

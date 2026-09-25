@@ -4,7 +4,8 @@ import re
 from sqlalchemy.orm import Session
 
 from app.llm.gateway import complete
-from app.models import Alignment, OutcomeAssertion, Skill
+from app.learning.evidence import sync_evidence_edges
+from app.models import Alignment, OutcomeAssertion, Skill, SkillStrategy
 
 PASCAL = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 
@@ -73,6 +74,8 @@ def induce_skill(db: Session, alignment_id: int) -> Skill:
     if old_skill_ids:
         db.query(OutcomeAssertion).filter(OutcomeAssertion.skill_id.in_(old_skill_ids)).delete(
             synchronize_session=False)
+        db.query(SkillStrategy).filter(SkillStrategy.skill_id.in_(old_skill_ids)).delete(
+            synchronize_session=False)
     db.query(Skill).filter(Skill.alignment_id == alignment_id).delete()
     skill = Skill(
         alignment_id=alignment_id, name=name, description=desc, status=status,
@@ -81,6 +84,18 @@ def induce_skill(db: Session, alignment_id: int) -> Skill:
         evidence_count=len(alignment.session_ids), notes=notes,
     )
     db.add(skill)
+    db.flush()
+    # 多路径分桶落地：每桶一条策略（主桶亦记录），签名=桶内骨架序列
+    for bucket in alignment.buckets or [{"sessions": alignment.session_ids,
+                                         "skeleton": alignment.skeleton}]:
+        sigs = "|".join(step.get("signature", "") for step in bucket.get("skeleton") or [])
+        if not sigs:
+            continue
+        db.add(SkillStrategy(skill_id=skill.id, strategy_signature=sigs,
+                             skeleton=bucket.get("skeleton"),
+                             evidence_count=len(bucket.get("sessions") or [])))
+    # 证据图边同步（全局资产，幂等累加，re-induce 不清）
+    sync_evidence_edges(db, alignment)
     db.commit()
     db.refresh(skill)
     return skill

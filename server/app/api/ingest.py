@@ -6,7 +6,7 @@ from app.db import SessionLocal
 from app.ingestion.alignment import align_skeletons, collect_window_params
 from app.ingestion.process import load_windows, process_session
 from app.ingestion.variables import input_variables, param_variables
-from app.models import Alignment, RawEvent, RecordingSession, SemanticAction
+from app.models import Alignment, FilteredWindow, RawEvent, RecordingSession, SemanticAction
 from app.schemas import AlignRequest
 
 router = APIRouter()
@@ -43,6 +43,17 @@ async def list_semantic_actions(session_id: str, db: Session = Depends(get_db)) 
     ]
 
 
+@router.get("/sessions/{session_id}/filtered-windows")
+async def list_filtered_windows(session_id: str, db: Session = Depends(get_db)) -> list:
+    """S10 Task2：噪声过滤决策审计（C3——不删 raw，可回放重过滤）。"""
+    if not db.get(RecordingSession, session_id):
+        raise HTTPException(status_code=404, detail="session not found")
+    rows = db.query(FilteredWindow).filter(
+        FilteredWindow.session_id == session_id
+    ).order_by(FilteredWindow.window_seq).all()
+    return [{"window_seq": r.window_seq, "reason": r.reason} for r in rows]
+
+
 @router.post("/align")
 async def align(body: AlignRequest, db: Session = Depends(get_db)) -> dict:
     for sid in body.session_ids:
@@ -51,7 +62,9 @@ async def align(body: AlignRequest, db: Session = Depends(get_db)) -> dict:
         if db.query(SemanticAction).filter(SemanticAction.session_id == sid).count() == 0:
             raise HTTPException(status_code=409, detail="session not processed")
     windows_per_session = [(sid, load_windows(db, sid)) for sid in body.session_ids]
-    skeleton = align_skeletons(windows_per_session)
+    aligned = align_skeletons(windows_per_session)
+    skeleton = aligned["skeleton"]
+    buckets = aligned["buckets"]
     pvars = param_variables(skeleton, windows_per_session)
     events_per_session = []
     for sid, _ in windows_per_session:
@@ -63,13 +76,14 @@ async def align(body: AlignRequest, db: Session = Depends(get_db)) -> dict:
     window_params = collect_window_params(db, body.session_ids)
     row = Alignment(session_ids=body.session_ids, skeleton=skeleton,
                     param_variables=pvars, input_variables=ivars,
-                    window_params=window_params)
+                    window_params=window_params, buckets=buckets)
     db.add(row)
     db.commit()
     db.refresh(row)
     return {"alignment_id": row.id, "skeleton": skeleton,
             "param_variables": pvars, "input_variables": ivars,
-            "window_params": window_params}
+            "window_params": window_params,
+            "buckets": [{"sessions": b["sessions"]} for b in buckets]}
 
 
 @router.get("/alignments/{alignment_id}")
