@@ -249,6 +249,15 @@ class AgentRun(Base):
     error_text: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
+class CanvasDag(Base):
+    """S14 H2：编排画布 DAG（版本化保存——每次保存新行，不覆盖旧版本）。"""
+    __tablename__ = "canvas_dag"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100))
+    dag: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
 class DeltaReport(Base):
     __tablename__ = "delta_report"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)

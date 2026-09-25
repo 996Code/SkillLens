@@ -9,6 +9,7 @@ from starlette.exceptions import HTTPException
 from app.api import (
     audit,
     baseline,
+    canvas,
     cards,
     change,
     discoveries,
@@ -45,6 +46,20 @@ class SPAStaticFiles(StaticFiles):
 async def _lifespan(app: FastAPI):
     # S13 F1：NIGHTLY_CRON=nightly 时拉起夜间图调度循环（默认 off 不启动）
     from app.agents.scheduler import start_nightly_scheduler
+    # S14 H4：启动时若 canvas_dag 空则播种预置"定向回归流水线"；
+    # 迁移未跑（表缺失）时跳过不阻断启动
+    from app.db import SessionLocal
+    try:
+        from app.agents.canvas import ensure_preset
+        db = SessionLocal()
+        try:
+            ensure_preset(db)
+        finally:
+            db.close()
+    except Exception as exc:
+        # 播种非关键路径：迁移未跑/库锁等跳过，但必须留痕区分真实故障
+        import logging
+        logging.warning("canvas 预置播种跳过: %s", exc)
     await start_nightly_scheduler()
     yield
 
@@ -69,6 +84,7 @@ app.include_router(reports.router, prefix=API_PREFIX)
 app.include_router(audit.router, prefix=API_PREFIX)
 app.include_router(discoveries.router, prefix=API_PREFIX)
 app.include_router(impact.router, prefix=API_PREFIX)
+app.include_router(canvas.router, prefix=API_PREFIX)
 
 # StaticFiles mount 在 "/" 会拦截一切路径——必须放在全部 include_router 之后，
 # FastAPI 按注册顺序匹配路由，/api/v1/* 先命中 API，其余落到静态托管（SPA fallback）。
