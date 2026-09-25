@@ -192,6 +192,88 @@ export interface BaselineCompare {
   };
 }
 
+// ---------- 类型（S10.5 块M 审计页） ----------
+
+export interface AuditSession {
+  session_id: string;
+  source: string; // demo | real_traffic
+  note: string;
+  created_at: string;
+  event_count: number;
+  filtered_count: number;
+  semantic_action_count: number;
+}
+
+export interface EvidenceEdgeItem {
+  src: string;
+  dst: string;
+  type: string; // contains | calls
+  evidence_count: number;
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface LlmLogItem {
+  id: number;
+  purpose: string;
+  provider: string;
+  model: string;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  latency_ms: number | null;
+  created_at: string;
+  prompt_head: string; // 界面摘要（200 字符），完整审计走 DB 直查
+  response_head: string;
+}
+
+export interface TraceWindow {
+  window_seq: number;
+  anchor_type: string;
+  anchor_label: string | null;
+  kept: boolean;
+  filter_reason: string;
+  api_count: number;
+  state_signal_count: number;
+  has_state_snapshot: boolean;
+}
+
+export interface TraceSemanticAction {
+  window_seq: number;
+  anchor_label: string | null;
+  api_templates: (string | null)[];
+  state_before_forms: number | null;
+  state_after_forms: number | null;
+}
+
+export interface TraceAlignment {
+  id: number;
+  skeleton_steps: number;
+  bucket_count: number;
+}
+
+export interface TraceSkill {
+  id: number;
+  name: string;
+  status: string;
+  confidence: number;
+}
+
+export interface TraceReplayRun {
+  id: number;
+  status: string;
+  mode: string;
+  created_at: string;
+}
+
+export interface SessionTrace {
+  session: AuditSession;
+  windows: TraceWindow[];
+  semantic_actions: TraceSemanticAction[];
+  alignments: TraceAlignment[];
+  skills: TraceSkill[];
+  replay_runs: TraceReplayRun[];
+}
+
 // ---------- API 函数 ----------
 
 export function getSkills(): Promise<SkillListItem[]> {
@@ -216,6 +298,32 @@ export function getExpectedDelta(id: number | string): Promise<ExpectedDelta> {
 
 export function getReplayRun(id: number | string): Promise<ReplayRunDetail> {
   return get<ReplayRunDetail>(`/api/v1/replay-runs/${id}`);
+}
+
+// ---------- S10.5 块M：审计端点（全只读） ----------
+
+export function getAuditSessions(): Promise<AuditSession[]> {
+  return get<AuditSession[]>("/api/v1/audit/sessions");
+}
+
+export function getEvidenceEdges(
+  type?: string,
+  srcLike?: string,
+): Promise<EvidenceEdgeItem[]> {
+  const params = new URLSearchParams();
+  if (type) params.set("type", type);
+  if (srcLike) params.set("src_like", srcLike);
+  const qs = params.toString();
+  return get<EvidenceEdgeItem[]>(`/api/v1/audit/evidence-edges${qs ? `?${qs}` : ""}`);
+}
+
+export function getLlmLogs(): Promise<LlmLogItem[]> {
+  return get<LlmLogItem[]>("/api/v1/audit/llm-logs");
+}
+
+export function getSessionTrace(sessionId: string): Promise<SessionTrace> {
+  return get<SessionTrace>(
+    `/api/v1/audit/sessions/${encodeURIComponent(sessionId)}/trace`);
 }
 
 /** 触发回放观测（observe，同步返回：server 处理完才返回，无需轮询）。

@@ -10,6 +10,7 @@
       <nav>
         <RouterLink to="/skills">Skills</RouterLink>
         <RouterLink to="/reports/1">Reports</RouterLink>
+        <RouterLink to="/audit">审计</RouterLink>
       </nav>
     </header>
     <main class="content">

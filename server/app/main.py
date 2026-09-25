@@ -6,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException
 
 from app.api import (
+    audit,
     baseline,
     cards,
     change,
@@ -54,6 +55,7 @@ app.include_router(change.router, prefix=API_PREFIX)
 app.include_router(baseline.router, prefix=API_PREFIX)
 app.include_router(cards.router, prefix=API_PREFIX)
 app.include_router(reports.router, prefix=API_PREFIX)
+app.include_router(audit.router, prefix=API_PREFIX)
 
 # StaticFiles mount 在 "/" 会拦截一切路径——必须放在全部 include_router 之后，
 # FastAPI 按注册顺序匹配路由，/api/v1/* 先命中 API，其余落到静态托管（SPA fallback）。
