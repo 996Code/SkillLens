@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.change.expected import generate_expected_delta, verify_delta
+from app.change.expected import generate_expected_delta, link_discoveries, verify_delta
 from app.db import SessionLocal
 from app.models import ExpectedDelta, ReplayRun
 
@@ -53,7 +53,10 @@ async def confirm_expected(delta_id: int, body: ConfirmRequest,
     row.status = "confirmed"
     row.reviewed_by = body.reviewed_by
     db.commit(); db.refresh(row)
-    return {"id": row.id, "status": row.status, "changes": row.changes}
+    # S12 N2：确认成功后先验对齐——changes 与 discovered_feature 匹配 → linked
+    linked = link_discoveries(db, row)
+    return {"id": row.id, "status": row.status, "changes": row.changes,
+            "linked_discoveries": linked}
 
 
 class ObserveRequest(BaseModel):

@@ -97,3 +97,91 @@ async def test_card_without_run_last_run_null(client, monkeypatch):
 
 async def test_card_404(client):
     assert (await client.get("/api/v1/skills/99999/card")).status_code == 404
+
+
+# ---------- S12 N4 层5：断言观测一致性端点 ----------
+
+def _api_status_result(status, passed=True):
+    """与 assert_eval.evaluate_assertions 输出同构的 api_status 结果行。
+    模板用 templatize 后的 /a/{id}/save（种子 URL /a/1/save 的模板形态）。"""
+    return {"kind": "api_status",
+            "payload": {"api_template": "/a/{id}/save", "expect_status": 200},
+            "observed_status": status, "passed": passed}
+
+
+async def test_consistency_same_observed_across_runs(client, monkeypatch):
+    """同 skill 两 run 观测相同 → consistent=true；ui_text 等无观测断言跳过。"""
+    skill_id = await _seed_skill(client, monkeypatch)
+    _add_replay_run(skill_id, [_api_status_result(200)])
+    _add_replay_run(skill_id, [_api_status_result(200)])
+    resp = await client.get(f"/api/v1/skills/{skill_id}/consistency")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["skill_id"] == skill_id
+    assert body["runs"] == 2
+    assert body["consistent"] is True
+    assert body["inconsistent_count"] == 0
+    # 只输出有观测的断言（api_status）；state_signal/field_change 无观测行 → 跳过
+    assert [r["kind"] for r in body["assertions"]] == ["api_status"]
+    row = body["assertions"][0]
+    assert row["observed_values"] == [200, 200]
+    assert row["consistent"] is True
+
+
+async def test_consistency_different_observed_across_runs(client, monkeypatch):
+    """两 run 观测不同（200 vs 500）→ consistent=false，inconsistent_count 计数。"""
+    skill_id = await _seed_skill(client, monkeypatch)
+    _add_replay_run(skill_id, [_api_status_result(200)])
+    _add_replay_run(skill_id, [_api_status_result(500, passed=False)])
+    body = (await client.get(f"/api/v1/skills/{skill_id}/consistency")).json()
+    assert body["consistent"] is False
+    assert body["inconsistent_count"] == 1
+    row = body["assertions"][0]
+    assert row["observed_values"] == [200, 500]
+    assert row["consistent"] is False
+
+
+async def test_consistency_no_runs_vacuously_consistent(client, monkeypatch):
+    """无 replay_run（或全空 assertion_results）→ 无观测断言，整体一致。"""
+    skill_id = await _seed_skill(client, monkeypatch)
+    _add_replay_run(skill_id, None)  # shadow run：assertion_results 为空不计入
+    body = (await client.get(f"/api/v1/skills/{skill_id}/consistency")).json()
+    assert body["runs"] == 0
+    assert body["assertions"] == []
+    assert body["consistent"] is True
+
+
+async def test_consistency_404(client):
+    assert (await client.get("/api/v1/skills/99999/consistency")).status_code == 404
+
+
+async def test_consistency_matches_realistic_result_rows(client):
+    """回归：assert_eval 结果行不含 kind（真形态）——匹配键不依赖 kind。"""
+    import json as _json
+    from app.db import SessionLocal
+    from app.models import OutcomeAssertion, ReplayRun, Skill
+    db = SessionLocal()
+    try:
+        skill = Skill(alignment_id=999, name="S", description="d", status="learned",
+                      skeleton=[], param_variables=[], input_variables=[],
+                      confidence=1.0, evidence_count=1)
+        db.add(skill); db.flush()
+        a = OutcomeAssertion(skill_id=skill.id, layer=3, kind="api_status",
+                             api_template="/x/save",
+                             payload={"api_template": "/x/save", "expect_status": 200})
+        db.add(a); db.flush()
+        # 真形态结果行：无 kind 键（与 assert_eval 输出一致）
+        rows = [{"payload": {"api_template": "/x/save", "expect_status": 200},
+                 "observed_status": 200, "passed": True}]
+        for st in (200, 200):
+            db.add(ReplayRun(skill_id=skill.id, mode="execute", status="pass",
+                             plan={}, executed=[], assertion_results=rows))
+        db.commit()
+        sid = skill.id
+    finally:
+        db.close()
+    r = await client.get(f"/api/v1/skills/{sid}/consistency")
+    body = r.json()
+    assert body["assertions"], body
+    assert body["assertions"][0]["observed_values"] == [200, 200]
+    assert body["consistent"] is True

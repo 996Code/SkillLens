@@ -114,4 +114,43 @@ describe("DeltaReport", () => {
     await flush();
     expect(root.textContent).toContain("报告不存在");
   });
+
+  // S12 Task 2（N2 先验对齐）：需求上下文区渲染"已发现实现"徽标与模板列表。
+  it("renders linked discoveries badge in requirement context", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/reports/1")) {
+        return new Response(JSON.stringify(report), { status: 200 });
+      }
+      if (url.includes("/api/v1/expected-deltas/5")) {
+        return new Response(JSON.stringify(expectedDelta), { status: 200 });
+      }
+      if (url.includes("/api/v1/discoveries")) {
+        return new Response(JSON.stringify([
+          {
+            id: 9,
+            session_id: "s1",
+            api_template: "/api/new-feature",
+            anchor_label: null,
+            observed_count: 2,
+            status: "linked",
+            linked_delta_id: 5,
+            first_seen: "2026-09-25T10:00:00",
+            last_seen: "2026-09-25T11:00:00",
+          },
+        ]), { status: 200 });
+      }
+      return new Response("x", { status: 404 });
+    }));
+
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    await mountReport(root, "/reports/1");
+    await flush();
+    await flush();
+
+    expect(root.textContent).toContain("已发现实现");
+    expect(root.textContent).toContain("×1");
+    expect(root.textContent).toContain("/api/new-feature");
+  });
 });

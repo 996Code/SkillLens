@@ -3,14 +3,16 @@
 // 只读边界：不出现任何编辑入口。
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
-import { getSkillCard } from "../api";
-import type { AssertionRow, SkillCard } from "../api";
+import { getSkillCard, getSkillConsistency } from "../api";
+import type { AssertionRow, SkillCard, SkillConsistency } from "../api";
 
 const route = useRoute();
 const card = ref<SkillCard | null>(null);
 const loading = ref(true);
 const notFound = ref(false);
 const error = ref("");
+// S12 N4 层5：断言观测一致性（独立请求，失败/形状异常只藏行不炸页）
+const consistency = ref<SkillConsistency | null>(null);
 
 const confPct = computed(() =>
   card.value ? `${Math.round(card.value.confidence * 100)}%` : "");
@@ -53,6 +55,12 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+  // S12 N4 层5：一致性旁挂加载（非关键路径，失败静默藏行）
+  getSkillConsistency(String(route.params.id))
+    .then((c) => {
+      if (typeof c?.consistent === "boolean") consistency.value = c;
+    })
+    .catch(() => {});
 });
 </script>
 
@@ -79,6 +87,14 @@ onMounted(async () => {
           <div><dt>置信度</dt><dd>{{ confPct }}（{{ card.confidence }}）</dd></div>
           <div><dt>证据数</dt><dd>{{ card.evidence_count }}</dd></div>
           <div><dt>断言数</dt><dd>{{ card.assertions.length }}</dd></div>
+          <div v-if="consistency">
+            <dt>一致性</dt>
+            <dd data-testid="consistency">
+              <span v-if="consistency.runs === 0" class="muted">暂无回放观测</span>
+              <span v-else-if="consistency.consistent" class="ok">一致 ✓</span>
+              <span v-else class="error">{{ consistency.inconsistent_count }} 项不一致</span>
+            </dd>
+          </div>
         </dl>
         <p v-if="card.notes" class="notes">备注：{{ card.notes }}</p>
       </header>
@@ -294,6 +310,9 @@ onMounted(async () => {
 }
 .muted {
   color: #666;
+}
+.ok {
+  color: #1e7e34;
 }
 .error {
   color: #c62828;

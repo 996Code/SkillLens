@@ -4,7 +4,7 @@ import re
 from sqlalchemy.orm import Session
 
 from app.llm.gateway import complete
-from app.models import ExpectedDelta
+from app.models import DiscoveredFeature, ExpectedDelta
 
 ALLOWED_TYPES = {"ui_action", "api_add", "api_status"}
 MAX_CHANGES = 20
@@ -67,3 +67,42 @@ def generate_expected_delta(db: Session, requirement_text: str,
                         feature=feature, changes=changes, status="draft", notes=notes)
     db.add(row); db.commit(); db.refresh(row)
     return row
+
+
+def link_discoveries(db: Session, delta: ExpectedDelta) -> int:
+    """S12 N2 先验对齐：confirmed delta 的 changes 与 discovered_feature 匹配 → linked。
+
+    匹配规则（全确定性，不调 LLM）：
+    - api_add：与 api_template 精确匹配；
+    - ui_action：与纯 UI 发现行（api_template 为空）的 anchor_label 子串匹配，
+      任一方向包含即命中（"保存" ⊂ "保存按钮改名为提交"，反之亦然）。
+    只处理 status="new" 的行（已 linked/dismissed 的不动）。返回链接行数。
+    """
+    linked = 0
+    for c in delta.changes or []:
+        ctype = c.get("type")
+        value = str(c.get("value") or "")
+        if not value:
+            continue
+        if ctype == "api_add":
+            rows = db.query(DiscoveredFeature).filter(
+                DiscoveredFeature.api_template == value,
+                DiscoveredFeature.status == "new",
+            ).all()
+        elif ctype == "ui_action":
+            rows = [
+                r for r in db.query(DiscoveredFeature).filter(
+                    DiscoveredFeature.api_template.is_(None),
+                    DiscoveredFeature.status == "new",
+                ).all()
+                if r.anchor_label and (r.anchor_label in value or value in r.anchor_label)
+            ]
+        else:
+            continue
+        for r in rows:
+            r.status = "linked"
+            r.linked_delta_id = delta.id
+            linked += 1
+    if linked:
+        db.commit()
+    return linked

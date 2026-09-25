@@ -87,3 +87,69 @@ test("敏感 label 的字段值被脱敏（token/secret 类不走明文）", () 
   expect(token.value).not.toContain("sk-real-secret");
   expect(normal.value).toBe("normal-value");
 });
+
+// ---------- S12 N3 层1：toast 采集 ----------
+
+describe("collectSnapshot toasts", () => {
+  it("采集可见 .n-message/[class*=message] 文本；隐藏的不采；无 toast 不带键", () => {
+    const root = make(`
+      <div>
+        <div class="n-message">保存成功</div>
+        <div class="x-message">已发布</div>
+        <div class="n-message" hidden>隐藏的不采</div>
+      </div>
+    `);
+    document.body.appendChild(root);
+    const snap = collectSnapshot(document, "after");
+    expect(snap.toasts).toEqual(["保存成功", "已发布"]);
+    root.remove();
+
+    // 无 toast 的页面：快照不携带 toasts 键（体积红线：有值才带）
+    const bare = make(`<div><input aria-label="a" value="b" /></div>`);
+    document.body.appendChild(bare);
+    const snap2 = collectSnapshot(document, "before");
+    expect(snap2.toasts).toBeUndefined();
+    bare.remove();
+  });
+
+  it("超过 3 条截断到 3；单条超 100 字符截断", () => {
+    const root = document.createElement("div");
+    for (let i = 0; i < 5; i++) {
+      const t = document.createElement("div");
+      t.className = "n-message";
+      t.textContent = `toast${i}`;
+      root.appendChild(t);
+    }
+    const long = document.createElement("div");
+    long.className = "n-message";
+    long.textContent = "长".repeat(200);
+    root.appendChild(long);
+    document.body.appendChild(root);
+    const snap = collectSnapshot(document, "after");
+    expect(snap.toasts).toEqual(["toast0", "toast1", "toast2"]);
+    root.remove();
+
+    const root2 = document.createElement("div");
+    const long2 = document.createElement("div");
+    long2.className = "n-message";
+    long2.textContent = "x".repeat(200);
+    root2.appendChild(long2);
+    document.body.appendChild(root2);
+    const snap2 = collectSnapshot(document, "after");
+    expect(snap2.toasts).toEqual(["x".repeat(100)]);
+    root2.remove();
+  });
+
+  it("含 token 等敏感词的 toast 整条丢弃（脱敏红线）", () => {
+    const root = make(`
+      <div>
+        <div class="n-message">token 已刷新</div>
+        <div class="n-message">保存成功</div>
+      </div>
+    `);
+    document.body.appendChild(root);
+    const snap = collectSnapshot(document, "after");
+    expect(snap.toasts).toEqual(["保存成功"]);
+    root.remove();
+  });
+});

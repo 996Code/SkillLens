@@ -71,11 +71,26 @@ def generate_assertions(db: Session, skill_id: int) -> list[OutcomeAssertion]:
         field_key = payload.get("field") or payload.get("label") or ""
         seen.setdefault((kind, tpl, field_key), (kind, tpl, layer, payload))
 
+    # 层4 历史成功样本是资产：重建断言前按签名快照计数，重建后回填
+    # （与 evidence_edge/discovered_feature 的"不随重建清零"语义一致）。
+    old_rows = db.query(OutcomeAssertion).filter(
+        OutcomeAssertion.skill_id == skill_id).all()
+    prior_counts: dict[tuple, int] = {}
+    for r in old_rows:
+        sig = (r.kind, r.api_template,
+               (r.payload or {}).get("field") or (r.payload or {}).get("label") or "")
+        prior_counts[sig] = r.evidence_count or 0
+
     db.query(OutcomeAssertion).filter(OutcomeAssertion.skill_id == skill_id).delete()
     written = []
     for kind, tpl, layer, payload in seen.values():
+        field_key = payload.get("field") or payload.get("label") or ""
+        sig = (kind, tpl, field_key)
         row = OutcomeAssertion(skill_id=skill_id, layer=layer, kind=kind,
-                               api_template=tpl, payload=payload)
+                               api_template=tpl, payload=payload,
+                               evidence_count=prior_counts.get(sig, 0))
+        if row.evidence_count >= 3:
+            row.payload = {**payload, "layer4_verified": True}
         db.add(row)
         written.append(row)
     db.commit()

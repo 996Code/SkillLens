@@ -65,3 +65,23 @@ def test_evaluate_ui_text_label_missing_fails():
                                "labels": [], "tables": []})
     assert r[0]["passed"] is False, r
     assert r[0]["skipped"] == "回放快照中字段缺失"
+
+
+def test_evaluate_toast_signal_from_snapshot():
+    """层1 toast 断言走 after 快照 toasts 通道（不走响应体）。"""
+    from app.replay.assert_eval import evaluate_assertions
+    assertions = [{"kind": "state_signal",
+                    "payload": {"api_template": "/x/save", "field": "toast",
+                                "expect_value": "保存成功"}}]
+    # 快照含目标 toast → PASS
+    r = evaluate_assertions(assertions, [{"url": "http://t/x/save", "status": 200, "body": ""}],
+                            after_snapshot={"toasts": ["保存成功"]})
+    assert r[0]["passed"] is True
+    # 快照无该 toast → FAIL
+    r2 = evaluate_assertions(assertions, [{"url": "http://t/x/save", "status": 200, "body": ""}],
+                             after_snapshot={"toasts": ["别的提示"]})
+    assert r2[0]["passed"] is False
+    # 无快照能力 → skipped（fail-open，不计失败）
+    r3 = evaluate_assertions(assertions, [{"url": "http://t/x/save", "status": 200, "body": ""}],
+                              after_snapshot=None)
+    assert r3[0]["passed"] is True and r3[0].get("skipped")

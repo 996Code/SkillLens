@@ -343,4 +343,53 @@ describe("SkillDetail", () => {
     await flush();
     expect(root.textContent).toContain("404");
   });
+
+  // ---------- S12 N4 层5：概要区"一致性"行（/consistency 端点） ----------
+
+  function stubCardAndConsistency(consistency: Record<string, unknown>) {
+    return vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/consistency")) {
+        return new Response(JSON.stringify(consistency), {
+          status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify(card), {
+        status: 200, headers: { "content-type": "application/json" } });
+    });
+  }
+
+  it("renders consistency row: all consistent vs N inconsistent", async () => {
+    // 全一致 → "一致 ✓"
+    vi.stubGlobal("fetch", stubCardAndConsistency({
+      skill_id: 3, runs: 2, consistent: true, inconsistent_count: 0,
+      assertions: [
+        { assertion_id: 1, kind: "api_status", observed_values: [200, 200], consistent: true },
+      ],
+    }));
+    let root = document.createElement("div");
+    document.body.appendChild(root);
+    mountView(root, SkillDetail, "/skills/3");
+    await flush();
+    await flush();
+    expect(root.querySelector("[data-testid='consistency']")?.textContent)
+      .toContain("一致 ✓");
+    root.remove();
+
+    // 有不一致 → "N 项不一致"
+    vi.stubGlobal("fetch", stubCardAndConsistency({
+      skill_id: 3, runs: 2, consistent: false, inconsistent_count: 1,
+      assertions: [
+        { assertion_id: 1, kind: "api_status", observed_values: [200, 200], consistent: true },
+        { assertion_id: 2, kind: "state_signal", observed_values: [200, 500], consistent: false },
+      ],
+    }));
+    root = document.createElement("div");
+    document.body.appendChild(root);
+    mountView(root, SkillDetail, "/skills/3");
+    await flush();
+    await flush();
+    expect(root.querySelector("[data-testid='consistency']")?.textContent)
+      .toContain("1 项不一致");
+    root.remove();
+  });
 });

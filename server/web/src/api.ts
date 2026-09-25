@@ -117,6 +117,20 @@ export interface ExpectedDelta {
   notes: string;
 }
 
+// ---------- 类型（S12 N1/N2：新功能增量发现） ----------
+
+export interface DiscoveredFeatureItem {
+  id: number;
+  session_id: string;
+  api_template: string | null; // null = 纯 UI 锚点 label 发现
+  anchor_label: string | null;
+  observed_count: number;
+  status: string; // new | linked | dismissed
+  linked_delta_id: number | null;
+  first_seen: string;
+  last_seen: string;
+}
+
 // ---------- 类型（回放触发与结果，Task 5） ----------
 
 export interface ObserveRequest {
@@ -172,6 +186,23 @@ export interface ReplayRunDetail {
   assertion_results: AssertionResult[] | null;
   attribution: string | null;
   artifact_path: string;
+}
+
+// ---------- 类型（S12 N4 层5：断言观测一致性） ----------
+
+export interface ConsistencyItem {
+  assertion_id: number;
+  kind: string;
+  observed_values: unknown[]; // 各 replay_run 的 observed_status 集合（时序）
+  consistent: boolean;
+}
+
+export interface SkillConsistency {
+  skill_id: number;
+  runs: number; // assertion_results 非空的 replay_run 数
+  assertions: ConsistencyItem[]; // 无观测的断言（ui_text 等）不输出
+  consistent: boolean;
+  inconsistent_count: number;
 }
 
 // ---------- 类型（S10 基线对比，Task 5） ----------
@@ -288,6 +319,11 @@ export function getSkillCard(id: number | string): Promise<SkillCard> {
   return get<SkillCard>(`/api/v1/skills/${id}/card`);
 }
 
+/** S12 N4 层5：同 skill 多次 replay 的断言观测值一致性。 */
+export function getSkillConsistency(id: number | string): Promise<SkillConsistency> {
+  return get<SkillConsistency>(`/api/v1/skills/${id}/consistency`);
+}
+
 export function getReport(id: number | string): Promise<Report> {
   return get<Report>(`/api/v1/reports/${id}`);
 }
@@ -298,6 +334,14 @@ export function getExpectedDelta(id: number | string): Promise<ExpectedDelta> {
 
 export function getReplayRun(id: number | string): Promise<ReplayRunDetail> {
   return get<ReplayRunDetail>(`/api/v1/replay-runs/${id}`);
+}
+
+/** S12 N2：按 delta 查已链接的发现（报告页"已发现实现"徽标）。 */
+export function getLinkedDiscoveries(
+  deltaId: number | string,
+): Promise<DiscoveredFeatureItem[]> {
+  return get<DiscoveredFeatureItem[]>(
+    `/api/v1/discoveries?status=linked&linked_delta_id=${deltaId}`);
 }
 
 // ---------- S10.5 块M：审计端点（全只读） ----------
