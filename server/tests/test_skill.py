@@ -272,3 +272,34 @@ async def test_list_skills_source_field(client, monkeypatch):
     by_id = {s["id"]: s for s in skills}
     assert by_id[demo_skill]["source"] == "demo"
     assert by_id[real_skill]["source"] == "real_traffic"
+
+
+async def test_induce_empty_skeleton_skips_llm(client, monkeypatch):
+    """空骨架对齐（不同锚点流不归并）→ 不调 LLM（防幻觉命名），candidate+notes。"""
+    import json as _json
+    calls = []
+    import app.llm.gateway as gw
+    orig = gw.complete
+    def counting(db, purpose, prompt):
+        calls.append(purpose)
+        return orig(db, purpose, prompt)
+    monkeypatch.setattr(gw, "complete", counting)
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_FAKE_RESPONSE", _json.dumps({"name": "Hallucinated", "description": "x"}))
+    # 造两个不同锚点的单窗会话 → 空骨架
+    sids = []
+    for label in ("国内", "国际"):
+        sid = (await client.post("/api/v1/sessions", json={})).json()["session_id"]
+        await client.post(f"/api/v1/sessions/{sid}/events", json=[
+            {"seq": 0, "ts": 0, "kind": "action",
+             "payload": {"type": "click", "target": {"label": label}}},
+            {"seq": 1, "ts": 100, "kind": "network",
+             "payload": {"method": "GET", "url": f"/news/{label}", "status": 200,
+                         "resBody": '{"code":0}'}}])
+        await client.post(f"/api/v1/sessions/{sid}/process")
+        sids.append(sid)
+    aid = (await client.post("/api/v1/align", json={"session_ids": sids})).json()["alignment_id"]
+    skill = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
+    assert skill["status"] == "candidate"
+    assert "骨架为空" in skill["notes"]
+    assert calls == []  # LLM 零调用
