@@ -38,3 +38,23 @@ describe("inputKey", () => {
     expect(inputKey(ta)).toBe("desc");
   });
 });
+
+test("框架自动生成 id 被跳过（rc_select_N/ant-/纯数字）", () => {
+  const rc = document.createElement("input");
+  rc.id = "rc_select_0";
+  rc.setAttribute("placeholder", "请输入搜索关键词");
+  expect(inputKey(rc)).toBe("请输入搜索关键词");
+
+  const ant = document.createElement("input");
+  ant.id = "ant_input_3";
+  ant.setAttribute("aria-label", "用户名");
+  expect(inputKey(ant)).toBe("用户名");
+
+  const numeric = document.createElement("input");
+  numeric.id = "123";
+  expect(inputKey(numeric)).toBeNull();
+
+  const normal = document.createElement("input");
+  normal.id = "orderName";
+  expect(inputKey(normal)).toBe("orderName");
+});

@@ -174,6 +174,26 @@ class DiscoveredFeature(Base):
     linked_delta_id: Mapped[int | None] = mapped_column(nullable=True)
 
 
+class GenericSkill(Base):
+    """S17 块 L：通用能力层资产（跨系统归纳的通用模板）。
+
+    - status: candidate（归纳落库默认，含回查失败）| learned（promote 晋升后）；
+    - slots_schema: [{slot, description, examples: {skill_id: 值}}]——LLM 提议、
+      确定性回查（每个 examples 值必须能在源 skill 骨架/变量/断言中找到）；
+    - source_skill_ids/evidence_refs：源 skill 引用与证据引用（骨架步数/变量名）。
+    """
+    __tablename__ = "generic_skill"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100))
+    description: Mapped[str] = mapped_column(Text)
+    slots_schema: Mapped[list] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(20), default="candidate")
+    source_skill_ids: Mapped[list] = mapped_column(JSON)
+    evidence_refs: Mapped[list] = mapped_column(JSON)
+    notes: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
 class LlmCallLog(Base):
     __tablename__ = "llm_call_log"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
