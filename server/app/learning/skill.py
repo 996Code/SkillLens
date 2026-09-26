@@ -57,6 +57,25 @@ def _confidence(alignment: Alignment) -> float:
 
 def induce_skill(db: Session, alignment_id: int) -> Skill:
     alignment = db.get(Alignment, alignment_id)
+    # 空骨架（不同锚点流不归并的合法场景）→ 不调 LLM：无证据可命名，
+    # 调用只会产生幻觉名（网易实测：空骨架被命名为无关业务名）
+    if not alignment.skeleton:
+        old = db.query(Skill).filter(Skill.alignment_id == alignment_id).all()
+        for s in old:
+            db.query(SkillStrategy).filter(SkillStrategy.skill_id == s.id).delete()
+            db.query(OutcomeAssertion).filter(OutcomeAssertion.skill_id == s.id).delete()
+        db.query(Skill).filter(Skill.alignment_id == alignment_id).delete()
+        skill = Skill(
+            alignment_id=alignment_id, name="EmptyFlow", description="",
+            status="candidate", skeleton=[], param_variables=[],
+            input_variables=alignment.input_variables, confidence=0.0,
+            evidence_count=len(alignment.session_ids),
+            notes="骨架为空（各会话锚点无公共步），无可归纳流程",
+        )
+        db.add(skill)
+        db.commit()
+        db.refresh(skill)
+        return skill
     result = complete(db, "skill_naming", build_prompt(alignment))
     proposal = parse_llm_skill(result.text)
     status, name, desc, notes = "candidate", "Candidate", "", ""

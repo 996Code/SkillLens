@@ -217,6 +217,30 @@ class DevPlan(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
+class SynthFlow(Base):
+    """S19 T1：流程生成（证据支撑的目标分解 → 从未演示过的新流程）。
+
+    - status: proposed（生成落库默认，含回查失败）| executed | failed（T2）；
+    - steps: [{kind: goto|input|click, target, value?}]——LLM 只做目标分解，
+      确定性回查（verify_steps：每步 target 必须在证据集合中）；
+    - evidence_refs: 生成时引用的证据快照（skill_ids/anchors/variables/
+      pages/api_templates），供人工核对与 T4 真机演示追溯；
+    - notes: 回查失败原因（仍落库供人工看）或执行成功后的自学习提示；
+    - execution_log: T2 执行器每步结果（{step, kind, target, ok, error?}），
+      生成阶段为 NULL。
+    """
+    __tablename__ = "synth_flow"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    goal: Mapped[str] = mapped_column(Text)
+    system_hint: Mapped[str] = mapped_column(String(200))
+    steps: Mapped[list] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(20), default="proposed")
+    notes: Mapped[str] = mapped_column(String(500), default="")
+    evidence_refs: Mapped[list] = mapped_column(JSON)
+    execution_log: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
 class LlmCallLog(Base):
     __tablename__ = "llm_call_log"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
