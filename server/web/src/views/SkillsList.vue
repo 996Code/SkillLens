@@ -2,6 +2,7 @@
 // Task 3（S9 块C）：skill 卡片网格——GET /skills 列表 + 逐卡 /card 补断言数与 last_run 状态点。
 // S10 Task5：卡片 source 徽标（demo 灰 / real_traffic 绿）+ 顶部基线对比区块（C2 达标态）。
 import { onMounted, ref } from "vue";
+import { getGenericSkills, type GenericSkillItem } from "../api";
 import { getBaselineCompare, getSkillCard, getSkills } from "../api";
 import type { BaselineCompare, LastRun, SkillCard, SkillListItem } from "../api";
 
@@ -10,6 +11,7 @@ const cards = ref<Record<number, SkillCard>>({});
 const loading = ref(true);
 const error = ref("");
 const compare = ref<BaselineCompare | null>(null);
+const generics = ref<GenericSkillItem[]>([]);
 const compareError = ref("");
 
 function confPct(c: number): string {
@@ -53,6 +55,7 @@ onMounted(async () => {
   // 基线对比区块独立拉取：失败只降级该区块，不影响列表
   try {
     compare.value = await getBaselineCompare();
+    try { generics.value = await getGenericSkills(); } catch { /* fail-open */ }
   } catch (e) {
     compareError.value = e instanceof Error ? e.message : String(e);
   }
@@ -148,6 +151,22 @@ onMounted(async () => {
         </dl>
       </RouterLink>
     </div>
+  </section>
+
+  <section v-if="generics.length" class="block" data-testid="generic-skills">
+    <h2>通用能力层（跨系统 Skill）</h2>
+    <table class="tbl">
+      <thead><tr><th>名称</th><th>状态</th><th>源系统数</th><th>槽位</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr v-for="g in generics" :key="g.id">
+          <td class="mono">{{ g.name }}</td>
+          <td><span class="badge" :class="g.status === 'learned' ? 'badge-learned' : 'badge-candidate'">{{ g.status }}</span></td>
+          <td>{{ g.source_skill_ids.length }}</td>
+          <td>{{ g.slots_schema.length }}</td>
+          <td>{{ g.description }}</td>
+        </tr>
+      </tbody>
+    </table>
   </section>
 </template>
 

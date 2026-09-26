@@ -590,3 +590,17 @@ export async function createReview(
 }
 
 export { ApiError };
+
+export interface GenericSkillItem {
+  id: number;
+  name: string;
+  description: string;
+  status: string;
+  source_skill_ids: number[];
+  slots_schema: { slot: string; description: string }[];
+  notes: string;
+}
+
+export async function getGenericSkills(): Promise<GenericSkillItem[]> {
+  return get("/api/v1/generic-skills") as Promise<GenericSkillItem[]>;
+}
