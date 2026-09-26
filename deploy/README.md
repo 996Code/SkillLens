@@ -93,6 +93,9 @@ tar tzf skilllens-data.tgz | head   # 抽查非空
 
 **预期**：tar 列表含 `data/skilllens.db` 等文件。
 （volume 实名带 compose 项目前缀，`docker volume ls | grep skilllens` 确认。）
+**Git Bash（Windows）注意**：MSYS 会把容器内路径 `/backup/...` 改写成
+Windows 路径导致 `can't open` —— 命令前加 `MSYS_NO_PATHCONV=1`，且
+`-v` 挂载用显式 Windows 路径（如 `-v "D:/path:/backup"`）。
 
 ## 步骤 7：恢复（灾难恢复，已实测演练）
 

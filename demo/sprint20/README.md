@@ -9,7 +9,7 @@
 | J4 PII 规则配置化 | ✅ | `PII_PATTERNS` env（server 动态构造 SENSITIVE_KEY_RE + 插件 buildSensitiveRe 工厂）；自定义正则命中脱敏测试；.env.docker.example 示例 |
 | J5 性能收尾 | ✅ | 100KB reqBody diff 性能基准（100 次 <1s，回退全文路径实测）；镜像瘦身评估：chromium --with-deps 主导，多阶段构建收益有限——记录为已知取舍 |
 | J2 安装向导 | ✅ | deploy/README 重写为向导式：前置检查表 + 7 步骤（每步预期输出）+ 6 行故障排查表 |
-| J3 备份恢复演练 | ⏳ | compose 构建中（Windows 首建含 chromium 依赖层）——构建完成后执行 volume 备份→删卷→恢复→health+数据核对全流程 |
+| J3 备份恢复演练 | ✅ | **完整实测通过**（2026-09-27 Windows Docker）：容器 healthy → 造标记数据 → volume 备份（tgz 含 skilllens.db）→ compose down + 删卷 → tgz 恢复 → up → health ok + **标记会话 j3-drill-marker 完整回来**。发现并记录 Windows Git Bash 坑：MSYS 路径转换需 `MSYS_NO_PATHCONV=1`（已写入部署向导） |
 | — | 三套测试 | ✅ | server **279**（275→279）/ extension **31**（28→31）/ web 34 |
 
 ## J3 演练步骤（构建完成后执行）
