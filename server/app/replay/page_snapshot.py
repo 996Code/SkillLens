@@ -12,6 +12,8 @@ import time
 
 from playwright.async_api import Page
 
+from app import config
+
 MAX_FIELDS = 50
 MAX_VALUE_CHARS = 1024
 MAX_LABELS = 20
@@ -19,8 +21,23 @@ MAX_LABEL_CHARS = 100
 MAX_TABLES = 10
 REDACTED = "[REDACTED]"
 
-# 与 extension/src/shared/redact.ts 的 SENSITIVE_KEY_RE 同词表
-SENSITIVE_KEY_RE = re.compile(r"password|passwd|secret|token|authorization|cookie", re.I)
+# 与 extension/src/shared/redact.ts 的 BASE_SENSITIVE_PATTERNS 同词表；
+# J4：config.PII_PATTERNS（env 逗号分隔）追加私有化部署自定义敏感字段
+_BASE_SENSITIVE_PATTERNS = ["password", "passwd", "secret", "token", "authorization", "cookie"]
+
+
+def _rebuild_sensitive_re():
+    """基础词表 + config.PII_PATTERNS 合并构造敏感正则。
+
+    模块级构造一次；测试/配置刷新时重新调用（配合 importlib.reload(config)）。
+    """
+    global SENSITIVE_KEY_RE
+    parts = _BASE_SENSITIVE_PATTERNS + list(config.PII_PATTERNS)
+    SENSITIVE_KEY_RE = re.compile("|".join(parts), re.I)
+    return SENSITIVE_KEY_RE
+
+
+SENSITIVE_KEY_RE = _rebuild_sensitive_re()
 
 _FIELD_SELECTOR = "input, select, textarea"
 _LABEL_SELECTOR = '[class*="tag"], [class*="status"], [class*="badge"]'
