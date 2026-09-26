@@ -122,3 +122,24 @@ def test_truncate_exact_8192_boundary():
     assert r["truncated"] is False and r["sha256"] is None
     r2 = truncate_req_body("a" * 8193)
     assert r2["truncated"] is True and r2["sha256"] is not None
+
+
+def test_100kb_reqbody_diff_performance():
+    """J5 性能基准：100KB reqBody 经 8KB 截断后 diff，1 秒内完成（S7 截断保护的规模验证）。"""
+    import time
+    from app.ingestion.fielddiff import diff_bodies, truncate_req_body
+    big1 = '{"note": "' + "x" * 100_000 + '", "extra": 1}'
+    big2 = '{"note": "' + "y" * 100_000 + '", "extra": 2}'
+    t1 = truncate_req_body(big1)
+    t2 = truncate_req_body(big2)
+    assert t1["truncated"] and t2["truncated"]
+    # 截断致 JSON 解析失败时回退全文 diff（fieldchange 实际路径）——
+    # 100KB 字符串 diff 的性能基准
+    import json as _json
+    d1, d2 = _json.loads(big1), _json.loads(big2)
+    start = time.perf_counter()
+    for _ in range(100):
+        changes = diff_bodies(d1, d2)
+    elapsed = time.perf_counter() - start
+    assert elapsed < 1.0, f"100 次 100KB diff 耗时 {elapsed:.2f}s 超标"
+    assert changes
