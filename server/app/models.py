@@ -194,6 +194,29 @@ class GenericSkill(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
+class DevPlan(Base):
+    """S18 T1：夜间开发计划（需求 → LLM 结构化字段变更清单）。
+
+    - status: draft（生成落库默认，含回查失败）| confirmed（人工 confirm 后，
+      C1 延伸门控）| executed | error（T3 执行器状态）；
+    - changes: [{op: "add_field", field_type, label, key}]——LLM 提议、
+      确定性回查（op/field_type 白名单 + key 格式 + target_form 已知）；
+    - execution_log: T3 执行器逐步动作+响应摘要（C3），生成阶段为 NULL；
+    - notes: 回查失败原因（plan 仍落库 draft，人工看 notes 修订——
+      与 expected_delta 同模式）。
+    """
+    __tablename__ = "dev_plan"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    requirement_text: Mapped[str] = mapped_column(Text)
+    target_form: Mapped[str] = mapped_column(String(100))
+    changes: Mapped[list] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    execution_log: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    reviewed_by: Mapped[str] = mapped_column(String(100), default="")
+    notes: Mapped[str] = mapped_column(String(500), default="")
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
 class LlmCallLog(Base):
     __tablename__ = "llm_call_log"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
