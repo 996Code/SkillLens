@@ -23,3 +23,9 @@ ALLOWED_ORIGINS: list[str] = [
 PII_PATTERNS: list[str] = [
     p.strip() for p in os.environ.get("PII_PATTERNS", "").split(",") if p.strip()
 ]
+
+# S22 块 T 视觉回归阈值（私有化可调）：dHash 汉明距离初筛线 /
+# 逐像素通道容差 / 差异像素占比阈值（0.02 = 2%）。
+VISUAL_HASH_MAX_DISTANCE = int(os.environ.get("VISUAL_HASH_MAX_DISTANCE", "4"))
+VISUAL_PIXEL_TOLERANCE = int(os.environ.get("VISUAL_PIXEL_TOLERANCE", "16"))
+VISUAL_DIFF_THRESHOLD = float(os.environ.get("VISUAL_DIFF_THRESHOLD", "0.02"))

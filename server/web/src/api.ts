@@ -508,6 +508,71 @@ export function getSkillConsistency(id: number | string): Promise<SkillConsisten
   return get<SkillConsistency>(`/api/v1/skills/${id}/consistency`);
 }
 
+// ---------- S22 块 T：视觉回归基线 ----------
+
+export interface VisualBaselineInfo {
+  skill_id: number;
+  file_path: string;
+  image_hash: string;
+  width: number;
+  height: number;
+  source_run_id: number;
+  created_at: string;
+}
+
+export interface VisualCompareResult {
+  run_id: number;
+  run_status: string;
+  passed: boolean;
+  ts: string;
+  payload: {
+    kind: "visual_baseline";
+    passed: boolean;
+    hash_distance: number | null;
+    diff_ratio: number | null;
+    threshold: number;
+    size_changed: boolean;
+    error: string | null;
+  };
+}
+
+export interface VisualBaselineResponse {
+  baseline: VisualBaselineInfo | null;
+  last_result: VisualCompareResult | null;
+}
+
+export function getVisualBaseline(
+  id: number | string,
+): Promise<VisualBaselineResponse> {
+  return get<VisualBaselineResponse>(`/api/v1/skills/${id}/visual-baseline`);
+}
+
+/** 重置基线（reviewer/admin；下次 execute PASS 自动重建）。404 = 无基线。 */
+export async function resetVisualBaseline(
+  id: number | string,
+): Promise<{ ok: boolean }> {
+  const resp = await authedFetch(`/api/v1/skills/${id}/visual-baseline/reset`, {
+    method: "POST",
+  });
+  if (!resp.ok) {
+    throw new ApiError(resp.status, `POST visual-baseline/reset -> ${resp.status}`);
+  }
+  return resp.json() as Promise<{ ok: boolean }>;
+}
+
+/** 拉取基线/最新截图为 blob URL（<img> 无法带 Authorization 头，经 fetch 转换）。 */
+export async function fetchVisualImage(
+  id: number | string,
+  which: "baseline" | "latest",
+): Promise<string> {
+  const resp = await authedFetch(
+    `/api/v1/skills/${id}/visual-baseline/image?which=${which}`);
+  if (!resp.ok) {
+    throw new ApiError(resp.status, `GET visual image(${which}) -> ${resp.status}`);
+  }
+  return URL.createObjectURL(await resp.blob());
+}
+
 export function getReport(id: number | string): Promise<Report> {
   return get<Report>(`/api/v1/reports/${id}`);
 }

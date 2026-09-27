@@ -376,3 +376,19 @@ class AuthToken(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class VisualBaseline(Base):
+    """S22 块 T：skill 视觉基线——首次 execute PASS 截图存档，此后回放比对。
+
+    每 skill 至多一行（唯一约束）；重置=删行删文件，下次 PASS 重建。
+    """
+    __tablename__ = "visual_baseline"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    skill_id: Mapped[int] = mapped_column(unique=True, index=True)
+    file_path: Mapped[str] = mapped_column(String(300))
+    image_hash: Mapped[str] = mapped_column(String(16), default="")
+    width: Mapped[int] = mapped_column(default=0)
+    height: Mapped[int] = mapped_column(default=0)
+    source_run_id: Mapped[int] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)

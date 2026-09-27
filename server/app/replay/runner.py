@@ -9,11 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.llm.gateway import complete
-from app.models import Alignment, OutcomeAssertion, RawEvent, ReplayRun, Skill
+from app.models import Alignment, OutcomeAssertion, RawEvent, ReplayRun, Skill, VisualBaseline
 from app.replay.assert_eval import evaluate_assertions, path_matches
 from app.replay.locate import locate
 from app.replay.page_snapshot import collect_page_snapshot
 from app.replay.plan import compile_skeleton_plan, requires_confirmation
+from app.replay.visual import compare_images, dhash, visual_dir
 
 MAX_BODY = 8192
 ARTIFACT_DIR = os.environ.get(
@@ -206,6 +207,34 @@ async def _execute_skill(db: Session, browser, skill_id: int,
         else:
             status = "fail"
 
+        # S22 块 T：视觉回归（确定性，无 LLM）——截图须在 ctx 关闭前完成。
+        # 无基线且 PASS → 建基线（run 落库后补表行）；有基线 → 比对追加断言。
+        # 采集能力缺失（如替身 page 无 screenshot）→ 整体跳过不计失败
+        # （与 assert_eval 无快照 fail-open 同语义）。
+        visual_result = None
+        baseline_created = False
+        vdir = visual_dir(ARTIFACT_DIR, skill_id)
+        try:
+            baseline = db.query(VisualBaseline).filter_by(skill_id=skill_id).first()
+            if baseline is None:
+                if status == "pass":
+                    os.makedirs(vdir, exist_ok=True)
+                    await page.screenshot(path=str(vdir / "baseline.png"))
+                    baseline_created = True
+            else:
+                os.makedirs(vdir, exist_ok=True)
+                await page.screenshot(path=str(vdir / "latest.png"))
+                cmp = compare_images(baseline.file_path, str(vdir / "latest.png"))
+                visual_result = {"payload": {"kind": "visual_baseline", **cmp},
+                                "observed_status": None, "passed": cmp["passed"]}
+        except Exception:
+            visual_result = None
+            baseline_created = False
+        if visual_result is not None:
+            results.append(visual_result)
+            if not visual_result["passed"] and status == "pass":
+                status = "fail"
+
         # FAIL/ERROR 时先截图并取页面 title（context 关闭前），归因待落库拿到 run 后再做
         screenshot_path = None
         page_title = None
@@ -236,6 +265,22 @@ async def _execute_skill(db: Session, browser, skill_id: int,
     db.add(run)
     db.commit()
     db.refresh(run)
+
+    # S22 块 T：建基线补表行（run 落库后才有 source_run_id）。
+    # 截图文件无效（如替身写入非图像内容）→ 放弃建基线，不破坏已判定的 run
+    # （与采集阶段同 fail-open 语义）。
+    if baseline_created:
+        try:
+            from PIL import Image
+            bpath = str(vdir / "baseline.png")
+            with Image.open(bpath) as img:
+                width, height = img.size
+            db.add(VisualBaseline(skill_id=skill_id, file_path=bpath,
+                                  image_hash=f"{dhash(bpath):016x}",
+                                  width=width, height=height, source_run_id=run.id))
+            db.commit()
+        except Exception:
+            pass
 
     if status in ("fail", "error"):
         failed_steps = [s for s in result["executed"] if not s.get("ok")]
