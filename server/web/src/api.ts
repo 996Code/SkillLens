@@ -193,6 +193,7 @@ export interface Report {
 export interface ExpectedDelta {
   id: number;
   requirement_id: string;
+  external_ref: string | null; // S25 块 W3：Jira key 等外部条目编号
   feature: string;
   changes: DeltaItem[];
   status: string; // draft | confirmed
@@ -575,6 +576,23 @@ export async function fetchVisualImage(
 
 export function getReport(id: number | string): Promise<Report> {
   return get<Report>(`/api/v1/reports/${id}`);
+}
+
+// ---------- S25 块 W：Playwright 脚本导出 ----------
+
+/** 导出 skill 为自包含 Playwright 脚本并触发浏览器下载。 */
+export async function exportSkillPlaywright(id: number | string): Promise<void> {
+  const resp = await authedFetch(`/api/v1/skills/${id}/export/playwright`);
+  if (!resp.ok) {
+    throw new ApiError(resp.status, `GET export/playwright -> ${resp.status}`);
+  }
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `skill_${id}_replay.py`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ---------- S24 块 U：定位修复提案（自愈闭环） ----------

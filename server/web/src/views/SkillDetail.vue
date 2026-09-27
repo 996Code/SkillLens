@@ -5,6 +5,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import {
   currentUser,
+  exportSkillPlaywright,
   fetchVisualImage,
   getLocateProposals,
   getSkillCard,
@@ -361,6 +362,11 @@ onMounted(async () => {
       <!-- 页脚：回放入口（Task 5，U1 缓解：详情页给"接下来做什么"的显式引导） -->
       <footer class="replay-cta">
         <RouterLink :to="`/replay/${card.id}`" class="replay-btn btn btn-primary">回放此 Skill</RouterLink>
+        <button
+          class="btn"
+          data-testid="export-playwright-btn"
+          @click="exportSkillPlaywright(card.id).catch(() => {})"
+        >导出 Playwright 脚本</button>
         <span class="muted">触发 shadow/execute 回放并查看断言结果、前后快照对比。</span>
       </footer>
     </template>
