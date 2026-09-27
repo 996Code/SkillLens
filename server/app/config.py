@@ -29,3 +29,6 @@ PII_PATTERNS: list[str] = [
 VISUAL_HASH_MAX_DISTANCE = int(os.environ.get("VISUAL_HASH_MAX_DISTANCE", "4"))
 VISUAL_PIXEL_TOLERANCE = int(os.environ.get("VISUAL_PIXEL_TOLERANCE", "16"))
 VISUAL_DIFF_THRESHOLD = float(os.environ.get("VISUAL_DIFF_THRESHOLD", "0.02"))
+
+# S23 块 V 性能漂移阈值：current > 中位数 × ratio 判漂移（严格大于）；历史 <3 次不判定
+PERF_DRIFT_RATIO = float(os.environ.get("PERF_DRIFT_RATIO", "1.5"))

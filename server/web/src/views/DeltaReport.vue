@@ -4,13 +4,26 @@
 // 只读：无报告列表入口，空 delta 时用输入框查询。
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { getExpectedDelta, getLinkedDiscoveries, getReport } from "../api";
-import type { DeltaItem, DiscoveredFeatureItem, ExpectedDelta, Report } from "../api";
+import {
+  getExpectedDelta,
+  getLinkedDiscoveries,
+  getReport,
+  getReportPerf,
+} from "../api";
+import type {
+  DeltaItem,
+  DiscoveredFeatureItem,
+  ExpectedDelta,
+  PerfContext,
+  Report,
+} from "../api";
 
 const route = useRoute();
 const router = useRouter();
 
 const report = ref<Report | null>(null);
+// S23 块 V：性能上下文（基线/当前/趋势），失败不阻塞四分类展示
+const perf = ref<PerfContext | null>(null);
 const expectedDelta = ref<ExpectedDelta | null>(null);
 const linkedDiscoveries = ref<DiscoveredFeatureItem[]>([]);
 const loading = ref(false);
@@ -37,11 +50,19 @@ function fmtTime(ts: string): string {
   return ts.replace("T", " ").replace(/\.\d+.*$/, "");
 }
 
+/** S23 块 V：趋势条高度（2-40px，按历史最大值归一）。 */
+function trendHeight(ms: number): number {
+  const hist = perf.value?.history_ms ?? [];
+  const max = Math.max(...hist, perf.value?.current_ms ?? 0, ms, 1);
+  return Math.max(2, Math.round((ms / max) * 40));
+}
+
 async function load(id: string | number) {
   loading.value = true;
   notFound.value = false;
   error.value = "";
   report.value = null;
+  perf.value = null;
   expectedDelta.value = null;
   linkedDiscoveries.value = [];
   try {
@@ -58,6 +79,12 @@ async function load(id: string | number) {
         report.value.expected_delta_id);
     } catch {
       /* discoveries 端点异常时徽标隐藏 */
+    }
+    // S23 块 V：性能上下文（旧报告无 duration 数据时 median=null，区块自适应）
+    try {
+      perf.value = await getReportPerf(id);
+    } catch {
+      /* perf 端点异常时区块隐藏 */
     }
   } catch (e) {
     if (e instanceof Error && "status" in e && (e as { status: number }).status === 404) {
@@ -171,6 +198,35 @@ watch(() => route.params.deltaId, (v) => {
         </div>
       </div>
 
+      <!-- S23 块 V：性能漂移区块（有基线数据才渲染） -->
+      <div
+        v-if="perf?.baseline?.median"
+        class="perf-block"
+        data-testid="perf-block"
+      >
+        <h3>性能基线</h3>
+        <dl class="meta">
+          <div><dt>基线中位数</dt><dd class="mono">{{ perf.baseline.median }}ms（{{ perf.baseline.n }} 次）</dd></div>
+          <div><dt>本次回放</dt><dd class="mono">{{ perf.current_ms ?? "—" }}ms</dd></div>
+        </dl>
+        <div class="perf-trend" data-testid="perf-trend">
+          <span
+            v-for="(ms, i) in perf.history_ms"
+            :key="i"
+            class="perf-bar"
+            :style="{ height: trendHeight(ms) + 'px' }"
+            :title="`${ms}ms`"
+          ></span>
+          <span
+            v-if="perf.current_ms"
+            class="perf-bar perf-bar-current"
+            :style="{ height: trendHeight(perf.current_ms) + 'px' }"
+            :title="`本次 ${perf.current_ms}ms`"
+          ></span>
+        </div>
+        <p class="muted">趋势：最近 {{ perf.history_ms.length }} 次回放耗时（右端亮色为本次）</p>
+      </div>
+
       <p class="muted footer">
         report #{{ report.id }} · observed_delta #{{ report.observed_delta_id }}
         · 生成于 {{ fmtTime(report.created_at) }}
@@ -223,6 +279,33 @@ watch(() => route.params.deltaId, (v) => {
 }
 .linked-list li {
   margin-bottom: 2px;
+}
+/* S23 块 V：性能基线区块 */
+.perf-block {
+  margin-top: 24px;
+  padding: 16px;
+  border: 1px solid var(--color-border, #e0e0e0);
+  border-radius: 8px;
+  background: #fafafa;
+}
+.perf-block h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+.perf-trend {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 44px;
+  margin: 10px 0 4px;
+}
+.perf-bar {
+  width: 10px;
+  background: #9aa4b2;
+  border-radius: 2px 2px 0 0;
+}
+.perf-bar-current {
+  background: var(--color-primary, #2563eb);
 }
 /* 四分类统计卡：4 色（expected=主色 / missing=危险 / unexpected=警告 / drift=中性）*/
 .stats {

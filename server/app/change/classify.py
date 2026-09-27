@@ -6,8 +6,7 @@ def _api_of(value: str) -> tuple[str, str] | None:
     return api.strip(), code.strip()
 
 
-def classify_delta(expected_changes: list[dict], observed_items: list[dict],
-                   baseline_ms: int = 0, observed_ms: int = 0) -> dict:
+def classify_delta(expected_changes: list[dict], observed_items: list[dict]) -> dict:
     expected: list[dict] = []
     missing: list[dict] = []
     unexpected: list[dict] = []
@@ -56,7 +55,5 @@ def classify_delta(expected_changes: list[dict], observed_items: list[dict],
                 continue
             unexpected.append(o)
 
-    if baseline_ms and observed_ms and observed_ms > baseline_ms * 3:
-        drift.append({"type": "timing", "value": f"耗时 {baseline_ms}ms -> {observed_ms}ms"})
     return {"expected": expected, "missing": missing,
             "unexpected": unexpected, "drift": drift}

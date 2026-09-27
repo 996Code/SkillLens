@@ -29,6 +29,13 @@ LLM/njmind 凭据经 `server/.env`（gitignore 排除，键名见 `.env.docker.e
 - 基线重置：`POST /api/v1/skills/{id}/visual-baseline/reset`（reviewer/admin），下次 PASS 重建；前端详情页基线/最近回放图并排 + 差异统计。
 - 动态内容页面（新闻站等轮播内容）会持续触发视觉漂移 FAIL——属预期行为（漂移检测正是目的）；内部稳定系统用默认 2% 阈值，公网站点需调 `VISUAL_DIFF_THRESHOLD`。
 
+## 性能基线（S23 块 V）
+
+- 采集：`replay_run.duration_ms`（execute 回放耗时）+ `plan.api_latencies`（断言模板级 API 延迟，request/response 事件配对）。
+- 基线：滚动中位数（该 skill 最近 10 次 execute 回放，从 replay_run 重算，无基线表）。
+- 判定：current > 中位数 × `PERF_DRIFT_RATIO`（默认 1.5，严格大于）→ drift 项进四分类报告（type=perf）；历史不足 3 次不判定。
+- 呈现：报告页性能基线区块（中位数/本次/趋势条），`GET /reports/{id}/perf` 只读派生端点。
+
 ## 模块地图（app/）
 
 ```

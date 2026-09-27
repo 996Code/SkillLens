@@ -64,6 +64,12 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                        settle_timeout_ms: int = 10000) -> dict:
     observed: list[dict] = []
 
+    # S23 块 V：request/response 配对测 API 延迟（request 对象做键）
+    req_times: dict = {}
+
+    def on_request(request):
+        req_times[request] = time.monotonic()
+
     # 同步壳 + create_task：Playwright 的 on() 对 async 回调支持不稳（版本相关，
     # 可能静默不调用或调用不等待），同步回调内自建 task 最稳。
     def on_response(response):
@@ -72,10 +78,14 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                 body = await response.text()
             except Exception:
                 body = ""
+            start = req_times.pop(response.request, None)
+            latency_ms = (int((time.monotonic() - start) * 1000)
+                          if start is not None else None)
             observed.append({"url": response.url, "status": response.status,
-                             "body": body[:MAX_BODY]})
+                             "body": body[:MAX_BODY], "latency_ms": latency_ms})
         asyncio.get_running_loop().create_task(collect())
 
+    page.on("request", on_request)
     page.on("response", on_response)
     executed: list[dict] = []
     failed = False
@@ -126,7 +136,17 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
             await page.wait_for_timeout(1500)  # 无目标模板时退回固定收尾
         except Exception:
             pass
-    return {"executed": executed, "observed": observed}
+    # S23 块 V：关键 API 延迟按断言模板聚合（多次命中取中位数，与基线语义一致）
+    api_latencies: dict[str, int] = {}
+    for tpl in (awaited_templates or []):
+        lats = sorted(o["latency_ms"] for o in observed
+                      if o.get("latency_ms") is not None and path_matches(o["url"], tpl))
+        if lats:
+            mid = len(lats) // 2
+            api_latencies[tpl] = (lats[mid] if len(lats) % 2 == 1
+                                   else (lats[mid - 1] + lats[mid]) // 2)
+    return {"executed": executed, "observed": observed,
+            "api_latencies": api_latencies}
 
 
 async def _close_ctx_quietly(ctx) -> None:
@@ -190,10 +210,12 @@ async def _execute_skill(db: Session, browser, skill_id: int,
         # T4：执行前采 before 快照（水合竞态防护在 execute_plan 的 fill 确认内，
         # 不与本采集竞争）
         before_snapshot = await collect_page_snapshot(page, phase="before")
+        t0 = time.monotonic()
         result = await execute_plan(
             page, plan,
             awaited_templates=[a["payload"]["api_template"] for a in assertions
                                if "api_template" in a["payload"]])
+        duration_ms = int((time.monotonic() - t0) * 1000)
         # T4：断言评估前采 after 快照（ui_text 用它对比）
         after_snapshot = await collect_page_snapshot(page, phase="after")
 
@@ -258,10 +280,13 @@ async def _execute_skill(db: Session, browser, skill_id: int,
 
     # T4：前后快照旁挂 plan（plan 消费方只读 url/steps，加法变更零破坏面，
     # 优于包装 executed——后者被 extract_observed 按步骤列表遍历）
+    # S23 块 V：API 延迟同样旁挂（api_latencies 键，替身 execute_plan 无此键时跳过）
     plan = {**plan, "before_snapshot": before_snapshot,
-            "after_snapshot": after_snapshot}
+            "after_snapshot": after_snapshot,
+            "api_latencies": result.get("api_latencies") or {}}
     run = ReplayRun(skill_id=skill_id, mode="execute", status=status, plan=plan,
-                    executed=result["executed"], assertion_results=results)
+                    executed=result["executed"], assertion_results=results,
+                    duration_ms=duration_ms)
     db.add(run)
     db.commit()
     db.refresh(run)
