@@ -97,7 +97,8 @@ def compile_skeleton_plan(events: list[dict], skeleton: list[dict], ref_session_
         payload = (windows[wq].get("anchor") or {}).get("payload") or {}
         if payload.get("type") not in ("click", "submit"):
             continue
-        label = (payload.get("target") or {}).get("label") or ""
+        # S26：骨架步 healed label（自愈晋升回写）优先于录制时的 anchor label
+        label = step.get("label") or (payload.get("target") or {}).get("label") or ""
         if label:
             steps.append({"kind": "click", "label": label})
     return {"url": _plan_url(ordered), "steps": steps}

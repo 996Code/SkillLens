@@ -400,6 +400,8 @@ class LocateProposal(Base):
     status: Mapped[str] = mapped_column(String(20), default="proposed")
     verify_count: Mapped[int] = mapped_column(default=0)
     source_run_id: Mapped[int | None] = mapped_column(nullable=True)
+    # S26：晋升回写生成的新版本 skill id（自愈闭环收口）
+    applied_skill_id: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 

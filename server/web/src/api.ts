@@ -606,6 +606,7 @@ export interface LocateProposalItem {
   status: "proposed" | "verified" | "promoted" | "rejected";
   verify_count: number;
   source_run_id: number | null;
+  applied_skill_id: number | null;
   attribution: string | null;
   created_at: string;
 }

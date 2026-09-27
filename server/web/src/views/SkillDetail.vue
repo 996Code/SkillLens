@@ -290,6 +290,9 @@ onMounted(async () => {
               <td class="mono">{{ p.proposed_label }}</td>
               <td>
                 <span class="badge" :class="`badge-${p.status}`">{{ p.status }}</span>
+                <span v-if="p.applied_skill_id" class="muted">
+                  → v#{{ p.applied_skill_id }}
+                </span>
               </td>
               <td class="mono">{{ p.verify_count }}</td>
               <td class="attr-cell" :title="p.attribution ?? ''">
