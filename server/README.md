@@ -21,6 +21,14 @@ LLM/njmind 凭据经 `server/.env`（gitignore 排除，键名见 `.env.docker.e
 - 会话 DB 化（`auth_token` 表存 SHA-256 哈希，7 天过期，登出即删）；密码 pbkdf2（stdlib，无新依赖）。
 - 评审人从登录态取（`review.user_id` 关联账号，存量行 NULL 兼容展示）。
 
+## 视觉回归（S22 块 T）
+
+- 断言第 6 层：skill 首次 execute PASS 截图存视觉基线（`visual_baseline` 表 + `artifacts/visual/{sid}/baseline.png`）；此后每次 execute 比对并把结果作为断言 kind=visual_baseline 追加进 assertion_results（参与回放判定）。
+- 两级比对全确定性（无 LLM）：dHash 汉明距离初筛（≤`VISUAL_HASH_MAX_DISTANCE` 直接 pass）→ 像素差异占比（≤`VISUAL_DIFF_THRESHOLD` pass，逐像素容差 `VISUAL_PIXEL_TOLERANCE`）；尺寸不同按基线缩放比对。阈值均 env 可调。
+- 采集能力缺失（截图失败/文件无效）→ 视觉层整体跳过不计失败（与 assert_eval 无快照 fail-open 同语义）。
+- 基线重置：`POST /api/v1/skills/{id}/visual-baseline/reset`（reviewer/admin），下次 PASS 重建；前端详情页基线/最近回放图并排 + 差异统计。
+- 动态内容页面（新闻站等轮播内容）会持续触发视觉漂移 FAIL——属预期行为（漂移检测正是目的）；内部稳定系统用默认 2% 阈值，公网站点需调 `VISUAL_DIFF_THRESHOLD`。
+
 ## 模块地图（app/）
 
 ```

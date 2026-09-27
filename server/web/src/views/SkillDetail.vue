@@ -3,8 +3,20 @@
 // 只读边界：不出现任何编辑入口。
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
-import { getSkillCard, getSkillConsistency } from "../api";
-import type { AssertionRow, SkillCard, SkillConsistency } from "../api";
+import {
+  currentUser,
+  fetchVisualImage,
+  getSkillCard,
+  getSkillConsistency,
+  getVisualBaseline,
+  resetVisualBaseline,
+} from "../api";
+import type {
+  AssertionRow,
+  SkillCard,
+  SkillConsistency,
+  VisualBaselineResponse,
+} from "../api";
 
 const route = useRoute();
 const card = ref<SkillCard | null>(null);
@@ -13,6 +25,51 @@ const notFound = ref(false);
 const error = ref("");
 // S12 N4 层5：断言观测一致性（独立请求，失败/形状异常只藏行不炸页）
 const consistency = ref<SkillConsistency | null>(null);
+// S22 块 T：视觉回归（基线/最新图并排 + 最近比对结果；非关键路径失败静默藏区块）
+const visual = ref<VisualBaselineResponse | null>(null);
+const visualBaselineUrl = ref("");
+const visualLatestUrl = ref("");
+const visualBusy = ref(false);
+const visualMsg = ref("");
+const user = currentUser();
+const canResetVisual = computed(
+  () => user?.role === "admin" || user?.role === "reviewer");
+
+const diffPct = computed(() => {
+  const ratio = visual.value?.last_result?.payload.diff_ratio;
+  return ratio == null ? "—" : `${(ratio * 100).toFixed(2)}%`;
+});
+
+async function loadVisual(id: string): Promise<void> {
+  try {
+    visual.value = await getVisualBaseline(id);
+    if (visual.value.baseline) {
+      visualBaselineUrl.value = await fetchVisualImage(id, "baseline");
+      // 最近比对存在才有 latest 图（建基线当次无比对）
+      if (visual.value.last_result) {
+        visualLatestUrl.value = await fetchVisualImage(id, "latest");
+      }
+    }
+  } catch {
+    visual.value = null; // 非关键路径：藏区块不炸页
+  }
+}
+
+async function resetBaseline(): Promise<void> {
+  visualBusy.value = true;
+  visualMsg.value = "";
+  try {
+    await resetVisualBaseline(String(route.params.id));
+    visualMsg.value = "已重置——下次 execute PASS 回放将重建基线";
+    visual.value = await getVisualBaseline(String(route.params.id));
+    visualBaselineUrl.value = "";
+    visualLatestUrl.value = "";
+  } catch (e) {
+    visualMsg.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    visualBusy.value = false;
+  }
+}
 
 const confPct = computed(() =>
   card.value ? `${Math.round(card.value.confidence * 100)}%` : "");
@@ -61,6 +118,7 @@ onMounted(async () => {
       if (typeof c?.consistent === "boolean") consistency.value = c;
     })
     .catch(() => {});
+  loadVisual(String(route.params.id));
 });
 </script>
 
@@ -184,6 +242,56 @@ onMounted(async () => {
         </dl>
       </div>
 
+      <!-- S22 块 T：视觉回归 -->
+      <div v-if="visual" class="block" data-testid="visual-section">
+        <h2>视觉回归</h2>
+        <p v-if="!visual.baseline" class="muted" data-testid="visual-empty">
+          未建立视觉基线——首次 execute PASS 回放后自动建立
+        </p>
+        <template v-else>
+          <dl class="meta">
+            <div>
+              <dt>最近比对</dt>
+              <dd>
+                <span v-if="visual.last_result"
+                  class="dot"
+                  :class="visual.last_result.passed ? 'dot-pass' : 'dot-fail'">
+                </span>
+                {{ visual.last_result ? (visual.last_result.passed ? "一致" : "视觉差异") : "未比对（基线刚建立）" }}
+              </dd>
+            </div>
+            <div><dt>差异占比</dt><dd class="mono">{{ diffPct }}</dd></div>
+            <div v-if="visual.last_result">
+              <dt>哈希距离</dt>
+              <dd class="mono">{{ visual.last_result.payload.hash_distance ?? "—" }}</dd>
+            </div>
+            <div v-if="visual.last_result?.payload.size_changed">
+              <dt>尺寸变化</dt><dd>是（已按基线缩放比对）</dd>
+            </div>
+          </dl>
+          <div class="visual-pair" data-testid="visual-pair">
+            <figure>
+              <img v-if="visualBaselineUrl" :src="visualBaselineUrl" alt="视觉基线截图" />
+              <figcaption>基线（{{ fmtTime(visual.baseline.created_at) }}）</figcaption>
+            </figure>
+            <figure v-if="visualLatestUrl">
+              <img :src="visualLatestUrl" alt="最近回放截图" />
+              <figcaption>最近回放</figcaption>
+            </figure>
+          </div>
+          <button
+            v-if="canResetVisual"
+            class="btn"
+            :disabled="visualBusy"
+            data-testid="visual-reset-btn"
+            @click="resetBaseline"
+          >
+            {{ visualBusy ? "重置中…" : "重置基线" }}
+          </button>
+          <span v-if="visualMsg" class="muted">{{ visualMsg }}</span>
+        </template>
+      </div>
+
       <!-- 页脚：回放入口（Task 5，U1 缓解：详情页给"接下来做什么"的显式引导） -->
       <footer class="replay-cta">
         <RouterLink :to="`/replay/${card.id}`" class="replay-btn btn btn-primary">回放此 Skill</RouterLink>
@@ -243,5 +351,25 @@ onMounted(async () => {
 /* 骨架步骤流：pre.code 内逐行 code 块 */
 .code code {
   display: block;
+}
+/* S22 块 T：基线/最新截图并排 */
+.visual-pair {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.visual-pair figure {
+  margin: 0;
+  max-width: 45%;
+}
+.visual-pair img {
+  max-width: 100%;
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: 6px;
+}
+.visual-pair figcaption {
+  font-size: 12px;
+  color: #888;
+  margin-top: 4px;
 }
 </style>
