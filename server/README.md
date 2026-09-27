@@ -14,6 +14,13 @@ uv run uvicorn app.main:app --port 8710   # 起服务
 
 LLM/njmind 凭据经 `server/.env`（gitignore 排除，键名见 `.env.docker.example`）。无 key 时 LLM 走 FakeProvider（`LLM_FAKE_RESPONSE` 可定制脚本响应）。
 
+## 认证（S21 块 S）
+
+- 工作台 API 默认要求 `Authorization: Bearer <token>`；豁免通道仅 `/health` 与插件上报（`POST /sessions`、`POST /sessions/{id}/events`）。
+- 账号三级：`admin`（建号/全权）> `reviewer`（可评审）> `viewer`（只读）；建号：`uv run python -m app.create_user <用户名> <密码> <role>`（空库无默认账号）。
+- 会话 DB 化（`auth_token` 表存 SHA-256 哈希，7 天过期，登出即删）；密码 pbkdf2（stdlib，无新依赖）。
+- 评审人从登录态取（`review.user_id` 关联账号，存量行 NULL 兼容展示）。
+
 ## 模块地图（app/）
 
 ```

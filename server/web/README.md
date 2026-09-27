@@ -25,6 +25,7 @@ npm test           # vitest 单测（tests/*.spec.ts，jsdom 环境）
 | 路径 | 视图 | 说明 |
 | --- | --- | --- |
 | `/` | — | 重定向 `/skills` |
+| `/login` | `views/LoginView.vue` | 登录页（S21 块 S：唯一免认证页；成功存 token 跳 /skills） |
 | `/skills` | `views/SkillsList.vue` | Skill 卡片网格（name/status/置信度/证据数/断言数/最近 run 状态点） |
 | `/skills/:id` | `views/SkillDetail.vue` | 详情：概要 + 骨架步骤流 + 变量值域 + 断言表 + 窗口参数 + 最近回放；页脚「回放此 Skill」入口 |
 | `/reports/:deltaId` | `views/DeltaReport.vue` | 四分类报告（expected/missing/unexpected/drift 分色卡 + 需求上下文 + id 查询框） |

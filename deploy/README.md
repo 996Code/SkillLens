@@ -40,6 +40,18 @@ curl http://127.0.0.1:8710/api/v1/health
 **预期**：`{"status":"ok"}`（首次构建 5-10 分钟，镜像 ~2GB 含 chromium）。
 数据在 named volume `skilllens-data`（SQLite + 回放截图），重启不丢。
 
+## 步骤 2.5：建号（S21 起工作台需要登录）
+
+工作台 API 默认要求 Bearer token（插件上报通道豁免）。空库无账号，先建 admin：
+
+```bash
+docker compose exec server python -m app.create_user <用户名> <密码> admin
+# 本地开发：cd server && uv run python -m app.create_user <用户名> <密码> admin
+```
+
+角色三级：`admin`（建号/全权）> `reviewer`（可评审）> `viewer`（只读）。
+admin 登录工作台后也可经 `POST /api/v1/auth/users` 建号。
+
 ## 步骤 3：装插件
 
 ```bash

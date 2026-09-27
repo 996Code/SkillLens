@@ -51,7 +51,7 @@ function mockReviewFetch(pending = pendingSeed.map((p) => ({ ...p })),
       if (!run) return jsonResp({ detail: "agent_run not found" }, 404);
       pending.splice(pending.indexOf(run), 1);
       const row = {
-        id: 9, agent_run_id: run.id, reviewer: body.reviewer,
+        id: 9, agent_run_id: run.id, reviewer: "alice",
         decision: body.decision, comment: body.comment ?? null,
         created_at: "2026-09-28T08:00:00",
         agent_run: { graph_name: run.graph_name, status: run.status,
@@ -109,7 +109,15 @@ function pendingRows(root: HTMLElement): Element[] {
 afterEach(() => {
   vi.unstubAllGlobals();
   document.body.innerHTML = "";
+  localStorage.clear();
 });
+
+/** S21 块 S：评审人从登录态取——测试前注入会话用户。 */
+function loginAs(role: "admin" | "reviewer" | "viewer"): void {
+  localStorage.setItem("sl_token", "test-token");
+  localStorage.setItem("sl_user", JSON.stringify(
+    { id: 1, username: "alice", role }));
+}
 
 describe("ReviewPortal", () => {
   it("renders pending queue with run meta and review-summary mark", async () => {
@@ -132,6 +140,7 @@ describe("ReviewPortal", () => {
   });
 
   it("expands form on row click and submits review body", async () => {
+    loginAs("reviewer");
     vi.stubGlobal("fetch", mockReviewFetch());
     const root = document.createElement("div");
     document.body.appendChild(root);
@@ -147,9 +156,6 @@ describe("ReviewPortal", () => {
       .toContain("# 夜间回归摘要");
     expect(root.querySelector("[data-testid='review-form']")).not.toBeNull();
 
-    setInput(
-      root.querySelector("[data-testid='reviewer-input']") as HTMLInputElement,
-      "alice");
     checkRadio(root.querySelector(
       "[data-testid='decision-changes_requested']") as HTMLInputElement);
     setInput(
@@ -168,13 +174,13 @@ describe("ReviewPortal", () => {
     const body = JSON.parse(post![1]!.body as string);
     expect(body).toEqual({
       agent_run_id: 11,
-      reviewer: "alice",
       decision: "changes_requested",
       comment: "断言覆盖不足，打回补充",
     });
   });
 
   it("refreshes queue and reviewed list after submit", async () => {
+    loginAs("reviewer");
     vi.stubGlobal("fetch", mockReviewFetch());
     const root = document.createElement("div");
     document.body.appendChild(root);
@@ -186,9 +192,6 @@ describe("ReviewPortal", () => {
 
     click(pendingRows(root)[0]!); // 展开 #11
     await flush();
-    setInput(
-      root.querySelector("[data-testid='reviewer-input']") as HTMLInputElement,
-      "alice");
     checkRadio(root.querySelector(
       "[data-testid='decision-approved']") as HTMLInputElement);
     (root.querySelector("[data-testid='submit-btn']") as Element).click();
@@ -246,5 +249,25 @@ describe("ReviewPortal", () => {
     expect(root.querySelector("[data-testid='pending-empty']")?.textContent)
       .toContain("夜间无待评审运行");
     expect(pendingRows(root).length).toBe(0);
+  });
+});
+
+describe("ReviewPortal S21 viewer role", () => {
+  it("hides review form and shows viewer hint for viewer role", async () => {
+    loginAs("viewer");
+    vi.stubGlobal("fetch", mockReviewFetch());
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    await mountPortal(root);
+    await flush();
+    await flush();
+
+    click(pendingRows(root)[0]!);
+    await flush();
+    // viewer 只读：无表单，显示无权限提示
+    expect(root.querySelector("[data-testid='review-form']")).toBeNull();
+    expect(root.querySelector("[data-testid='viewer-hint']")).not.toBeNull();
+    expect(root.querySelector("[data-testid='viewer-hint']")?.textContent)
+      .toContain("只读");
   });
 });

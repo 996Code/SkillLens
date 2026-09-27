@@ -2,8 +2,90 @@
 // 类型定义与后端端点字段一一对齐：GET /skills、GET /skills/{id}/card（14 字段）、
 // GET /reports/{id}、GET /expected-deltas/{id}、
 // POST /expected-deltas/{id}/observe、GET /replay-runs/{id}。
+// S21 块 S：authedFetch 统一带 Bearer token，401 → 清 token 跳 /login。
 
 const BASE = "";
+
+// ---------- S21 块 S：认证 ----------
+
+const TOKEN_KEY = "sl_token";
+const USER_KEY = "sl_user";
+
+export interface AuthUser {
+  id: number;
+  username: string;
+  role: "admin" | "reviewer" | "viewer";
+}
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function currentUser(): AuthUser | null {
+  const raw = localStorage.getItem(USER_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as AuthUser;
+  } catch {
+    return null;
+  }
+}
+
+function setSession(token: string, user: AuthUser): void {
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+export function clearSession(): void {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+}
+
+/** 登录：成功存 token+user；失败抛 ApiError(401)。 */
+export async function login(username: string, password: string): Promise<AuthUser> {
+  const resp = await fetch(BASE + "/api/v1/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!resp.ok) {
+    throw new ApiError(resp.status, "用户名或密码错误");
+  }
+  const body = (await resp.json()) as { token: string; user: AuthUser };
+  setSession(body.token, body.user);
+  return body.user;
+}
+
+/** 登出：后端失效 token + 本地清会话。 */
+export async function logout(): Promise<void> {
+  try {
+    await fetch(BASE + "/api/v1/auth/logout", {
+      method: "POST",
+      headers: authHeaders(),
+    });
+  } catch {
+    /* 后端不可达也照常清本地会话 */
+  }
+  clearSession();
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
+/** 统一出口：带 token；401 清会话跳登录（token 过期/被登出）。 */
+async function authedFetch(path: string, init?: RequestInit): Promise<Response> {
+  const resp = await fetch(BASE + path, {
+    ...init,
+    headers: { ...authHeaders(), ...(init?.headers as Record<string, string> | undefined) },
+  });
+  if (resp.status === 401 && !path.startsWith("/api/v1/auth/login")) {
+    clearSession();
+    window.location.assign("/login");
+  }
+  return resp;
+}
 
 class ApiError extends Error {
   status: number;
@@ -14,7 +96,7 @@ class ApiError extends Error {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const resp = await fetch(BASE + path);
+  const resp = await authedFetch(path);
   if (!resp.ok) {
     throw new ApiError(resp.status, `GET ${path} -> ${resp.status}`);
   }
@@ -394,6 +476,7 @@ export interface ReviewItem {
   id: number;
   agent_run_id: number;
   reviewer: string;
+  user_id: number | null;
   decision: ReviewDecision;
   comment: string | null;
   created_at: string;
@@ -402,7 +485,6 @@ export interface ReviewItem {
 
 export interface CreateReviewRequest {
   agent_run_id: number;
-  reviewer: string;
   decision: ReviewDecision;
   comment?: string;
 }
@@ -478,7 +560,7 @@ export async function replayObserve(
   deltaId: number | string,
   body: ObserveRequest,
 ): Promise<ObserveResponse> {
-  const resp = await fetch(BASE + `/api/v1/expected-deltas/${deltaId}/observe`, {
+  const resp = await authedFetch(`/api/v1/expected-deltas/${deltaId}/observe`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -510,7 +592,7 @@ export async function saveCanvas(
   name: string,
   dag: CanvasDag,
 ): Promise<{ id: number }> {
-  const resp = await fetch(BASE + "/api/v1/canvas", {
+  const resp = await authedFetch("/api/v1/canvas", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name, dag }),
@@ -529,7 +611,7 @@ export async function saveCanvas(
 }
 
 export async function runCanvas(id: number | string): Promise<CanvasRunResponse> {
-  const resp = await fetch(BASE + `/api/v1/canvas/${id}/run`, { method: "POST" });
+  const resp = await authedFetch(`/api/v1/canvas/${id}/run`, { method: "POST" });
   if (!resp.ok) {
     let detail = `POST /canvas/${id}/run -> ${resp.status}`;
     try {
@@ -571,7 +653,7 @@ export function getReviews(decision?: ReviewDecision): Promise<ReviewItem[]> {
 export async function createReview(
   body: CreateReviewRequest,
 ): Promise<ReviewItem> {
-  const resp = await fetch(BASE + "/api/v1/reviews", {
+  const resp = await authedFetch("/api/v1/reviews", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),

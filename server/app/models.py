@@ -351,6 +351,28 @@ class Review(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     agent_run_id: Mapped[int] = mapped_column(index=True, unique=True)
     reviewer: Mapped[str] = mapped_column(String(100))
+    # S21 块 S：评审人关联账号（存量行 NULL，展示仍以 reviewer 字符串为准）
+    user_id: Mapped[int | None] = mapped_column(nullable=True)
     decision: Mapped[str] = mapped_column(String(20))
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class User(Base):
+    """S21 块 S：工作台账号。角色三级 admin（建号/全权）> reviewer（可评审）> viewer（只读）。"""
+    __tablename__ = "user"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(200))
+    role: Mapped[str] = mapped_column(String(20), default="viewer")
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class AuthToken(Base):
+    """S21 块 S：DB 会话——只存 token 哈希（secrets.token_urlsafe 签发，SHA-256 落库）。"""
+    __tablename__ = "auth_token"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
