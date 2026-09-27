@@ -8,12 +8,15 @@ from playwright.async_api import Page, async_playwright
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app import config
 from app.llm.gateway import complete
-from app.models import Alignment, OutcomeAssertion, RawEvent, ReplayRun, Skill, VisualBaseline
+from app.models import (Alignment, LocateProposal, OutcomeAssertion,
+                      RawEvent, ReplayRun, Skill, VisualBaseline)
 from app.replay.assert_eval import evaluate_assertions, path_matches
 from app.replay.locate import locate
 from app.replay.page_snapshot import collect_page_snapshot
 from app.replay.plan import compile_skeleton_plan, requires_confirmation
+from app.replay.repair import generate_proposals, load_repair_map, record_usage
 from app.replay.visual import compare_images, dhash, visual_dir
 
 MAX_BODY = 8192
@@ -59,9 +62,27 @@ async def _open_context(browser):
     return await browser.new_context(storage_state=STORAGE_STATE or None)
 
 
+async def _locate_with_repair(page, label: str,
+                             repair_map: dict[str, dict] | None):
+    """S24 块 U：定位失败时按提案库重试——返回 (locator, strategy, proposal_id)。
+
+    无提案或提案也定位失败 → 抛 LookupError（步骤照常失败）。
+    """
+    try:
+        locator, strategy = await locate(page, label)
+        return locator, strategy, None
+    except LookupError:
+        rep = (repair_map or {}).get(label)
+        if rep is None:
+            raise
+    locator, strategy = await locate(page, rep["label"])
+    return locator, f"repair:{strategy}", rep["id"]
+
+
 async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                        awaited_templates: list[str] | None = None,
-                       settle_timeout_ms: int = 10000) -> dict:
+                       settle_timeout_ms: int = 10000,
+                       repair_map: dict[str, dict] | None = None) -> dict:
     observed: list[dict] = []
 
     # S23 块 V：request/response 配对测 API 延迟（request 对象做键）
@@ -95,11 +116,15 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
             continue
         try:
             if step["kind"] == "click":
-                locator, strategy = await locate(page, step["label"])
+                locator, strategy, rep_id = await _locate_with_repair(
+                    page, step["label"], repair_map)
                 await locator.click(timeout=timeout_ms)
-                executed.append({**step, "strategy": strategy, "ok": True})
+                executed.append({**step, "strategy": strategy,
+                                 **({"repair_proposal_id": rep_id} if rep_id else {}),
+                                 "ok": True})
             elif step["kind"] == "input":
-                locator, strategy = await locate(page, step["name"])
+                locator, strategy, rep_id = await _locate_with_repair(
+                    page, step["name"], repair_map)
                 # 水合竞态防护：SPA 可能在 fill 后回写旧值（njmind 实测，
                 # 值被改回则保存的脏检查跳过、不发请求），确认值真的写入
                 filled = False
@@ -114,7 +139,9 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                         break
                 if not filled:
                     raise RuntimeError(f"输入 {step['name']} 被页面回写覆盖")
-                executed.append({**step, "strategy": strategy, "ok": True})
+                executed.append({**step, "strategy": strategy,
+                                 **({"repair_proposal_id": rep_id} if rep_id else {}),
+                                 "ok": True})
             else:
                 executed.append({**step, "ok": False, "error": f"unknown kind {step['kind']}"})
                 failed = True
@@ -160,35 +187,20 @@ async def _close_ctx_quietly(ctx) -> None:
         pass
 
 
-async def _execute_skill(db: Session, browser, skill_id: int,
-                         overrides: dict[str, str],
-                         confirm_side_effect: bool) -> ReplayRun:
-    """单 skill 回放执行体——browser 已由调用方开启，本函数不碰浏览器生命周期。
+def _flaky_rerun() -> bool:
+    # S24 块 U：REPLAY_FLAKY_RERUN=0 关闭 fail 自动重试；调用时读 env（可测试）
+    return os.environ.get("REPLAY_FLAKY_RERUN", "1") == "1"
 
-    shadow 门控在内：shadow 直接落库返回，不触 browser/context。
-    计划编译异常（如 skill 不存在）向上抛——与重构前 run_replay 语义一致
-    （run_graph 依赖该异常收敛图状态为 error，见 test_run_graph_error_captured）。
+
+async def _attempt(db: Session, browser, skill_id: int, plan: dict,
+                   assertions: list[dict], shared_ctx: bool,
+                   repair_map: dict[str, dict] | None = None) -> dict:
+    """S24 块 U：单次执行尝试（无 DB 写）——_execute_skill 编排重试的基础。
+
+    异常收敛为 error attempt（不抛）；返回键：
+    status/result/results/before_snapshot/after_snapshot/duration_ms/
+    visual_result/baseline_created/vdir/screenshot_path/page_title/error_text。
     """
-    skill = db.get(Skill, skill_id)
-    alignment = db.get(Alignment, skill.alignment_id)
-    ref_sid = alignment.session_ids[0]
-    rows = db.execute(select(RawEvent).where(RawEvent.session_id == ref_sid)
-                      .order_by(RawEvent.ts, RawEvent.seq)).scalars().all()
-    events = [{"seq": r.seq, "ts": r.ts, "kind": r.kind, "payload": r.payload or {}} for r in rows]
-    plan = compile_skeleton_plan(events, skill.skeleton, ref_sid, overrides or {},
-                                 skill.input_variables)
-
-    shadow = requires_confirmation(skill.skeleton) and not confirm_side_effect
-    if shadow:
-        run = ReplayRun(skill_id=skill_id, mode="shadow", status="shadow",
-                        plan=plan, executed=None, assertion_results=None)
-        db.add(run)
-        db.commit()
-        db.refresh(run)
-        return run
-
-    # CDP 常驻 context 由 _open_context 复用返回，逐 skill 收尾时不能关
-    shared_ctx = bool(_cdp_url() and getattr(browser, "contexts", None))
     ctx = None
     try:
         ctx = await _open_context(browser)
@@ -196,28 +208,32 @@ async def _execute_skill(db: Session, browser, skill_id: int,
         await page.goto(plan["url"])
         await page.wait_for_load_state("domcontentloaded", timeout=15000)
         await page.wait_for_timeout(2000)
-        assertions = [{"kind": a.kind, "payload": a.payload} for a in
-                      db.query(OutcomeAssertion).filter(
-                          OutcomeAssertion.skill_id == skill_id).all()]
-        # 被覆盖变量的 ui_text 期望跟随覆盖值（录制值是旧参数的 UI 状态，
-        # 换参回放时按注入值判定——否则换参必 FAIL，语义错误）
-        for a in assertions:
-            if a["kind"] == "ui_text":
-                label = a["payload"].get("label")
-                if label in (overrides or {}):
-                    a["payload"] = {**a["payload"],
-                                    "after": overrides[label]}
-        # T4：执行前采 before 快照（水合竞态防护在 execute_plan 的 fill 确认内，
-        # 不与本采集竞争）
         before_snapshot = await collect_page_snapshot(page, phase="before")
         t0 = time.monotonic()
         result = await execute_plan(
             page, plan,
             awaited_templates=[a["payload"]["api_template"] for a in assertions
-                               if "api_template" in a["payload"]])
+                               if "api_template" in a["payload"]],
+            repair_map=repair_map)
         duration_ms = int((time.monotonic() - t0) * 1000)
-        # T4：断言评估前采 after 快照（ui_text 用它对比）
         after_snapshot = await collect_page_snapshot(page, phase="after")
+
+        # S24 块 U：定位失败 → LLM 提案 + 确定性验证（页面还开着，仍可 locate 实测）
+        repair_used_ids = [s["repair_proposal_id"] for s in result["executed"]
+                           if s.get("ok") and s.get("repair_proposal_id")]
+        failed_locate = []
+        for s in result["executed"]:
+            if s.get("ok") or "semantic locate failed" not in (s.get("error") or ""):
+                continue
+            failed_locate.append(s.get("label") or s.get("name") or "")
+        repair_created_ids: list[int] = []
+        if failed_locate:
+            try:
+                created = await generate_proposals(
+                    db, page, skill_id, [l for l in failed_locate if l])
+                repair_created_ids = [r.id for r in created]
+            except Exception:
+                pass  # 提案生成失败不破坏回放判定（fail-open）
 
         results = evaluate_assertions(assertions, result["observed"],
                                       after_snapshot=after_snapshot)
@@ -265,28 +281,112 @@ async def _execute_skill(db: Session, browser, skill_id: int,
             screenshot_path = f"{ARTIFACT_DIR}/replay-{int(time.time() * 1000)}.png"
             await page.screenshot(path=screenshot_path)
             page_title = await page.title()
+        return {"status": status, "result": result, "results": results,
+                "before_snapshot": before_snapshot, "after_snapshot": after_snapshot,
+                "duration_ms": duration_ms, "visual_result": visual_result,
+                "baseline_created": baseline_created, "vdir": vdir,
+                "screenshot_path": screenshot_path, "page_title": page_title,
+                "repair_used_ids": repair_used_ids,
+                "repair_created_ids": repair_created_ids,
+                "error_text": None}
     except Exception as exc:
-        # 执行阶段异常也必须落 error run（C3：执行审计不可缺）
-        run = ReplayRun(skill_id=skill_id, mode="execute", status="error",
-                        plan=plan, executed=None, assertion_results=None,
-                        attribution=str(exc)[:500])
-        db.add(run)
-        db.commit()
-        db.refresh(run)
-        return run
+        return {"status": "error", "result": None, "results": None,
+                "before_snapshot": None, "after_snapshot": None,
+                "duration_ms": None, "visual_result": None,
+                "baseline_created": False, "vdir": None,
+                "screenshot_path": None, "page_title": None,
+                "repair_used_ids": [], "repair_created_ids": [],
+                "error_text": str(exc)[:500]}
     finally:
         if ctx is not None and not shared_ctx:
             await _close_ctx_quietly(ctx)
 
+
+async def _execute_skill(db: Session, browser, skill_id: int,
+                         overrides: dict[str, str],
+                         confirm_side_effect: bool) -> ReplayRun:
+    """单 skill 回放执行体——browser 已由调用方开启，本函数不碰浏览器生命周期。
+
+    shadow 门控在内：shadow 直接落库返回，不触 browser/context。
+    计划编译异常（如 skill 不存在）向上抛——与重构前 run_replay 语义一致
+    （run_graph 依赖该异常收敛图状态为 error，见 test_run_graph_error_captured）。
+    S24 块 U：fail 自动重试一次（REPLAY_FLAKY_RERUN）——重试 pass 标 flaky，
+    首次失败明细嵌入 plan.first_attempt（C3 审计）。
+    """
+    skill = db.get(Skill, skill_id)
+    alignment = db.get(Alignment, skill.alignment_id)
+    ref_sid = alignment.session_ids[0]
+    rows = db.execute(select(RawEvent).where(RawEvent.session_id == ref_sid)
+                      .order_by(RawEvent.ts, RawEvent.seq)).scalars().all()
+    events = [{"seq": r.seq, "ts": r.ts, "kind": r.kind, "payload": r.payload or {}} for r in rows]
+    plan = compile_skeleton_plan(events, skill.skeleton, ref_sid, overrides or {},
+                                 skill.input_variables)
+
+    shadow = requires_confirmation(skill.skeleton) and not confirm_side_effect
+    if shadow:
+        run = ReplayRun(skill_id=skill_id, mode="shadow", status="shadow",
+                        plan=plan, executed=None, assertion_results=None)
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+        return run
+
+    # CDP 常驻 context 由 _open_context 复用返回，逐 skill 收尾时不能关
+    shared_ctx = bool(_cdp_url() and getattr(browser, "contexts", None))
+    assertions = [{"kind": a.kind, "payload": a.payload} for a in
+                  db.query(OutcomeAssertion).filter(
+                      OutcomeAssertion.skill_id == skill_id).all()]
+    # 被覆盖变量的 ui_text 期望跟随覆盖值（录制值是旧参数的 UI 状态，
+    # 换参回放时按注入值判定——否则换参必 FAIL，语义错误）
+    for a in assertions:
+        if a["kind"] == "ui_text":
+            label = a["payload"].get("label")
+            if label in (overrides or {}):
+                a["payload"] = {**a["payload"],
+                                "after": overrides[label]}
+
+    repair_map = load_repair_map(db, skill_id)
+    attempt = await _attempt(db, browser, skill_id, plan, assertions, shared_ctx,
+                             repair_map)
+    flaky = False
+    if (attempt["status"] == "fail" and _flaky_rerun()):
+        # flaky 语义=真实非确定性；重试沿用同一 repair_map——本次新生成的提案
+        # 留给下一轮回放（自愈是跨回放的，不与 flaky 混淆）
+        retry = await _attempt(db, browser, skill_id, plan, assertions, shared_ctx,
+                               repair_map)
+        if retry["status"] == "pass":
+            flaky = True
+            # C3：首次失败明细嵌入（重试通过时失败尝试不单独落 run，但可审计）
+            retry["first_attempt"] = {"status": attempt["status"],
+                                      "executed": attempt["result"]["executed"],
+                                      "assertion_results": attempt["results"]}
+            attempt = retry
+
+    if attempt["status"] == "error" and attempt["error_text"] is not None:
+        # 执行阶段异常也必须落 error run（C3：执行审计不可缺）
+        run = ReplayRun(skill_id=skill_id, mode="execute", status="error",
+                        plan=plan, executed=None, assertion_results=None,
+                        attribution=attempt["error_text"])
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+        return run
+
+    result = attempt["result"]
+    results = attempt["results"]
+    status = attempt["status"]
+
     # T4：前后快照旁挂 plan（plan 消费方只读 url/steps，加法变更零破坏面，
     # 优于包装 executed——后者被 extract_observed 按步骤列表遍历）
     # S23 块 V：API 延迟同样旁挂（api_latencies 键，替身 execute_plan 无此键时跳过）
-    plan = {**plan, "before_snapshot": before_snapshot,
-            "after_snapshot": after_snapshot,
+    plan = {**plan, "before_snapshot": attempt["before_snapshot"],
+            "after_snapshot": attempt["after_snapshot"],
             "api_latencies": result.get("api_latencies") or {}}
+    if "first_attempt" in attempt:
+        plan = {**plan, "first_attempt": attempt["first_attempt"]}
     run = ReplayRun(skill_id=skill_id, mode="execute", status=status, plan=plan,
                     executed=result["executed"], assertion_results=results,
-                    duration_ms=duration_ms)
+                    duration_ms=attempt["duration_ms"], flaky=flaky)
     db.add(run)
     db.commit()
     db.refresh(run)
@@ -294,10 +394,10 @@ async def _execute_skill(db: Session, browser, skill_id: int,
     # S22 块 T：建基线补表行（run 落库后才有 source_run_id）。
     # 截图文件无效（如替身写入非图像内容）→ 放弃建基线，不破坏已判定的 run
     # （与采集阶段同 fail-open 语义）。
-    if baseline_created:
+    if attempt["baseline_created"]:
         try:
             from PIL import Image
-            bpath = str(vdir / "baseline.png")
+            bpath = str(attempt["vdir"] / "baseline.png")
             with Image.open(bpath) as img:
                 width, height = img.size
             db.add(VisualBaseline(skill_id=skill_id, file_path=bpath,
@@ -307,18 +407,28 @@ async def _execute_skill(db: Session, browser, skill_id: int,
         except Exception:
             pass
 
+    # S24 块 U：自愈成功计数（≥N 自动晋升）+ 新提案关联源 run（U3 归因链）
+    if attempt["repair_used_ids"]:
+        record_usage(db, attempt["repair_used_ids"])
+    if attempt["repair_created_ids"]:
+        db.query(LocateProposal).filter(
+            LocateProposal.id.in_(attempt["repair_created_ids"])
+        ).update({"source_run_id": run.id},
+                 synchronize_session=False)
+        db.commit()
+
     if status in ("fail", "error"):
         failed_steps = [s for s in result["executed"] if not s.get("ok")]
         failed_asserts = [r for r in results if not r.get("passed")]
         prompt = (
-            f"回放失败归因。页面标题：{page_title}\n"
+            f"回放失败归因。页面标题：{attempt['page_title']}\n"
             f"失败的步骤：{json.dumps(failed_steps, ensure_ascii=False)}\n"
             f"失败的断言：{json.dumps(failed_asserts, ensure_ascii=False)}\n"
             "只输出一段中文归因，不超过 100 字。"
         )
         r = complete(db, "replay_failure_attribution", prompt)
         run.attribution = r.text
-        run.artifact_path = screenshot_path or ""
+        run.artifact_path = attempt["screenshot_path"] or ""
         db.commit()
         db.refresh(run)
     return run

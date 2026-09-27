@@ -32,3 +32,7 @@ VISUAL_DIFF_THRESHOLD = float(os.environ.get("VISUAL_DIFF_THRESHOLD", "0.02"))
 
 # S23 块 V 性能漂移阈值：current > 中位数 × ratio 判漂移（严格大于）；历史 <3 次不判定
 PERF_DRIFT_RATIO = float(os.environ.get("PERF_DRIFT_RATIO", "1.5"))
+
+# S24 块 U：flaky 重跑开关（1=execute fail 自动重试一次）；定位提案自动晋升所需通过次数
+REPLAY_FLAKY_RERUN = os.environ.get("REPLAY_FLAKY_RERUN", "1") == "1"
+LOCATE_AUTO_PROMOTE_N = int(os.environ.get("LOCATE_AUTO_PROMOTE_N", "3"))

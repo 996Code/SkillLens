@@ -36,6 +36,13 @@ LLM/njmind 凭据经 `server/.env`（gitignore 排除，键名见 `.env.docker.e
 - 判定：current > 中位数 × `PERF_DRIFT_RATIO`（默认 1.5，严格大于）→ drift 项进四分类报告（type=perf）；历史不足 3 次不判定。
 - 呈现：报告页性能基线区块（中位数/本次/趋势条），`GET /reports/{id}/perf` 只读派生端点。
 
+## 自愈与维护闭环（S24 块 U）
+
+- **定位修复提案**：回放定位失败 → LLM（locate_repair）从页面可见元素提案新标签 → **确定性验证**（locate 实测命中）→ verified 参与后续回放自愈；verify_count ≥ `LOCATE_AUTO_PROMOTE_N`（默认 3）自动晋升 promoted；人工否决 `POST /locate-proposals/{id}/reject`（reviewer/admin）。
+- **flaky 重跑**：execute fail 自动重试一次（`REPLAY_FLAKY_RERUN`，默认开）；重试 pass → status=pass + `flaky` 标记（进一致性统计 flaky_runs），首次失败明细嵌入 `plan.first_attempt`（C3）。
+- **归因链**：提案带 source_run_id，详情页"自愈提案"区块展示 失败→归因→提案→验证 全链。
+- 宪法边界：LLM 只提案不判定；proposed（未验证）提案永不参与回放。
+
 ## 模块地图（app/）
 
 ```
