@@ -84,7 +84,7 @@ async def test_card_full_fields(client, monkeypatch):
         assert a["payload"] == r["payload"]
     # last_run：取 id 倒序第一条（shadow 也算）
     assert card["last_run"] == {"id": run_id, "status": "execute", "mode": "execute",
-                                "ts": card["last_run"]["ts"]}
+                                "flaky": False, "ts": card["last_run"]["ts"]}
     # window_params 从 alignment 读
     assert card["window_params"] == {"idle_ms": 2000, "max_window_ms": 8000,
                                      "consistent": True}

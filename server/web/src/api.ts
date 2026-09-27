@@ -577,6 +577,40 @@ export function getReport(id: number | string): Promise<Report> {
   return get<Report>(`/api/v1/reports/${id}`);
 }
 
+// ---------- S24 块 U：定位修复提案（自愈闭环） ----------
+
+export interface LocateProposalItem {
+  id: number;
+  skill_id: number;
+  step_label: string;
+  proposed_label: string;
+  strategy: string;
+  status: "proposed" | "verified" | "promoted" | "rejected";
+  verify_count: number;
+  source_run_id: number | null;
+  attribution: string | null;
+  created_at: string;
+}
+
+export function getLocateProposals(
+  id: number | string,
+): Promise<LocateProposalItem[]> {
+  return get<LocateProposalItem[]>(`/api/v1/skills/${id}/locate-proposals`);
+}
+
+/** 人工否决提案（reviewer/admin）。rejected 不再参与回放自愈。 */
+export async function rejectLocateProposal(
+  id: number,
+): Promise<{ ok: boolean }> {
+  const resp = await authedFetch(`/api/v1/locate-proposals/${id}/reject`, {
+    method: "POST",
+  });
+  if (!resp.ok) {
+    throw new ApiError(resp.status, `POST locate-proposals/reject -> ${resp.status}`);
+  }
+  return resp.json() as Promise<{ ok: boolean }>;
+}
+
 // ---------- S23 块 V：性能上下文（报告页只读派生端点） ----------
 
 export interface PerfContext {

@@ -33,7 +33,7 @@ def _last_run(db: Session, skill_id: int) -> dict | None:
     if run is None:
         return None
     return {"id": run.id, "status": run.status, "mode": run.mode,
-            "ts": run.created_at.isoformat()}
+            "flaky": bool(run.flaky), "ts": run.created_at.isoformat()}
 
 
 @router.get("/skills/{skill_id}/card")
@@ -115,5 +115,11 @@ async def get_skill_consistency(skill_id: int, db: Session = Depends(get_db)) ->
                     "observed_values": values,
                     "consistent": len(set(values)) == 1})
     inconsistent = [r for r in out if not r["consistent"]]
+    # S24 块 U：flaky 回放计数（首试 fail 重试 pass——不稳定信号进一致性视图）
+    flaky_runs = len([r for r in
+                      db.query(ReplayRun).filter(
+                          ReplayRun.skill_id == skill_id,
+                          ReplayRun.flaky.is_(True)).all()])
     return {"skill_id": skill_id, "runs": len(run_results), "assertions": out,
-            "consistent": not inconsistent, "inconsistent_count": len(inconsistent)}
+            "consistent": not inconsistent, "inconsistent_count": len(inconsistent),
+            "flaky_runs": flaky_runs}

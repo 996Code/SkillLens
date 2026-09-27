@@ -281,6 +281,8 @@ class ReplayRun(Base):
     artifact_path: Mapped[str] = mapped_column(String(300), default="")
     # S23 块 V：execute 回放耗时（ms）——性能基线与漂移判定的原始数据
     duration_ms: Mapped[int | None] = mapped_column(nullable=True)
+    # S24 块 U：flaky 标记——首试 fail 重试 pass（两次结果不一致），进一致性统计
+    flaky: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
@@ -377,6 +379,25 @@ class AuthToken(Base):
     user_id: Mapped[int] = mapped_column(index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     expires_at: Mapped[datetime] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class LocateProposal(Base):
+    """S24 块 U：定位修复提案库——LLM 提案 + 确定性验证（locate 实测）。
+
+    状态机：proposed（LLM 提案未验证，不参与回放）→ verified（locate 实测命中，
+    参与回放自愈）→ promoted（verify_count ≥ N 自动晋升）；任何状态可人工 rejected。
+    source_run_id 关联首次定位失败的回放（U3 归因链）。
+    """
+    __tablename__ = "locate_proposal"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    skill_id: Mapped[int] = mapped_column(index=True)
+    step_label: Mapped[str] = mapped_column(String(200))
+    proposed_label: Mapped[str] = mapped_column(String(200))
+    strategy: Mapped[str] = mapped_column(String(30), default="")
+    status: Mapped[str] = mapped_column(String(20), default="proposed")
+    verify_count: Mapped[int] = mapped_column(default=0)
+    source_run_id: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 

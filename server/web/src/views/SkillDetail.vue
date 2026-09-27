@@ -6,13 +6,16 @@ import { useRoute } from "vue-router";
 import {
   currentUser,
   fetchVisualImage,
+  getLocateProposals,
   getSkillCard,
   getSkillConsistency,
   getVisualBaseline,
+  rejectLocateProposal,
   resetVisualBaseline,
 } from "../api";
 import type {
   AssertionRow,
+  LocateProposalItem,
   SkillCard,
   SkillConsistency,
   VisualBaselineResponse,
@@ -25,6 +28,35 @@ const notFound = ref(false);
 const error = ref("");
 // S12 N4 层5：断言观测一致性（独立请求，失败/形状异常只藏行不炸页）
 const consistency = ref<SkillConsistency | null>(null);
+// S24 块 U：定位修复提案（自愈闭环；非关键路径失败静默藏区块）
+const proposals = ref<LocateProposalItem[]>([]);
+const proposalBusy = ref(false);
+const canRejectProposal = computed(
+  () => user?.role === "admin" || user?.role === "reviewer");
+
+async function loadProposals(id: string): Promise<void> {
+  try {
+    proposals.value = await getLocateProposals(id);
+  } catch {
+    proposals.value = [];
+  }
+}
+
+async function rejectProposal(pid: number): Promise<void> {
+  proposalBusy.value = true;
+  try {
+    await rejectLocateProposal(pid);
+    proposals.value = proposals.value.filter((p) => p.id !== pid
+      || (p as { status?: string }).status !== "rejected");
+    proposals.value = await getLocateProposals(String(route.params.id));
+  } catch {
+    /* 409 已否决等：刷新列表兜底 */
+    proposals.value = await getLocateProposals(String(route.params.id));
+  } finally {
+    proposalBusy.value = false;
+  }
+}
+
 // S22 块 T：视觉回归（基线/最新图并排 + 最近比对结果；非关键路径失败静默藏区块）
 const visual = ref<VisualBaselineResponse | null>(null);
 const visualBaselineUrl = ref("");
@@ -119,6 +151,7 @@ onMounted(async () => {
     })
     .catch(() => {});
   loadVisual(String(route.params.id));
+  loadProposals(String(route.params.id));
 });
 </script>
 
@@ -235,11 +268,44 @@ onMounted(async () => {
         <dl v-else class="meta">
           <div>
             <dt>状态</dt>
-            <dd><span class="dot" :class="`dot-${card.last_run.status}`"></span>{{ card.last_run.status }}</dd>
+            <dd>
+              <span class="dot" :class="`dot-${card.last_run.status}`"></span>{{ card.last_run.status }}
+              <span v-if="card.last_run.flaky" class="badge badge-flaky" data-testid="flaky-badge">flaky</span>
+            </dd>
           </div>
           <div><dt>模式</dt><dd>{{ card.last_run.mode }}</dd></div>
           <div><dt>时间</dt><dd>{{ fmtTime(card.last_run.ts) }}</dd></div>
         </dl>
+      </div>
+
+      <!-- S24 块 U：自愈提案（失败→归因→提案→验证链） -->
+      <div v-if="proposals.length" class="block" data-testid="proposal-section">
+        <h2>自愈提案</h2>
+        <table class="tbl">
+          <thead><tr><th>原标签</th><th>提案标签</th><th>状态</th><th>验证次数</th><th>源归因</th><th v-if="canRejectProposal"></th></tr></thead>
+          <tbody>
+            <tr v-for="p in proposals" :key="p.id">
+              <td class="mono">{{ p.step_label }}</td>
+              <td class="mono">{{ p.proposed_label }}</td>
+              <td>
+                <span class="badge" :class="`badge-${p.status}`">{{ p.status }}</span>
+              </td>
+              <td class="mono">{{ p.verify_count }}</td>
+              <td class="attr-cell" :title="p.attribution ?? ''">
+                {{ (p.attribution ?? "—").slice(0, 40) }}
+              </td>
+              <td v-if="canRejectProposal">
+                <button
+                  v-if="p.status !== 'rejected'"
+                  class="btn btn-sm"
+                  :disabled="proposalBusy"
+                  :data-testid="`reject-${p.id}`"
+                  @click="rejectProposal(p.id)"
+                >否决</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <!-- S22 块 T：视觉回归 -->
