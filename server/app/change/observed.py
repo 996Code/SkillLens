@@ -42,8 +42,9 @@ async def run_observe(db: Session, expected_delta_id: int, skill_id: int,
     if run.mode == "shadow":
         raise PermissionError("shadow run 未执行，无观测")
     items = extract_observed(run)
-    # MVP：duration_ms 存 0（run 内首尾时间差不可得），真实时序 Drift 留给 Task 4 断言耗时
+    # S23 块 V：兑现 MVP TODO——duration 取回放真实耗时（shadow run 为 None → 0）
     row = ObservedDelta(expected_delta_id=expected_delta_id, skill_id=skill_id,
-                        replay_run_id=run.id, items=items, duration_ms=0)
+                        replay_run_id=run.id, items=items,
+                        duration_ms=run.duration_ms or 0)
     db.add(row); db.commit(); db.refresh(row)
     return row

@@ -154,3 +154,63 @@ describe("DeltaReport", () => {
     expect(root.textContent).toContain("/api/new-feature");
   });
 });
+
+describe("DeltaReport perf block (S23)", () => {
+  it("renders perf baseline and trend when perf context exists", async () => {
+    const perfCtx = {
+      baseline: { median: 1000, n: 3 },
+      current_ms: 5000,
+      history_ms: [900, 1000, 1100],
+    };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/reports/1/perf")) {
+        return new Response(JSON.stringify(perfCtx), { status: 200 });
+      }
+      if (url.includes("/api/v1/reports/1")) {
+        return new Response(JSON.stringify(report), { status: 200 });
+      }
+      if (url.includes("/api/v1/expected-deltas/5")) {
+        return new Response(JSON.stringify(expectedDelta), { status: 200 });
+      }
+      return new Response("x", { status: 404 });
+    }));
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    await mountReport(root, "/reports/1");
+    for (let i = 0; i < 6; i++) await flush();
+
+    const block = root.querySelector("[data-testid='perf-block']");
+    expect(block).not.toBeNull();
+    expect(block?.textContent).toContain("1000ms");
+    expect(block?.textContent).toContain("5000ms");
+    // 趋势条：3 根历史 + 1 根当前
+    expect(block?.querySelectorAll(".perf-bar").length).toBe(4);
+  });
+
+  it("hides perf block when perf endpoint 404 (old reports)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/reports/1/perf")) {
+        return new Response("x", { status: 404 });
+      }
+      if (url.includes("/api/v1/reports/1")) {
+        return new Response(JSON.stringify(report), { status: 200 });
+      }
+      if (url.includes("/api/v1/expected-deltas/5")) {
+        return new Response(JSON.stringify(expectedDelta), { status: 200 });
+      }
+      return new Response("x", { status: 404 });
+    }));
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    await mountReport(root, "/reports/1");
+    await flush();
+    await flush();
+    await flush();
+
+    expect(root.querySelector("[data-testid='perf-block']")).toBeNull();
+    // 四分类仍正常渲染
+    expect(root.textContent).toContain("REQ-100");
+  });
+});

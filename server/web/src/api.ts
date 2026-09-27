@@ -577,6 +577,18 @@ export function getReport(id: number | string): Promise<Report> {
   return get<Report>(`/api/v1/reports/${id}`);
 }
 
+// ---------- S23 块 V：性能上下文（报告页只读派生端点） ----------
+
+export interface PerfContext {
+  baseline: { median: number | null; n: number };
+  current_ms: number | null;
+  history_ms: number[];
+}
+
+export function getReportPerf(id: number | string): Promise<PerfContext> {
+  return get<PerfContext>(`/api/v1/reports/${id}/perf`);
+}
+
 export function getExpectedDelta(id: number | string): Promise<ExpectedDelta> {
   return get<ExpectedDelta>(`/api/v1/expected-deltas/${id}`);
 }

@@ -279,6 +279,8 @@ class ReplayRun(Base):
     assertion_results: Mapped[list | None] = mapped_column(JSON, nullable=True)
     attribution: Mapped[str | None] = mapped_column(Text, nullable=True)
     artifact_path: Mapped[str] = mapped_column(String(300), default="")
+    # S23 块 V：execute 回放耗时（ms）——性能基线与漂移判定的原始数据
+    duration_ms: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
