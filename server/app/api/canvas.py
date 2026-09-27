@@ -67,6 +67,10 @@ async def run_canvas(canvas_id: int, db: Session = Depends(get_db)) -> dict:
     if not row:
         raise HTTPException(status_code=404, detail="canvas not found")
     run = await compile_and_run(db, row)
+    # S25 块 W2：画布/夜间运行完成推送（fire-and-forget）
+    from app.integrations.webhook import notify
+    await notify(f"SkillLens 运行完成 #{run.id}",
+                 f"画布 {row.name}（{run.graph_name}）状态：{run.status}")
     return {"id": run.id, "canvas_id": canvas_id, "status": run.status,
             "graph_name": run.graph_name, "node_outputs": run.node_outputs,
             "error_text": run.error_text}

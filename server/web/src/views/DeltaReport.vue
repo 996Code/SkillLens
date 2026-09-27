@@ -155,6 +155,9 @@ watch(() => route.params.deltaId, (v) => {
         <h2>需求上下文</h2>
         <dl class="meta">
           <div><dt>requirement</dt><dd class="mono">{{ expectedDelta.requirement_id }}</dd></div>
+          <div v-if="expectedDelta.external_ref">
+            <dt>外部需求</dt><dd class="mono" data-testid="external-ref">{{ expectedDelta.external_ref }}</dd>
+          </div>
           <div><dt>feature</dt><dd>{{ expectedDelta.feature || "—" }}</dd></div>
           <div><dt>status</dt><dd>{{ expectedDelta.status }}</dd></div>
           <div><dt>reviewed_by</dt><dd>{{ expectedDelta.reviewed_by || "—" }}</dd></div>

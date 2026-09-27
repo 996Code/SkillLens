@@ -43,6 +43,12 @@ LLM/njmind 凭据经 `server/.env`（gitignore 排除，键名见 `.env.docker.e
 - **归因链**：提案带 source_run_id，详情页"自愈提案"区块展示 失败→归因→提案→验证 全链。
 - 宪法边界：LLM 只提案不判定；proposed（未验证）提案永不参与回放。
 
+## 集成出口（S25 块 W）
+
+- **Playwright 导出**：`GET /skills/{id}/export/playwright` → 自包含可执行脚本（内联语义定位与模板匹配，与工作台同规则；OVERRIDES 顶部换参）。导出即人工取走执行权（无 C1 门控）。
+- **Webhook**：`WEBHOOK_URL`（空=关）+ `WEBHOOK_FORMAT`（wecom|dingtalk|slack|generic）；报告生成与画布/夜间运行完成触发，fire-and-forget。
+- **需求条目关联**：expected_delta.external_ref（Jira key 等）创建时可带、报告页展示；v1 不做 Jira API 对接。
+
 ## 模块地图（app/）
 
 ```

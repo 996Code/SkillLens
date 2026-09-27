@@ -290,6 +290,8 @@ class ExpectedDelta(Base):
     __tablename__ = "expected_delta"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     requirement_id: Mapped[str] = mapped_column(String(100), index=True)
+    # S25 块 W3：外部需求条目编号（Jira key 等；v1 仅存字段+展示，不做 API 对接）
+    external_ref: Mapped[str | None] = mapped_column(String(100), nullable=True)
     version: Mapped[str] = mapped_column()
     requirement_text: Mapped[str] = mapped_column(Text)
     feature: Mapped[str] = mapped_column(String(100), default="")

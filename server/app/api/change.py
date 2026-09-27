@@ -20,6 +20,7 @@ def get_db():
 class CreateDeltaRequest(BaseModel):
     requirement_id: str
     requirement_text: str
+    external_ref: str | None = None   # S25 块 W3：Jira key 等外部条目编号
 
 
 class ConfirmRequest(BaseModel):
@@ -30,7 +31,12 @@ class ConfirmRequest(BaseModel):
 @router.post("/expected-deltas", status_code=201)
 async def create_expected(body: CreateDeltaRequest, db: Session = Depends(get_db)) -> dict:
     row = generate_expected_delta(db, body.requirement_text, body.requirement_id)
-    return {"id": row.id, "status": row.status, "changes": row.changes, "notes": row.notes}
+    if body.external_ref:
+        row.external_ref = body.external_ref
+        db.commit()
+        db.refresh(row)
+    return {"id": row.id, "status": row.status, "changes": row.changes, "notes": row.notes,
+            "external_ref": row.external_ref}
 
 
 @router.post("/expected-deltas/{delta_id}/confirm")
@@ -95,6 +101,7 @@ async def report(delta_id: int, body: ReportRequest,
                  db: Session = Depends(get_db)) -> dict:
     from app.change.classify import classify_delta
     from app.change.perf import perf_context
+    from app.integrations.webhook import notify
     from app.models import DeltaReport, ObservedDelta
     delta = db.get(ExpectedDelta, delta_id)
     obs = db.get(ObservedDelta, body.observed_delta_id)
@@ -112,6 +119,12 @@ async def report(delta_id: int, body: ReportRequest,
                       expected=r["expected"], missing=r["missing"],
                       unexpected=r["unexpected"], drift=r["drift"])
     db.add(row); db.commit(); db.refresh(row)
+    # S25 块 W2：报告生成推送（fire-and-forget，失败不阻塞）
+    await notify(
+        f"SkillLens 报告生成 #{row.id}",
+        f"需求 {delta.requirement_id}：expected {len(r['expected'])} / "
+        f"missing {len(r['missing'])} / unexpected {len(r['unexpected'])} / "
+        f"drift {len(r['drift'])}")
     return {"id": row.id, "expected_delta_id": delta_id,
             "observed_delta_id": obs.id, "perf": perf_ctx, **r}
 
@@ -122,5 +135,6 @@ async def get_expected(delta_id: int, db: Session = Depends(get_db)) -> dict:
     if not row:
         raise HTTPException(404, "expected delta not found")
     return {"id": row.id, "requirement_id": row.requirement_id,
+            "external_ref": row.external_ref,
             "feature": row.feature, "changes": row.changes, "status": row.status,
             "reviewed_by": row.reviewed_by, "notes": row.notes}
