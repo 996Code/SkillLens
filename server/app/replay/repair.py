@@ -73,6 +73,7 @@ def record_usage(db: Session, proposal_ids: list[int]) -> None:
     """自愈成功计数；verified 且 verify_count ≥ N → 自动晋升 promoted。
 
     N 调用时读 env（LOCATE_AUTO_PROMOTE_N，默认 3）——可测试可配置。
+    S26：晋升同时回写 skill 骨架生成新版本（supersede 链）。
     """
     import os
     n = int(os.environ.get("LOCATE_AUTO_PROMOTE_N", "3"))
@@ -83,4 +84,63 @@ def record_usage(db: Session, proposal_ids: list[int]) -> None:
         row.verify_count += 1
         if row.status == "verified" and row.verify_count >= n:
             row.status = "promoted"
+            _apply_proposal_version(db, row)
     db.commit()
+
+
+def _healed_skeleton(skeleton: list[dict], step_label: str,
+                     proposed_label: str) -> list[dict]:
+    """匹配签名锚点（type:label）的骨架步打 healed label 覆盖。"""
+    out = []
+    for step in skeleton or []:
+        step = dict(step)
+        anchor = str(step.get("signature", "")).split("|")[0]
+        _, _, sig_label = anchor.partition(":")
+        if sig_label == step_label:
+            step["label"] = proposed_label
+        out.append(step)
+    return out
+
+
+def _apply_proposal_version(db: Session, proposal: "LocateProposal") -> None:
+    """S26：提案晋升 → 经 S15 supersede 机制生成 skill 新版本。
+
+    新版本=当前活跃行拷贝（骨架 healed、断言复制、version+1），
+    旧行 status=superseded + superseded_by 链式指向（与 re-induce 同语义，
+    v3 §29 不覆盖旧版本）。
+    """
+    from app.models import OutcomeAssertion, Skill
+    origin = db.get(Skill, proposal.skill_id)
+    if origin is None:
+        return
+    active = db.query(Skill).filter(
+        Skill.alignment_id == origin.alignment_id,
+        Skill.status != "superseded").order_by(Skill.id.desc()).first()
+    if active is None:
+        return
+    versions = db.query(Skill).filter(
+        Skill.alignment_id == origin.alignment_id).all()
+    max_version = max((s.version or 1) for s in versions)
+    new = Skill(
+        alignment_id=active.alignment_id, name=active.name,
+        description=active.description, status=active.status,
+        skeleton=_healed_skeleton(active.skeleton,
+                                  proposal.step_label, proposal.proposed_label),
+        param_variables=active.param_variables,
+        input_variables=active.input_variables,
+        confidence=active.confidence, evidence_count=active.evidence_count,
+        notes=(f"自愈晋升：{proposal.step_label} → {proposal.proposed_label}"
+               f"（提案 #{proposal.id}，源 run #{proposal.source_run_id}）"),
+        version=max_version + 1,
+    )
+    db.add(new)
+    db.flush()
+    active.status = "superseded"
+    active.superseded_by = new.id
+    for a in db.query(OutcomeAssertion).filter(
+            OutcomeAssertion.skill_id == active.id).all():
+        db.add(OutcomeAssertion(skill_id=new.id, layer=a.layer, kind=a.kind,
+                                api_template=a.api_template,
+                                payload=dict(a.payload or {}),
+                                evidence_count=a.evidence_count))
+    proposal.applied_skill_id = new.id

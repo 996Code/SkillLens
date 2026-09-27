@@ -35,6 +35,7 @@ def _item(db: Session, row: LocateProposal) -> dict:
         "status": row.status,
         "verify_count": row.verify_count,
         "source_run_id": row.source_run_id,
+        "applied_skill_id": row.applied_skill_id,
         "attribution": attribution,
         "created_at": row.created_at.isoformat(),
     }
@@ -61,3 +62,21 @@ async def reject_proposal(proposal_id: int, db: Session = Depends(get_db),
     row.status = "rejected"
     db.commit()
     return {"ok": True, "id": row.id, "status": row.status}
+
+
+@router.post("/locate-proposals/{proposal_id}/promote")
+async def promote_proposal(proposal_id: int, db: Session = Depends(get_db),
+                           user: User = Depends(require_role("reviewer", "admin"))):
+    """S26：人工提前晋升（跳过 N 次计数）——回写骨架生成 skill 新版本。"""
+    from app.replay.repair import _apply_proposal_version
+    row = db.get(LocateProposal, proposal_id)
+    if row is None:
+        raise HTTPException(404, "proposal not found")
+    if row.status not in ("verified", "promoted"):
+        raise HTTPException(409, f"状态 {row.status} 不可晋升（需 verified）")
+    if row.status == "verified":
+        row.status = "promoted"
+        _apply_proposal_version(db, row)
+        db.commit()
+    return {"ok": True, "id": row.id, "status": row.status,
+            "applied_skill_id": row.applied_skill_id}

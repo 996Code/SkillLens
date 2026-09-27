@@ -42,6 +42,7 @@ LLM/njmind 凭据经 `server/.env`（gitignore 排除，键名见 `.env.docker.e
 - **flaky 重跑**：execute fail 自动重试一次（`REPLAY_FLAKY_RERUN`，默认开）；重试 pass → status=pass + `flaky` 标记（进一致性统计 flaky_runs），首次失败明细嵌入 `plan.first_attempt`（C3）。
 - **归因链**：提案带 source_run_id，详情页"自愈提案"区块展示 失败→归因→提案→验证 全链。
 - 宪法边界：LLM 只提案不判定；proposed（未验证）提案永不参与回放。
+- **晋升回写（S26）**：提案晋升（自动 N 次/人工 promote）→ 经 S15 supersede 机制生成 skill 新版本——骨架步加 healed `label` 覆盖（compile 优先取，录制事件不动），断言复制，旧版本 superseded 保留可审计；新版本回放无需提案兜底。
 
 ## 集成出口（S25 块 W）
 
