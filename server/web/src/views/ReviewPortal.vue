@@ -3,9 +3,13 @@
 // 与 Reports（/reports/:deltaId，发版四分类）区分：本页评审的是夜间运行记录。
 // 结构：①评审队列（pending 列表，行点击展开 review_output 摘要 + 评审表单）
 //      ②已评审列表（decision 徽标 + 评语）。C3：评审决策落库可审计。
-import { onMounted, ref } from "vue";
-import { createReview, getPendingRuns, getReviews } from "../api";
+import { computed, onMounted, ref } from "vue";
+import { createReview, currentUser, getPendingRuns, getReviews } from "../api";
 import type { PendingRun, ReviewDecision, ReviewItem } from "../api";
+
+// S21 块 S：评审人从登录态取（后端强制 reviewer/admin；viewer 只读——表单隐藏）
+const user = currentUser();
+const canReview = computed(() => user?.role === "admin" || user?.role === "reviewer");
 
 const pending = ref<PendingRun[]>([]);
 const reviews = ref<ReviewItem[]>([]);
@@ -15,8 +19,7 @@ const error = ref("");
 // 展开的队列行（同屏只展开一条：评审一次针对一个 run）
 const expandedId = ref<number | null>(null);
 
-// 评审表单状态
-const reviewer = ref("");
+// 评审表单状态（S21：reviewer 从登录态取，不再手填）
 const decision = ref<ReviewDecision | "">("");
 const comment = ref("");
 const submitting = ref(false);
@@ -55,7 +58,6 @@ function toggleRun(run: PendingRun): void {
   }
   expandedId.value = run.id;
   // 换行重置表单：不同 run 的评审互不残留
-  reviewer.value = "";
   decision.value = "";
   comment.value = "";
   submitError.value = "";
@@ -76,8 +78,8 @@ async function loadAll(): Promise<void> {
 }
 
 async function submitReview(run: PendingRun): Promise<void> {
-  if (!reviewer.value.trim() || !decision.value) {
-    submitError.value = "请填写评审人并选择决策";
+  if (!decision.value) {
+    submitError.value = "请选择决策";
     return;
   }
   submitting.value = true;
@@ -85,7 +87,6 @@ async function submitReview(run: PendingRun): Promise<void> {
   try {
     await createReview({
       agent_run_id: run.id,
-      reviewer: reviewer.value.trim(),
       decision: decision.value,
       comment: comment.value.trim() || undefined,
     });
@@ -163,19 +164,14 @@ onMounted(async () => {
                   data-testid="review-markdown"
                 >{{ reviewMarkdown(run) }}</pre>
                 <form
+                  v-if="canReview"
                   class="review-form"
                   data-testid="review-form"
                   @submit.prevent="submitReview(run)"
                 >
-                  <label class="form-row">
-                    评审人
-                    <input
-                      v-model="reviewer"
-                      type="text"
-                      placeholder="你的名字"
-                      data-testid="reviewer-input"
-                    />
-                  </label>
+                <div class="form-row reviewer-line" data-testid="reviewer-line">
+                  评审人：<b>{{ user?.username }}</b>
+                </div>
                   <div class="form-row decision-row" role="radiogroup" aria-label="评审决策">
                     <span class="decision-label">决策</span>
                     <label
@@ -212,6 +208,9 @@ onMounted(async () => {
                   </button>
                   <p v-if="submitError" class="error">{{ submitError }}</p>
                 </form>
+                <p v-else class="hint" data-testid="viewer-hint">
+                  当前账号为只读（viewer），无评审权限
+                </p>
               </td>
             </tr>
           </template>

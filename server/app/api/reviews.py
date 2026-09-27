@@ -18,7 +18,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
-from app.models import AgentRun, Review
+from app.models import AgentRun, Review, User
+from app.api.auth import require_role
 
 router = APIRouter()
 
@@ -35,7 +36,6 @@ def get_db():
 
 class ReviewIn(BaseModel):
     agent_run_id: int
-    reviewer: str
     decision: DECISIONS
     comment: str | None = None
 
@@ -51,6 +51,7 @@ def _review_item(db: Session, row: Review) -> dict:
         "id": row.id,
         "agent_run_id": row.agent_run_id,
         "reviewer": row.reviewer,
+        "user_id": row.user_id,
         "decision": row.decision,
         "comment": row.comment,
         "created_at": row.created_at.isoformat(),
@@ -59,7 +60,8 @@ def _review_item(db: Session, row: Review) -> dict:
 
 
 @router.post("/reviews", status_code=201)
-async def create_review(body: ReviewIn, db: Session = Depends(get_db)) -> dict:
+async def create_review(body: ReviewIn, db: Session = Depends(get_db),
+                        user: User = Depends(require_role("reviewer", "admin"))) -> dict:
     run = db.get(AgentRun, body.agent_run_id)
     if not run:
         raise HTTPException(status_code=404, detail="agent_run not found")
@@ -67,8 +69,9 @@ async def create_review(body: ReviewIn, db: Session = Depends(get_db)) -> dict:
     if dup:
         raise HTTPException(status_code=409,
                             detail=f"agent_run {body.agent_run_id} 已评审（review #{dup.id}）")
-    row = Review(agent_run_id=body.agent_run_id, reviewer=body.reviewer,
-                 decision=body.decision, comment=body.comment)
+    # S21 块 S：评审人从登录态取（reviewer 字符串保留展示，user_id 关联账号）
+    row = Review(agent_run_id=body.agent_run_id, reviewer=user.username,
+                 user_id=user.id, decision=body.decision, comment=body.comment)
     db.add(row)
     db.commit()
     db.refresh(row)

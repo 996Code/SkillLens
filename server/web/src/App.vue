@@ -3,11 +3,26 @@
 // + 独立滚动内容区。图标用 CSS ::before 生成（不进 textContent，测试即规格）。
 // 只读边界：S14 起画布为唯一编排入口（主计划块 H 授权），其余导航保持只读；
 // S15 评审为夜间 agent_run 的 PR 式评审流（区别于 Reports 发版四分类）。
+// S21 块 S：登录页隐藏侧边栏；侧边栏底部显示当前用户 + 登出。
+import { computed } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { currentUser, logout } from "./api";
+
+const route = useRoute();
+const router = useRouter();
+const isLogin = computed(() => route.path === "/login");
+// 依赖 isLogin：路由变化时重取（登录成功跳转后 App 壳不重挂载）
+const user = computed(() => (isLogin.value ? null : currentUser()));
+
+async function doLogout(): Promise<void> {
+  await logout();
+  router.push("/login");
+}
 </script>
 
 <template>
-  <div class="shell">
-    <aside class="sidebar">
+  <div class="shell" :class="{ bare: isLogin }">
+    <aside v-if="!isLogin" class="sidebar">
       <div class="brand">SkillLens</div>
       <nav>
         <RouterLink to="/skills">Skills</RouterLink>
@@ -16,7 +31,15 @@
         <RouterLink to="/canvas">画布</RouterLink>
         <RouterLink to="/reviews-portal">评审</RouterLink>
       </nav>
-      <div class="sidebar-foot">变更智能工作台</div>
+      <div class="sidebar-foot">
+        <div class="whoami" data-testid="current-user">
+          {{ user?.username }}（{{ user?.role }}）
+        </div>
+        <button class="logout-btn" data-testid="logout-btn" @click="doLogout">
+          登出
+        </button>
+        <div class="tagline">变更智能工作台</div>
+      </div>
     </aside>
     <main class="content">
       <div class="page">
@@ -103,6 +126,25 @@ nav a.router-link-active {
   font-size: 12px;
   color: var(--color-gray-5);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.whoami {
+  margin-bottom: 6px;
+  color: var(--color-sidebar-text);
+}
+.logout-btn {
+  width: 100%;
+  padding: 6px 0;
+  margin-bottom: 8px;
+  background: transparent;
+  color: var(--color-gray-5);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.logout-btn:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.5);
 }
 .content {
   flex: 1;

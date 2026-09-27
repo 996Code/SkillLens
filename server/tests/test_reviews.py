@@ -31,12 +31,14 @@ async def test_create_review_and_list(client):
     run2 = _add_agent_run(graph_name="canvas", status="error")
 
     resp = await client.post("/api/v1/reviews", json={
-        "agent_run_id": run1, "reviewer": "alice",
+        "agent_run_id": run1,
         "decision": "approved", "comment": "夜间回归全绿，放行"})
     assert resp.status_code == 201
     body = resp.json()
     assert body["agent_run_id"] == run1
-    assert body["reviewer"] == "alice"
+    # S21 块 S：reviewer 从登录态取（conftest admin），不再由请求体传入
+    assert body["reviewer"] == "s21-admin"
+    assert body["user_id"] > 0
     assert body["decision"] == "approved"
     assert body["comment"] == "夜间回归全绿，放行"
     assert body["id"] > 0 and body["created_at"]
@@ -46,7 +48,7 @@ async def test_create_review_and_list(client):
     assert body["agent_run"]["started_at"]
 
     resp = await client.post("/api/v1/reviews", json={
-        "agent_run_id": run2, "reviewer": "bob", "decision": "changes_requested"})
+        "agent_run_id": run2, "decision": "changes_requested"})
     assert resp.status_code == 201
     assert resp.json()["comment"] is None          # comment 可省略
 
@@ -66,7 +68,7 @@ async def test_create_review_and_list(client):
 async def test_create_review_invalid_decision_422(client):
     run = _add_agent_run()
     resp = await client.post("/api/v1/reviews", json={
-        "agent_run_id": run, "reviewer": "alice", "decision": "maybe"})
+        "agent_run_id": run, "decision": "maybe"})
     assert resp.status_code == 422
     # GET 过滤参数同样枚举校验
     resp = await client.get("/api/v1/reviews?decision=maybe")
@@ -75,17 +77,17 @@ async def test_create_review_invalid_decision_422(client):
 
 async def test_create_review_missing_run_404(client):
     resp = await client.post("/api/v1/reviews", json={
-        "agent_run_id": 99999, "reviewer": "alice", "decision": "approved"})
+        "agent_run_id": 99999, "decision": "approved"})
     assert resp.status_code == 404
     assert resp.json()["detail"] == "agent_run not found"
 
 
 async def test_create_review_duplicate_409(client):
     run = _add_agent_run()
-    body = {"agent_run_id": run, "reviewer": "alice", "decision": "approved"}
+    body = {"agent_run_id": run, "decision": "approved"}
     assert (await client.post("/api/v1/reviews", json=body)).status_code == 201
     resp = await client.post("/api/v1/reviews", json={
-        **body, "reviewer": "bob", "decision": "rejected"})
+        **body, "decision": "rejected"})
     assert resp.status_code == 409
     assert "已评审" in resp.json()["detail"]
 
@@ -99,7 +101,7 @@ async def test_pending_excludes_reviewed(client):
     pending_run = _add_agent_run(graph_name="canvas", node_outputs=node_outputs)
 
     await client.post("/api/v1/reviews", json={
-        "agent_run_id": reviewed, "reviewer": "alice", "decision": "approved"})
+        "agent_run_id": reviewed, "decision": "approved"})
 
     items = (await client.get("/api/v1/reviews/pending")).json()
     assert [i["id"] for i in items] == [pending_run]   # 已评审的不在队列
@@ -115,3 +117,42 @@ async def test_pending_excludes_reviewed(client):
 
 async def test_pending_empty(client):
     assert (await client.get("/api/v1/reviews/pending")).json() == []
+
+
+async def test_viewer_cannot_review(client):
+    """S21 块 S：viewer 只读——提交评审 403（后端强制，前端仅 UX 隐藏）。"""
+    from app.auth import create_user, issue_token
+    from app.db import SessionLocal
+    from app.models import User
+    run = _add_agent_run()
+    db = SessionLocal()
+    try:
+        user = create_user(db, "s21-viewer", "pw", "viewer")
+        token = issue_token(db, user.id)
+    finally:
+        db.close()
+    resp = await client.post("/api/v1/reviews",
+                             headers={"Authorization": f"Bearer {token}"},
+                             json={"agent_run_id": run, "decision": "approved"})
+    assert resp.status_code == 403
+    # viewer 可读列表（只读不拦）
+    assert (await client.get("/api/v1/reviews",
+                             headers={"Authorization": f"Bearer {token}"})).status_code == 200
+
+
+async def test_legacy_review_row_user_id_null(client):
+    """S21 块 S：存量评审行（user_id NULL）在列表中正常显示。"""
+    from app.db import SessionLocal
+    from app.models import Review
+    run = _add_agent_run()
+    db = SessionLocal()
+    try:
+        db.add(Review(agent_run_id=run, reviewer="历史评审人",
+                      decision="approved", comment=None, user_id=None))
+        db.commit()
+    finally:
+        db.close()
+    items = (await client.get("/api/v1/reviews")).json()
+    row = next(i for i in items if i["agent_run_id"] == run)
+    assert row["reviewer"] == "历史评审人"
+    assert row["user_id"] is None

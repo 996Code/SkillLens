@@ -1,13 +1,14 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException
 
 from app.api import (
     audit,
+    auth,
     baseline,
     canvas,
     cards,
@@ -77,22 +78,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(health.router, prefix=API_PREFIX)
+app.include_router(auth.router, prefix=API_PREFIX)
+# S21 块 S：插件上报通道（events：建会话/上报事件）豁免认证；其余 API 默认要求 Bearer token
 app.include_router(events.router, prefix=API_PREFIX)
-app.include_router(ingest.router, prefix=API_PREFIX)
-app.include_router(llm_skills.router, prefix=API_PREFIX)
-app.include_router(replay.router, prefix=API_PREFIX)
-app.include_router(change.router, prefix=API_PREFIX)
-app.include_router(baseline.router, prefix=API_PREFIX)
-app.include_router(cards.router, prefix=API_PREFIX)
-app.include_router(reports.router, prefix=API_PREFIX)
-app.include_router(audit.router, prefix=API_PREFIX)
-app.include_router(discoveries.router, prefix=API_PREFIX)
-app.include_router(impact.router, prefix=API_PREFIX)
-app.include_router(canvas.router, prefix=API_PREFIX)
-app.include_router(reviews.router, prefix=API_PREFIX)
-app.include_router(generic_skills.router, prefix=API_PREFIX)
-app.include_router(dev_plans.router, prefix=API_PREFIX)
-app.include_router(flows.router, prefix=API_PREFIX)
+_GUARDED = [Depends(auth.require_user)]
+app.include_router(ingest.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(llm_skills.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(replay.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(change.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(baseline.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(cards.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(reports.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(audit.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(discoveries.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(impact.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(canvas.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(reviews.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(generic_skills.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(dev_plans.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(flows.router, prefix=API_PREFIX, dependencies=_GUARDED)
 
 # StaticFiles mount 在 "/" 会拦截一切路径——必须放在全部 include_router 之后，
 # FastAPI 按注册顺序匹配路由，/api/v1/* 先命中 API，其余落到静态托管（SPA fallback）。
