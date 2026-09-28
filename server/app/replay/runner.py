@@ -78,10 +78,24 @@ async def _locate_with_repair(page, label: str,
     return locator, f"repair:{strategy}", rep["id"]
 
 
+async def _shot_step(page, shot_dir, idx: int, entry: dict) -> None:
+    """S33：步骤截图（fail-open）——采集能力缺失（替身 page）静默跳过，
+    不影响步骤判定；成功/失败步骤都拍（失败画面是归因关键证据）。"""
+    if shot_dir is None:
+        return
+    try:
+        name = f"step-{idx:02d}.png"
+        await page.screenshot(path=str(Path(shot_dir) / name))
+        entry["screenshot"] = name
+    except Exception:
+        pass
+
+
 async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                        awaited_templates: list[str] | None = None,
                        settle_timeout_ms: int = 10000,
-                       repair_map: dict[str, dict] | None = None) -> dict:
+                       repair_map: dict[str, dict] | None = None,
+                       shot_dir: Path | None = None) -> dict:
     observed: list[dict] = []
 
     # S23 块 V：request/response 配对测 API 延迟（request 对象做键）
@@ -109,7 +123,7 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
     page.on("response", on_response)
     executed: list[dict] = []
     failed = False
-    for step in plan.get("steps", []):
+    for i, step in enumerate(plan.get("steps", []), start=1):
         if failed:
             executed.append({**step, "ok": False, "error": "not attempted"})
             continue
@@ -118,9 +132,11 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                 locator, strategy, rep_id = await _locate_with_repair(
                     page, step["label"], repair_map)
                 await locator.click(timeout=timeout_ms)
-                executed.append({**step, "strategy": strategy,
-                                 **({"repair_proposal_id": rep_id} if rep_id else {}),
-                                 "ok": True})
+                entry = {**step, "strategy": strategy,
+                         **({"repair_proposal_id": rep_id} if rep_id else {}),
+                         "ok": True}
+                executed.append(entry)
+                await _shot_step(page, shot_dir, i, entry)
             elif step["kind"] == "input":
                 locator, strategy, rep_id = await _locate_with_repair(
                     page, step["name"], repair_map)
@@ -138,14 +154,18 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                         break
                 if not filled:
                     raise RuntimeError(f"输入 {step['name']} 被页面回写覆盖")
-                executed.append({**step, "strategy": strategy,
-                                 **({"repair_proposal_id": rep_id} if rep_id else {}),
-                                 "ok": True})
+                entry = {**step, "strategy": strategy,
+                         **({"repair_proposal_id": rep_id} if rep_id else {}),
+                         "ok": True}
+                executed.append(entry)
+                await _shot_step(page, shot_dir, i, entry)
             else:
                 executed.append({**step, "ok": False, "error": f"unknown kind {step['kind']}"})
                 failed = True
         except Exception as exc:
-            executed.append({**step, "ok": False, "error": str(exc)[:200]})
+            entry = {**step, "ok": False, "error": str(exc)[:200]}
+            executed.append(entry)
+            await _shot_step(page, shot_dir, i, entry)
             failed = True
     # 收尾：断言关心的模板全部命中即止，否则等满 settle_timeout_ms。
     # 固定短窗口会漏掉保存后的链式请求（njmind 实测 saveTableConfig 晚于 1.5s）。
@@ -208,12 +228,25 @@ async def _attempt(db: Session, browser, skill_id: int, plan: dict,
         await page.wait_for_load_state("domcontentloaded", timeout=15000)
         await page.wait_for_timeout(2000)
         before_snapshot = await collect_page_snapshot(page, phase="before")
+        # S33：起始页截图 + 步骤截图目录（fail-open：替身无 screenshot 能力
+        # → shot_dir 置 None，整轮不采步骤截图，不影响判定）
+        shot_dir = None
+        start_shot = None
+        try:
+            d = Path(ARTIFACT_DIR) / f"steps-{skill_id}-{int(time.time() * 1000)}"
+            os.makedirs(d, exist_ok=True)
+            await page.screenshot(path=str(d / "start.png"))
+            shot_dir = d
+            start_shot = "start.png"
+        except Exception:
+            shot_dir = None
+            start_shot = None
         t0 = time.monotonic()
         result = await execute_plan(
             page, plan,
             awaited_templates=[a["payload"]["api_template"] for a in assertions
                                if "api_template" in a["payload"]],
-            repair_map=repair_map)
+            repair_map=repair_map, shot_dir=shot_dir)
         duration_ms = int((time.monotonic() - t0) * 1000)
         after_snapshot = await collect_page_snapshot(page, phase="after")
 
@@ -285,6 +318,7 @@ async def _attempt(db: Session, browser, skill_id: int, plan: dict,
                 "duration_ms": duration_ms, "visual_result": visual_result,
                 "baseline_created": baseline_created, "vdir": vdir,
                 "screenshot_path": screenshot_path, "page_title": page_title,
+                "shot_dir": shot_dir, "start_shot": start_shot,
                 "repair_used_ids": repair_used_ids,
                 "repair_created_ids": repair_created_ids,
                 "error_text": None}
@@ -294,6 +328,7 @@ async def _attempt(db: Session, browser, skill_id: int, plan: dict,
                 "duration_ms": None, "visual_result": None,
                 "baseline_created": False, "vdir": None,
                 "screenshot_path": None, "page_title": None,
+                "shot_dir": None, "start_shot": None,
                 "repair_used_ids": [], "repair_created_ids": [],
                 "error_text": str(exc)[:500]}
     finally:
@@ -381,6 +416,15 @@ async def _execute_skill(db: Session, browser, skill_id: int,
     plan = {**plan, "before_snapshot": attempt["before_snapshot"],
             "after_snapshot": attempt["after_snapshot"],
             "api_latencies": result.get("api_latencies") or {}}
+    # S33：步骤截图清单旁挂（起始页 + 每步一张；fail-open 无截图不挂键）
+    shot_files = []
+    if attempt.get("start_shot"):
+        shot_files.append(attempt["start_shot"])
+    shot_files += [s["screenshot"] for s in (result.get("executed") or [])
+                   if s.get("screenshot")]
+    if shot_files and attempt.get("shot_dir"):
+        plan = {**plan, "step_screenshots": {"dir": str(attempt["shot_dir"]),
+                                             "files": shot_files}}
     if "first_attempt" in attempt:
         plan = {**plan, "first_attempt": attempt["first_attempt"]}
     run = ReplayRun(skill_id=skill_id, mode="execute", status=status, plan=plan,

@@ -5,9 +5,9 @@
 //   - 竖向时间轴：类型色点 + 时间 + 标题 + 摘要
 //   - LLM 项点击展开：按需拉取完整 prompt/response（IO 全留存）
 //   - skill/session 项提供下钻链接（详情页 / 审计页）
-import { computed, onMounted, ref } from "vue";
-import { getLlmLogDetail, getTimeline } from "../api";
-import type { LlmLogDetail, TimelineItem } from "../api";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import { fetchStepScreenshot, getLlmLogDetail, getReplayRun, getTimeline } from "../api";
+import type { LlmLogDetail, ReplayRunDetail, TimelineItem } from "../api";
 
 const TYPE_META: Record<string, { label: string; color: string }> = {
   session: { label: "采集", color: "#3b82f6" },
@@ -60,7 +60,19 @@ async function toggleItem(it: TimelineItem): Promise<void> {
   expandedKey.value = key;
   llmDetail.value = null;
   llmError.value = "";
-  if (it.type !== "llm") return;
+  replayDetail.value = null;
+  replayShots.value = [];
+  replayError.value = "";
+  if (it.type === "llm") {
+    await expandLlm(it, key);
+    return;
+  }
+  if (it.type === "replay") {
+    await loadReplay(Number(it.id), key);
+  }
+}
+
+async function expandLlm(it: TimelineItem, key: string): Promise<void> {
   const id = Number(it.id);
   const cached = llmCache.get(id);
   if (cached) {
@@ -84,6 +96,67 @@ function detailLink(it: TimelineItem): string | null {
   if (it.type === "session") return "/audit";
   return null;
 }
+
+// ---------- 回放步骤截图墙（S33：每次点击/输入留画面） ----------
+interface ShotCard {
+  file: string;
+  url: string;
+  caption: string;
+}
+const replayDetail = ref<ReplayRunDetail | null>(null);
+const replayShots = ref<ShotCard[]>([]);
+const replayLoading = ref(false);
+const replayError = ref("");
+const replayCache = new Map<number, { detail: ReplayRunDetail; shots: ShotCard[] }>();
+
+function shotCaption(file: string, executed: Record<string, unknown>[] | null): string {
+  if (file === "start.png") return "起始页";
+  const step = (executed || []).find((s) => s.screenshot === file);
+  if (!step) return file;
+  const label = String(step.label ?? step.name ?? "");
+  return `${String(step.kind ?? "")} ${label}${step.ok ? "" : "（失败）"}`;
+}
+
+async function loadReplay(id: number, key: string): Promise<void> {
+  const cached = replayCache.get(id);
+  if (cached) {
+    replayDetail.value = cached.detail;
+    replayShots.value = cached.shots;
+    return;
+  }
+  replayLoading.value = true;
+  try {
+    const detail = await getReplayRun(id);
+    const meta = (detail.plan as { step_screenshots?: { files: string[] } } | null)
+      ?.step_screenshots;
+    const shots: ShotCard[] = [];
+    for (const file of meta?.files ?? []) {
+      try {
+        const url = await fetchStepScreenshot(id, file);
+        shots.push({ file, url, caption: shotCaption(file, detail.executed) });
+      } catch {
+        /* 单张失败不阻塞整墙 */
+      }
+    }
+    replayCache.set(id, { detail, shots });
+    if (expandedKey.value === key) {
+      replayDetail.value = detail;
+      replayShots.value = shots;
+    }
+  } catch (e) {
+    if (expandedKey.value === key) {
+      replayError.value = e instanceof Error ? e.message : String(e);
+    }
+  } finally {
+    replayLoading.value = false;
+  }
+}
+
+onUnmounted(() => {
+  for (const { shots } of replayCache.values()) {
+    for (const s of shots) URL.revokeObjectURL(s.url);
+  }
+});
 
 onMounted(async () => {
   try {
@@ -174,7 +247,30 @@ onMounted(async () => {
               </template>
             </div>
 
-            <!-- 非 LLM 项：下钻链接 -->
+            <!-- 回放步骤截图墙（S33） -->
+            <div
+              v-if="expandedKey === `replay:${it.id}`"
+              class="replay-detail"
+              data-testid="replay-detail"
+              @click.stop
+            >
+              <p v-if="replayLoading" class="muted">步骤截图加载中…</p>
+              <p v-else-if="replayError" class="error">加载失败：{{ replayError }}</p>
+              <template v-else-if="replayShots.length">
+                <p class="muted shot-hint">
+                  {{ replayDetail?.status }} · {{ replayShots.length }} 张步骤画面
+                </p>
+                <div class="shot-grid" data-testid="shot-grid">
+                  <figure v-for="s in replayShots" :key="s.file" class="shot-card">
+                    <img :src="s.url" :alt="s.caption" loading="lazy" />
+                    <figcaption>{{ s.caption }}</figcaption>
+                  </figure>
+                </div>
+              </template>
+              <p v-else class="muted">该 run 无步骤截图（旧数据或采集能力缺失）</p>
+            </div>
+
+            <!-- 非 LLM/replay 项：下钻链接 -->
             <div
               v-else-if="expandedKey === `${it.type}:${it.id}` && detailLink(it)"
               class="tl-links"
@@ -310,5 +406,44 @@ onMounted(async () => {
 }
 .tl-links {
   margin-top: var(--space-2);
+}
+.replay-detail {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-gray-3);
+  border-radius: var(--radius-md);
+}
+.shot-hint {
+  font-size: 12px;
+  margin: 0 0 var(--space-2);
+}
+.shot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-3);
+}
+.shot-card {
+  margin: 0;
+  border: 1px solid var(--color-gray-3);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-gray-1);
+}
+.shot-card img {
+  display: block;
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  object-position: top;
+  background: var(--color-gray-2);
+}
+.shot-card figcaption {
+  padding: var(--space-1) var(--space-2);
+  font-size: 12px;
+  color: var(--color-gray-6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

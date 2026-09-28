@@ -867,6 +867,19 @@ export function getLlmLogDetail(id: number | string): Promise<LlmLogDetail> {
   return get<LlmLogDetail>(`/api/v1/audit/llm-logs/${id}`);
 }
 
+/** S33：回放步骤截图（blob URL——<img> 无法带 Authorization 头，经 fetch 转换）。 */
+export async function fetchStepScreenshot(
+  runId: number | string,
+  file: string,
+): Promise<string> {
+  const resp = await authedFetch(
+    `/api/v1/replay-runs/${runId}/step-screenshot?file=${encodeURIComponent(file)}`);
+  if (!resp.ok) {
+    throw new ApiError(resp.status, `GET step-screenshot -> ${resp.status}`);
+  }
+  return URL.createObjectURL(await resp.blob());
+}
+
 export { ApiError };
 
 export interface GenericSkillItem {

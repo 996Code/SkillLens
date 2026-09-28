@@ -26,11 +26,33 @@ const llmDetail = {
   created_at: "2026-09-28T12:33:00",
 };
 
+const replayRunDetail = {
+  id: 9, skill_id: 5, mode: "execute", status: "pass",
+  plan: {
+    url: "http://t/f", steps: [],
+    step_screenshots: {
+      dir: "/tmp/shots", files: ["start.png", "step-01.png", "step-02.png"],
+    },
+  },
+  executed: [
+    { kind: "input", name: "请输入", value: "v", ok: true, screenshot: "step-01.png" },
+    { kind: "click", label: "保存", ok: true, screenshot: "step-02.png" },
+  ],
+  assertion_results: [], attribution: null, artifact_path: "",
+};
+
 function mockTimelineFetch() {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/api/v1/audit/llm-logs/3")) {
       return new Response(JSON.stringify(llmDetail), {
+        status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.includes("/api/v1/replay-runs/9/step-screenshot")) {
+      return new Response(new Blob(["png"], { type: "image/png" }), { status: 200 });
+    }
+    if (url.includes("/api/v1/replay-runs/9")) {
+      return new Response(JSON.stringify(replayRunDetail), {
         status: 200, headers: { "content-type": "application/json" } });
     }
     if (url.includes("/api/v1/timeline")) {
@@ -156,5 +178,43 @@ describe("TimelineView", () => {
     const link = root.querySelector<HTMLAnchorElement>("a[href='/skills/5']");
     expect(link).not.toBeNull();
     expect(link?.textContent).toContain("下钻查看");
+  });
+
+  it("expands replay item to show step screenshot wall", async () => {
+    vi.stubGlobal("URL", Object.assign(URL, {
+      createObjectURL: () => "blob:mock",
+    }));
+    const fetchMock = mockTimelineFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    await mountTimeline(root);
+    await flush();
+    await flush();
+
+    expect(root.querySelector("[data-testid='replay-detail']")).toBeNull();
+    (root.querySelector("[data-testid='tl-replay']") as HTMLElement).click();
+    await flush();
+    await flush();
+    await flush();
+
+    const detail = root.querySelector("[data-testid='replay-detail']");
+    expect(detail).not.toBeNull();
+    expect(detail?.textContent).toContain("3 张步骤画面");
+    // 截图墙：3 张图 + 步骤说明（起始页 + input/click 步骤）
+    const imgs = root.querySelectorAll("[data-testid='shot-grid'] img");
+    expect(imgs.length).toBe(3);
+    expect((imgs[0] as HTMLImageElement).src).toBe("blob:mock");
+    const captions = Array.from(
+      root.querySelectorAll("[data-testid='shot-grid'] figcaption"))
+      .map((c) => c.textContent);
+    expect(captions).toContain("起始页");
+    expect(captions).toContain("input 请输入");
+    expect(captions).toContain("click 保存");
+    // 每张图各拉一次
+    const shotCalls = (fetchMock as ReturnType<typeof vi.fn>).mock.calls
+      .map((c) => String(c[0]))
+      .filter((u) => u.includes("/step-screenshot?file="));
+    expect(shotCalls.length).toBe(3);
   });
 });

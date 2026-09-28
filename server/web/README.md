@@ -49,6 +49,7 @@ npm test           # vitest 单测（tests/*.spec.ts，jsdom 环境）
 | `GET /api/v1/audit/llm-logs` | LLM 调用日志（200 字摘要，完整走 DB，S10.5 新增） | AuditView |
 | `GET /api/v1/audit/llm-logs/{id}` | 单条 LLM 调用完整 prompt/response（S32 新增，按需取用） | TimelineView |
 | `GET /api/v1/timeline` | 全流水线环节时间线聚合（8 类型，S32 新增） | TimelineView |
+| `GET /api/v1/replay-runs/{id}/step-screenshot` | 回放步骤截图出图（S33 新增，白名单防穿越） | TimelineView |
 
 ## 回放触发（C1 安全门控）
 

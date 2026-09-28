@@ -1,4 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+import re
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -66,3 +70,23 @@ async def get_run(run_id: int, db: Session = Depends(get_db)) -> dict:
             "plan": run.plan, "executed": run.executed,
             "assertion_results": run.assertion_results,
             "attribution": run.attribution, "artifact_path": run.artifact_path}
+
+
+_STEP_FILE_RE = re.compile(r"^(start|step-\d+)\.png$")
+
+
+@router.get("/replay-runs/{run_id}/step-screenshot")
+async def get_step_screenshot(run_id: int, file: str = Query(...),
+                              db: Session = Depends(get_db)) -> FileResponse:
+    """S33：步骤截图出图。白名单 = plan.step_screenshots.files ∩ 文件名规则
+    （双校验防路径穿越）；文件缺失（artifacts 清理）404。"""
+    run = db.get(ReplayRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="replay run not found")
+    meta = (run.plan or {}).get("step_screenshots") or {}
+    if (not _STEP_FILE_RE.match(file) or file not in meta.get("files", [])):
+        raise HTTPException(status_code=404, detail="screenshot not found")
+    path = Path(meta["dir"]) / file
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="screenshot file missing")
+    return FileResponse(str(path), media_type="image/png")
