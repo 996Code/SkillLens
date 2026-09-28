@@ -284,7 +284,7 @@ onMounted(async () => {
   background: var(--color-surface); border: 1px solid var(--color-border);
   border-radius: var(--radius-md); box-shadow: var(--shadow-sm);
   padding: var(--space-2) var(--space-3); margin-bottom: var(--space-2);
-  cursor: grab; display: flex; align-items: center; gap: 10px; transition: all 0.15s ease;
+  cursor: grab; display: flex; align-items: center; gap: 10px; transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .palette-card:hover { border-color: var(--color-primary); transform: translateX(3px); box-shadow: var(--shadow-md); }
 .palette-icon { font-size: 18px; width: 24px; text-align: center; }
@@ -299,7 +299,7 @@ onMounted(async () => {
 .vf-card {
   background: var(--color-surface); border: 2px solid var(--color-border);
   border-radius: 10px; min-width: 160px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-  position: relative; cursor: pointer; transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  position: relative; cursor: grab; transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .vf-card:hover { border-color: var(--color-primary); box-shadow: 0 4px 16px rgba(79,70,229,0.15); }
 .vf-card.vf-selected { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(79,70,229,0.15); }
@@ -340,10 +340,22 @@ onMounted(async () => {
 @import "@vue-flow/core/dist/theme-default.css";
 @import "@vue-flow/controls/dist/style.css";
 @import "@vue-flow/minimap/dist/style.css";
-.vue-flow__node { cursor: grab; }
-.vue-flow__handle { width: 10px; height: 10px; background: #4f46e5; border: 2px solid white; }
+/* Cursor fix: prevent flickering between grab/pointer/default */
+.vue-flow__node { cursor: grab !important; }
+.vue-flow__node.dragging { cursor: grabbing !important; }
+.vue-flow__node.selected { cursor: grab !important; }
+.vue-flow__handle { width: 10px; height: 10px; background: #4f46e5; border: 2px solid white; cursor: crosshair !important; }
 .vue-flow__handle:hover { transform: scale(1.3); }
 .vue-flow__edge-path { stroke-width: 2.5; }
 .vue-flow__controls { box-shadow: 0 4px 12px rgba(0,0,0,0.12); border-radius: 8px; overflow: hidden; }
 .vue-flow__minimap { border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+.vue-flow__pane { cursor: default !important; }
+.vue-flow__selection { cursor: pointer !important; }
+/* Prevent cursor flicker on hover transitions */
+.vue-flow__node * { pointer-events: auto; }
+.vue-flow__node .vf-card { cursor: grab !important; }
+.vue-flow__node .vf-card:hover { cursor: grab !important; }
+.vue-flow__node .vf-del { cursor: pointer !important; }
+.vue-flow__node .vf-header { cursor: grab !important; }
+.vue-flow__node .vf-body { cursor: grab !important; }
 </style>
