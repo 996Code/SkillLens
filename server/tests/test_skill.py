@@ -303,3 +303,26 @@ async def test_induce_empty_skeleton_skips_llm(client, monkeypatch):
     assert skill["status"] == "candidate"
     assert "骨架为空" in skill["notes"]
     assert calls == []  # LLM 零调用
+
+
+def test_parse_llm_skill_extracts_last_json_block():
+    """S27 彩排发现：glm-5.3-oc 输出思维链+重复 JSON 块——贪婪正则跨块失败。
+    解析器须从后往前取可解析的 JSON 对象。"""
+    from app.learning.skill import parse_llm_skill
+    text = ('Let me analyze...\n{"name": "A", "description": "第一块"}\n\n'
+            'The output should be JSON only:\n'
+            '{"name": "SaveFormAndTableConfig", "description": "用户点击保存按钮。"}\n')
+    d = parse_llm_skill(text)
+    assert d is not None
+    assert d["name"] == "SaveFormAndTableConfig"
+
+
+def test_parse_llm_skill_single_block_still_works():
+    from app.learning.skill import parse_llm_skill
+    assert parse_llm_skill('{"name": "A", "description": "d"}') == {
+        "name": "A", "description": "d"}
+
+
+def test_parse_llm_skill_no_json_returns_none():
+    from app.learning.skill import parse_llm_skill
+    assert parse_llm_skill("纯文本无 JSON") is None

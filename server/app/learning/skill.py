@@ -26,16 +26,21 @@ def build_prompt(alignment: Alignment) -> str:
 
 
 def parse_llm_skill(text: str) -> dict | None:
-    match = re.search(r"\{.*\}", text, re.S)
-    if not match:
-        return None
-    try:
-        data = json.loads(match.group(0))
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(data, dict):
-        return None
-    return data
+    """从 LLM 输出提取 JSON 提案。
+
+    S27 彩排发现：glm-5.3-oc 等思维链模型会先输出散文、且可能重复 JSON 块——
+    贪婪 `\{.*\}` 跨块匹配非法。改为枚举全部 {...} 候选，从后往前取首个可解析
+    且含 name/description 键的对象（末块通常是最终定稿）。
+    """
+    candidates = re.findall(r"\{[^{}]*\}", text, re.S)
+    for raw in reversed(candidates):
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict) and "name" in data and "description" in data:
+            return data
+    return None
 
 
 def verify_skill(proposal: dict, alignment: Alignment) -> tuple[bool, str]:
