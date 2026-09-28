@@ -8,7 +8,6 @@ from playwright.async_api import Page, async_playwright
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import config
 from app.llm.gateway import complete
 from app.models import (Alignment, LocateProposal, OutcomeAssertion,
                       RawEvent, ReplayRun, Skill, VisualBaseline)

@@ -3,8 +3,6 @@
 复用 S11 实测模式：打开设计器 → 加字段（点类型/改名改 key/权限 JS 注入）→
 保存 → 抓 saveFormConfig 响应。每步落 execution_log（C3）。
 """
-import asyncio
-import json
 import re
 import time
 

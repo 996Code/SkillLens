@@ -53,6 +53,9 @@
 
 ## 六、文档地图
 
+> 新成员/AI 接手起点：`PROJECT-GUIDE.md`（目录地图+AI 学习提示词）；
+> 项目所有者全部要求汇总：`docs/COLLABORATION-CHARTER.md`（传承文档）。
+
 - 产品宪法：`docs/specs/2026-09-23-skilllens-mvp-design.md`
 - 主计划（唯一范围基准）：`docs/specs/2026-09-24-master-delivery-plan.md`
 - 原始设想：`docs/references/ai_software_learning_change_intelligence_v3.md`（43 节）

@@ -326,3 +326,11 @@ def test_parse_llm_skill_single_block_still_works():
 def test_parse_llm_skill_no_json_returns_none():
     from app.learning.skill import parse_llm_skill
     assert parse_llm_skill("纯文本无 JSON") is None
+
+
+def test_parse_llm_skill_shape_agnostic():
+    """S27 回归修复：devplan/flows/generic 复用本解析器，形状是
+    {"changes": [...]}——不得要求 name/description 键。"""
+    from app.learning.skill import parse_llm_skill
+    d = parse_llm_skill('{"changes": [{"op": "add_field"}]}')
+    assert d == {"changes": [{"op": "add_field"}]}

@@ -25,20 +25,49 @@ def build_prompt(alignment: Alignment) -> str:
     return "\n".join(lines)
 
 
-def parse_llm_skill(text: str) -> dict | None:
-    """从 LLM 输出提取 JSON 提案。
+def _top_level_json_spans(text: str) -> list[str]:
+    """提取顶层平衡 {...} 片段（字符串内的花括号不计；嵌套对象保持完整）。"""
+    spans: list[str] = []
+    depth = 0
+    start = -1
+    in_str = False
+    escape = False
+    for i, ch in enumerate(text):
+        if in_str:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start >= 0:
+                spans.append(text[start:i + 1])
+                start = -1
+    return spans
 
-    S27 彩排发现：glm-5.3-oc 等思维链模型会先输出散文、且可能重复 JSON 块——
-    贪婪 `\{.*\}` 跨块匹配非法。改为枚举全部 {...} 候选，从后往前取首个可解析
-    且含 name/description 键的对象（末块通常是最终定稿）。
+
+def parse_llm_skill(text: str) -> dict | None:
+    """从 LLM 输出提取 JSON 提案（形状无关：skill 命名/dev_plan/flow/generic 共用）。
+
+    S27 彩排发现：思维链模型会先输出散文、且可能重复 JSON 块——贪婪 `\{.*\}`
+    跨块匹配非法，而 `\{[^{}]*\}` 又会拆碎嵌套对象。改为平衡括号扫描取全部
+    **顶层**对象，从后往前取首个可解析的非空 dict（末块通常是最终定稿）。
     """
-    candidates = re.findall(r"\{[^{}]*\}", text, re.S)
-    for raw in reversed(candidates):
+    for raw in reversed(_top_level_json_spans(text)):
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
             continue
-        if isinstance(data, dict) and "name" in data and "description" in data:
+        if isinstance(data, dict) and data:
             return data
     return None
 
