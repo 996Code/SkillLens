@@ -4,10 +4,9 @@ import type { RawEvent } from "../shared/types";
 import { assignSession } from "../shared/assign-session";
 import { getRecordingState, startRecording, stopRecording } from "./session";
 
-// chrome.storage.session 默认 accessLevel 为 TRUSTED_CONTEXTS（仅扩展页面可读），
-// content script 属于非受信上下文读不到——SW 启动时放开一次，
-// 否则录制门控（capture 读 sl_recording）完全失效。
-void chrome.storage.session.setAccessLevel({ accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS" });
+// S31 修复：录制状态已从 chrome.storage.session 改为 chrome.storage.local
+// （MV3 SW 空闲被杀后 session 存储丢失，local 持久化跨 SW 重启）。
+// chrome.storage.local 对 content script 默认可读，无需 setAccessLevel。
 
 const BATCH = 50;
 const MAX_RETRIES = 3;

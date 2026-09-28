@@ -7,6 +7,11 @@ export interface RecordingState {
   note: string;
 }
 
+// MV3 SW 空闲 ~30s 被 Chrome 杀死，chrome.storage.session 随 SW 重启丢失。
+// 改用 chrome.storage.local 持久化录制状态——SW 重启后自动恢复，
+// content script 的 storage.onChanged 监听同步改 local。
+const STORAGE_AREA = "local" as const;
+
 export async function startRecording(
   note: string,
   source: string = "real_traffic",
@@ -19,7 +24,7 @@ export async function startRecording(
   });
   if (!res.ok) throw new Error(`create session failed: ${res.status}`);
   const session = await res.json();
-  await chrome.storage.session.set({
+  await chrome.storage.local.set({
     sl_recording: true,
     sl_session: session.session_id,
     sl_note: note,
@@ -33,11 +38,11 @@ export async function stopRecording(): Promise<void> {
   // 因此在清除标记之前，用当前 sid 做一次最终上报兜底。
   const st = await getRecordingState();
   await finalFlushWithSession(st.sessionId);
-  await chrome.storage.session.remove(["sl_recording", "sl_session", "sl_note"]);
+  await chrome.storage.local.remove(["sl_recording", "sl_session", "sl_note"]);
 }
 
 export async function getRecordingState(): Promise<RecordingState> {
-  const st = await chrome.storage.session.get(["sl_recording", "sl_session", "sl_note"]);
+  const st = await chrome.storage.local.get(["sl_recording", "sl_session", "sl_note"]);
   return {
     recording: st.sl_recording === true,
     sessionId: (st.sl_session as string) ?? null,

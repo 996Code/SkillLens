@@ -25,7 +25,8 @@ async function refreshState(): Promise<void> {
 }
 void refreshState();
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "session" && changes.sl_recording) {
+  // MV3 SW 状态持久化：从 session 改为 local（S31 修复——SW 重启不丢录制状态）
+  if (area === "local" && changes.sl_recording) {
     const next = changes.sl_recording.newValue === true;
     if (next !== recording) {
       recording = next;
