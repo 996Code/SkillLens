@@ -125,6 +125,7 @@ async def crud_role_create(ctx, page, sw, token):
     """角色管理：新增角色。"""
     print("\n=== CRUD: 角色管理-新增角色 ===")
     await goto_menu(page, "角色管理")
+    await page_wait(2000)  # 等页面完全加载
     sid = await record_crud(ctx, page, sw, "crud-role-create")
 
     role_name = "测试角色" + rand_suffix()
@@ -158,6 +159,7 @@ async def crud_dict_create(ctx, page, sw, token):
     """字典配置：新增目录。"""
     print("\n=== CRUD: 字典配置-新增目录 ===")
     await goto_menu(page, "字典配置")
+    await page_wait(2000)
     sid = await record_crud(ctx, page, sw, "crud-dict-create")
 
     dict_name = "测试字典" + rand_suffix()
@@ -188,6 +190,7 @@ async def crud_user_create(ctx, page, sw, token):
     """组织与用户：新增用户。"""
     print("\n=== CRUD: 组织与用户-新增用户 ===")
     await goto_menu(page, "组织与用户")
+    await page_wait(2000)
     sid = await record_crud(ctx, page, sw, "crud-user-create")
 
     user_name = "testuser" + rand_suffix()
@@ -221,6 +224,7 @@ async def crud_role_search(ctx, page, sw, token):
     """角色管理：搜索角色。"""
     print("\n=== CRUD: 角色管理-搜索 ===")
     await goto_menu(page, "角色管理")
+    await page_wait(2000)  # 等页面完全加载
     sid = await record_crud(ctx, page, sw, "crud-role-search")
 
     keyword = "管理"
@@ -249,6 +253,7 @@ async def crud_dict_delete(ctx, page, sw, token):
     """字典配置：删除选项。"""
     print("\n=== CRUD: 字典配置-删除 ===")
     await goto_menu(page, "字典配置")
+    await page_wait(2000)
     sid = await record_crud(ctx, page, sw, "crud-dict-delete")
 
     try:
