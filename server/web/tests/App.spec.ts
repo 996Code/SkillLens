@@ -26,7 +26,7 @@ describe("App shell", () => {
     const links = Array.from(root.querySelectorAll("nav a")).map(
       (a) => a.textContent?.trim(),
     );
-    expect(links).toEqual(["Skills", "Reports", "审计", "画布", "评审"]);
+    expect(links).toEqual(["仪表盘", "Skills", "Reports", "审计", "画布", "评审"]);
     expect(root.textContent).toContain("SkillLens");
     expect(root.querySelector("main")).not.toBeNull(); // router-view 出口存在
   });

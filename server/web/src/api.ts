@@ -578,6 +578,40 @@ export function getReport(id: number | string): Promise<Report> {
   return get<Report>(`/api/v1/reports/${id}`);
 }
 
+// ---------- S28 块 Y：仪表盘 ----------
+
+export interface DashboardRecentRun {
+  id: number;
+  skill_id: number;
+  skill_name: string;
+  status: string;
+  mode: string;
+  flaky: boolean;
+  duration_ms: number | null;
+  ts: string;
+}
+
+export interface DashboardData {
+  skills: { total: number; learned: number; candidate: number; generic_learned: number };
+  replays: {
+    total: number; pass: number; fail: number; error: number; shadow: number;
+    flaky: number; recent: DashboardRecentRun[];
+  };
+  reports: {
+    total: number;
+    last: {
+      id: number; expected: number; missing: number;
+      unexpected: number; drift: number; created_at: string;
+    } | null;
+  };
+  reviews_pending: number;
+  trend: { date: string; total: number; pass: number }[];
+}
+
+export function getDashboard(): Promise<DashboardData> {
+  return get<DashboardData>("/api/v1/dashboard");
+}
+
 // ---------- S25 块 W：Playwright 脚本导出 ----------
 
 /** 导出 skill 为自包含 Playwright 脚本并触发浏览器下载。 */

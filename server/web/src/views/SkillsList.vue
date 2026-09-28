@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Task 3（S9 块C）：skill 卡片网格——GET /skills 列表 + 逐卡 /card 补断言数与 last_run 状态点。
 // S10 Task5：卡片 source 徽标（demo 灰 / real_traffic 绿）+ 顶部基线对比区块（C2 达标态）。
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { getGenericSkills, type GenericSkillItem } from "../api";
 import { getBaselineCompare, getSkillCard, getSkills } from "../api";
 import type { BaselineCompare, LastRun, SkillCard, SkillListItem } from "../api";
@@ -13,6 +13,26 @@ const error = ref("");
 const compare = ref<BaselineCompare | null>(null);
 const generics = ref<GenericSkillItem[]>([]);
 const compareError = ref("");
+// S28 块 Y：搜索 + 状态/来源过滤
+const search = ref("");
+const statusFilter = ref("all");
+const sourceFilter = ref("all");
+
+const filteredSkills = computed(() => {
+  let list = skills.value;
+  if (search.value.trim()) {
+    const q = search.value.trim().toLowerCase();
+    list = list.filter((s) => s.name.toLowerCase().includes(q)
+      || s.description.toLowerCase().includes(q));
+  }
+  if (statusFilter.value !== "all") {
+    list = list.filter((s) => s.source === statusFilter.value);
+  }
+  if (sourceFilter.value !== "all") {
+    list = list.filter((s) => s.source === sourceFilter.value);
+  }
+  return list;
+});
 
 function confPct(c: number): string {
   return `${Math.round(c * 100)}%`;
@@ -107,9 +127,34 @@ onMounted(async () => {
       <p class="empty-sub">录制一轮真实操作并完成归纳后，Skill 卡片会出现在这里</p>
     </div>
 
-    <div v-else class="grid">
+    <div v-else>
+      <div class="filter-bar" data-testid="filter-bar">
+        <input
+          v-model="search"
+          type="text"
+          placeholder="搜索技能名或描述…"
+          data-testid="skill-search"
+        />
+        <select v-model="statusFilter" data-testid="status-filter">
+          <option value="all">全部状态</option>
+          <option value="learned">learned</option>
+          <option value="candidate">candidate</option>
+        </select>
+        <select v-model="sourceFilter" data-testid="source-filter">
+          <option value="all">全部来源</option>
+          <option value="real_traffic">真实流量</option>
+          <option value="demo">演示</option>
+        </select>
+        <span class="muted filter-count">{{ filteredSkills.length }} / {{ skills.length }}</span>
+      </div>
+      <div v-if="filteredSkills.length === 0" class="empty">
+        <span class="empty-icon">⌕</span>
+        <p class="empty-title">无匹配技能</p>
+        <p class="empty-sub">调整搜索词或过滤条件</p>
+      </div>
+      <div v-else class="grid">
       <RouterLink
-        v-for="s in skills"
+        v-for="s in filteredSkills"
         :key="s.id"
         :to="`/skills/${s.id}`"
         class="card skill-card"
@@ -150,6 +195,7 @@ onMounted(async () => {
           </div>
         </dl>
       </RouterLink>
+      </div>
     </div>
   </section>
 
@@ -171,6 +217,20 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.filter-bar {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+.filter-bar input {
+  flex: 1;
+  max-width: 280px;
+}
+.filter-count {
+  font-size: 12px;
+  white-space: nowrap;
+}
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
