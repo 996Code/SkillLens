@@ -25,6 +25,7 @@ async function doLogout(): Promise<void> {
     <aside v-if="!isLogin" class="sidebar">
       <div class="brand">SkillLens</div>
       <nav>
+        <RouterLink to="/dashboard">仪表盘</RouterLink>
         <RouterLink to="/skills">Skills</RouterLink>
         <RouterLink to="/reports/1">Reports</RouterLink>
         <RouterLink to="/audit">审计</RouterLink>

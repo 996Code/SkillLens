@@ -20,7 +20,7 @@ async function submit(): Promise<void> {
   error.value = "";
   try {
     await login(username.value.trim(), password.value);
-    router.push("/skills");
+    router.push("/dashboard");
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {

@@ -73,7 +73,7 @@ describe("S21 login flow", () => {
     expect(router.currentRoute.value.path).toBe("/login");
   });
 
-  it("navigates to /skills after successful login", async () => {
+  it("navigates to /dashboard after successful login", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResp({
       token: "tok-2", user: { id: 2, username: "bob", role: "admin" },
     })));
@@ -88,7 +88,7 @@ describe("S21 login flow", () => {
     await flush();
     await flush();
 
-    expect(router.currentRoute.value.path).toBe("/skills");
+    expect(router.currentRoute.value.path).toBe("/dashboard");
     expect(getToken()).toBe("tok-2");
   });
 });
@@ -115,12 +115,12 @@ describe("S21 router guard", () => {
     const push = (path: string) => router.push(path);
 
     clearSession();
-    await push("/skills");
+    await push("/dashboard");
     expect(router.currentRoute.value.path).toBe("/login");
 
     localStorage.setItem("sl_token", "tok-3");
-    await push("/skills");
-    expect(router.currentRoute.value.path).toBe("/skills");
+    await push("/dashboard");
+    expect(router.currentRoute.value.path).toBe("/dashboard");
 
     // 登录页本身永远可达
     clearSession();

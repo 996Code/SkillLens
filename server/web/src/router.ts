@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from "vue-router";
+import DashboardView from "./views/DashboardView.vue";
 import SkillsList from "./views/SkillsList.vue";
 import SkillDetail from "./views/SkillDetail.vue";
 import DeltaReport from "./views/DeltaReport.vue";
@@ -14,8 +15,9 @@ import { getToken } from "./api";
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", redirect: "/skills" },
+    { path: "/", redirect: "/dashboard" },
     { path: "/login", name: "login", component: LoginView },
+    { path: "/dashboard", name: "dashboard", component: DashboardView },
     { path: "/skills", name: "skills", component: SkillsList },
     { path: "/skills/:id", name: "skill-detail", component: SkillDetail },
     { path: "/reports/:deltaId", name: "delta-report", component: DeltaReport },
