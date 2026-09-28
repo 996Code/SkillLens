@@ -177,3 +177,80 @@ def export_playwright(db: Session, skill_id: int) -> str:
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         fname=f"skill_{skill.id}_replay.py",
         url=plan["url"], overrides=overrides, steps=steps, assertions=assertions)
+
+
+_FLOW_SCRIPT_TEMPLATE = '''"""SkillLens 导出脚本：流程 {flow_id}（{goal}）
+
+由 SkillLens 工作台生成（{generated_at}）——步骤来自证据回查的流程合成。
+依赖：playwright。用法：python flow_{flow_id}.py
+"""
+import asyncio
+import sys
+
+from playwright.async_api import async_playwright
+
+STEPS = {steps!r}
+
+
+async def locate(page, label: str):
+    """语义定位——与 SkillLens locate.py 同策略链。"""
+    candidates = [
+        (page.get_by_role("button", name=label), "role-button"),
+        (page.get_by_text(label, exact=True), "text"),
+        (page.get_by_placeholder(label), "placeholder"),
+        (page.get_by_label(label), "label"),
+        (page.locator(f"#{{label}}"), "id"),
+    ]
+    for locator, strategy in candidates:
+        try:
+            count = await locator.count()
+        except Exception:
+            continue
+        if count > 0:
+            try:
+                if await locator.first.is_visible():
+                    return locator.first
+            except Exception:
+                continue
+    raise LookupError(f"semantic locate failed: {{label!r}}")
+
+
+async def main() -> int:
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        for step in STEPS:
+            if step["kind"] == "goto":
+                await page.goto(step["target"])
+                await page.wait_for_load_state("domcontentloaded", timeout=15000)
+            elif step["kind"] == "input":
+                locator = await locate(page, step["target"])
+                await locator.fill(step.get("value", ""), timeout=5000)
+            elif step["kind"] == "click":
+                locator = await locate(page, step["target"])
+                await locator.click(timeout=5000)
+            await page.wait_for_timeout(800)
+        await browser.close()
+    print("PASS")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(asyncio.run(main()))
+    except Exception as exc:
+        print("FAIL")
+        print(" -", str(exc)[:200])
+        sys.exit(1)
+'''
+
+
+def export_flow_playwright(db, flow_id: int) -> str:
+    from datetime import datetime, timezone
+    from app.models import SynthFlow
+    flow = db.get(SynthFlow, flow_id)
+    steps = [dict(s) for s in (flow.steps or []) if isinstance(s, dict)]
+    return _FLOW_SCRIPT_TEMPLATE.format(
+        flow_id=flow.id, goal=flow.goal,
+        generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        steps=steps)
