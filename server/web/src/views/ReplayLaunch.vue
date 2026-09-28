@@ -7,7 +7,8 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute } from "vue-router";
 import { getReplayRun, getSkillCard, replayObserve } from "../api";
-import type { AssertionResult, ReplayRunDetail, SkillCard } from "../api";
+import type { ReplayRunDetail, SkillCard } from "../api";
+import { assertExpect, assertObserved, snapshotDiffRows } from "../run-format";
 
 const route = useRoute();
 
@@ -38,37 +39,7 @@ const canSubmit = computed(() => {
 });
 
 /** 快照对比行：label + before → after，只保留有差异的行（前 10 行）。 */
-const snapshotDiff = computed(() => {
-  const run = runDetail.value;
-  const before = run?.plan?.before_snapshot?.forms ?? [];
-  const after = run?.plan?.after_snapshot?.forms ?? [];
-  const afterByLabel = new Map(after.map((f) => [f.label, f.value]));
-  return before
-    .filter((f) => afterByLabel.get(f.label) !== f.value)
-    .slice(0, 10)
-    .map((f) => ({ label: f.label, from: f.value, to: afterByLabel.get(f.label) ?? "（字段已消失）" }));
-});
-
-/** 断言明细的人读期望/观察值。 */
-function assertExpect(r: AssertionResult): string {
-  const p = r.payload || {};
-  switch (r.kind) {
-    case "api_status":
-      return `${p.api_template} → ${p.expect_status}`;
-    case "state_signal":
-      return `${p.field}=${p.expect_value}（${p.api_template}）`;
-    case "ui_text":
-      return `${p.label}: ${p.before} → ${p.after}`;
-    case "field_change":
-      return `${p.field}: ${p.before} → ${p.after}`;
-    default:
-      return JSON.stringify(p);
-  }
-}
-
-function assertObserved(r: AssertionResult): string {
-  return r.observed_status == null ? "—" : String(r.observed_status);
-}
+const snapshotDiff = computed(() => snapshotDiffRows(runDetail.value?.plan ?? null));
 
 /** 提交用的 overrides：剔除空值——空 = 沿用录制采集值
  * （后端 overrides.get(name, original) 对空串不会回退，须前端剔除）。 */

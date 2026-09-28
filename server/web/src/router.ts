@@ -4,6 +4,7 @@ import SkillsList from "./views/SkillsList.vue";
 import SkillDetail from "./views/SkillDetail.vue";
 import DeltaReport from "./views/DeltaReport.vue";
 import ReplayLaunch from "./views/ReplayLaunch.vue";
+import ReplayRunView from "./views/ReplayRunView.vue";
 import AuditView from "./views/AuditView.vue";
 import CanvasView from "./views/CanvasView.vue";
 import ReviewPortal from "./views/ReviewPortal.vue";
@@ -23,6 +24,7 @@ const router = createRouter({
     { path: "/skills/:id", name: "skill-detail", component: SkillDetail },
     { path: "/reports/:deltaId", name: "delta-report", component: DeltaReport },
     { path: "/replay/:skillId", name: "replay-launch", component: ReplayLaunch },
+    { path: "/replay-runs/:runId", name: "replay-run", component: ReplayRunView },
     { path: "/audit", name: "audit", component: AuditView },
     { path: "/canvas", name: "canvas", component: CanvasView },
     { path: "/reviews-portal", name: "reviews-portal", component: ReviewPortal },

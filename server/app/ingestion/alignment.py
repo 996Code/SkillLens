@@ -29,23 +29,38 @@ def collect_window_params(db: Session, session_ids: list[str]) -> dict | None:
     return {"sessions": per_session, "consistent": False, "warn": True}
 
 
-def window_signature(window: dict) -> str:
+def _anchor_key(window: dict) -> str:
     anchor = window.get("anchor") or {}
     payload = anchor.get("payload") or {}
     label = (payload.get("target") or {}).get("label", "")
-    anchor_part = f"{payload.get('type', anchor.get('kind', ''))}:{label}"
-    api_parts = []
+    return f"{payload.get('type', anchor.get('kind', ''))}:{label}"
+
+
+def _api_set(window: dict) -> set[str]:
+    parts: set[str] = set()
     for m in window.get("members") or []:
         p = m.get("payload") or {}
+        if not p.get("url"):
+            continue
         path, _ = split_url(p.get("url", ""))
         template, _ = templatize_path(path)
-        api_parts.append(f"{p.get('method', 'GET')}:{template}")
+        parts.add(f"{p.get('method', 'GET')}:{template}")
+    return parts
+
+
+def window_signature(window: dict) -> str:
+    api_parts = sorted(_api_set(window))
     if not api_parts:
-        return anchor_part
-    return f"{anchor_part}|{','.join(sorted(api_parts))}"
+        return _anchor_key(window)
+    return f"{_anchor_key(window)}|{','.join(api_parts)}"
 
 
 def lcs(a: list[str], b: list[str]) -> list[str]:
+    return [a[i] for i, _ in _lcs_pairs(a, b)]
+
+
+def _lcs_pairs(a: list[str], b: list[str]) -> list[tuple[int, int]]:
+    """LCS 带下标对（锚点对齐需要窗口位置，不只是值）。"""
     n, m = len(a), len(b)
     dp = [[0] * (m + 1) for _ in range(n + 1)]
     for i in range(n - 1, -1, -1):
@@ -54,11 +69,11 @@ def lcs(a: list[str], b: list[str]) -> list[str]:
                 dp[i][j] = dp[i + 1][j + 1] + 1
             else:
                 dp[i][j] = max(dp[i + 1][j], dp[i][j + 1])
-    out: list[str] = []
+    out: list[tuple[int, int]] = []
     i = j = 0
     while i < n and j < m:
         if a[i] == b[j]:
-            out.append(a[i])
+            out.append((i, j))
             i += 1
             j += 1
         elif dp[i + 1][j] >= dp[i][j + 1]:
@@ -99,40 +114,54 @@ def _bucket_sessions(sig_lists: list[tuple[str, list[str]]]) -> list[list[str]]:
 
 def align_skeletons(windows_per_session: list[tuple[str, list[dict]]]) -> dict:
     """返回 {"skeleton": [...], "buckets": [{"sessions": [...], "skeleton": [...]}]}。
-    skeleton 保持原跨全 session 的 LCS 语义（Skill 断言证据范围，Sprint 3 fix1：
-    单侧独有的窗口不得进骨架）；buckets 是多路径策略记录（每桶桶内对齐）。"""
+
+    S34 多目标泛化：锚点（type:label）相同视为同一步，API 段取全会话**交集**
+    （话多 SPA 的窗口 API 集带偶发请求——autocomplete/轮询逐轮不同，
+    精确串匹配会把整步丢出骨架；交集语义 = 单侧独有 API 不进骨架，
+    与"单侧独有的窗口不得进骨架"同源）。buckets 按锚点序列分桶
+    （偶发 API 差异不拆桶）。"""
     if not windows_per_session:
         return {"skeleton": [], "buckets": []}
-    sig_lists: list[tuple[str, list[str]]] = []
-    for sid, windows in windows_per_session:
-        sig_lists.append((sid, [window_signature(w) for w in windows]))
+    keyed = [(sid, [(_anchor_key(win), _api_set(win)) for win in windows])
+             for sid, windows in windows_per_session]
 
-    skeleton = _align_one(sig_lists)
-    buckets = _bucket_sessions(sig_lists)
+    skeleton = _align_one(keyed)
+    bucket_input = [(sid, [k for k, _ in items]) for sid, items in keyed]
+    buckets = _bucket_sessions(bucket_input)
     out_buckets = []
     for members in buckets:
         out_buckets.append({
             "sessions": members,
-            "skeleton": _align_one([s for s in sig_lists if s[0] in members]),
+            "skeleton": _align_one([kv for kv in keyed if kv[0] in members]),
         })
     return {"skeleton": skeleton, "buckets": out_buckets}
 
 
-def _align_one(sig_lists: list[tuple[str, list[str]]]) -> list[dict]:
-    """桶内对齐（原 align_skeletons 逻辑，输入已是签名序列）。"""
-    ref = sig_lists[0][1]
-    common = list(ref)
-    for _, sigs in sig_lists[1:]:
-        common = lcs(common, sigs)
-        if not common:
+def _align_one(keyed: list[tuple[str, list[tuple[str, set[str]]]]]) -> list[dict]:
+    """桶内对齐：锚点序列 LCS；每步 API 取出现会话的交集。
+
+    entries: [(anchor, [(sid, window_idx, api_set), ...]), ...]
+    """
+    if not keyed:
+        return []
+    sid0, items0 = keyed[0]
+    entries: list[tuple[str, list[tuple[str, int, set[str]]]]] = [
+        (k, [(sid0, i, apis)]) for i, (k, apis) in enumerate(items0)
+    ]
+    for sid, items in keyed[1:]:
+        pairs = _lcs_pairs([e[0] for e in entries], [k for k, _ in items])
+        entries = [
+            (entries[ci][0], entries[ci][1] + [(sid, ii, items[ii][1])])
+            for ci, ii in pairs
+        ]
+        if not entries:
             break
 
     steps: list[dict] = []
-    for signature in common:
-        seqs: dict[str, int] = {}
-        for sid, sigs in sig_lists:
-            if signature in sigs:
-                # index 取首个匹配（重复签名场景取第一次出现，MVP 语义）
-                seqs[sid] = sigs.index(signature)
-        steps.append({"signature": signature, "session_window_seqs": seqs})
+    for anchor, occs in entries:
+        api_sets = [s for _, _, s in occs]
+        inter = set.intersection(*api_sets) if api_sets else set()
+        sig = anchor if not inter else f"{anchor}|{','.join(sorted(inter))}"
+        seqs = {occ_sid: idx for occ_sid, idx, _ in occs}
+        steps.append({"signature": sig, "session_window_seqs": seqs})
     return steps

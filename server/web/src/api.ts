@@ -270,6 +270,9 @@ export interface ReplayRunDetail {
   assertion_results: AssertionResult[] | null;
   attribution: string | null;
   artifact_path: string;
+  duration_ms: number | null; // S34：run 详情页耗时
+  flaky: boolean;
+  created_at: string | null;
 }
 
 // ---------- 类型（S12 N4 层5：断言观测一致性） ----------

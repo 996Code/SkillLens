@@ -69,6 +69,7 @@ async function mountTimeline(root: HTMLElement) {
     routes: [
       { path: "/", component: { render: () => null } },
       { path: "/timeline", component: { render: () => null } },
+      { path: "/replay-runs/:runId", component: { render: () => null } },
       { path: "/skills/:id", component: { render: () => null } },
       { path: "/audit", component: { render: () => null } },
     ],

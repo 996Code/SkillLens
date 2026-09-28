@@ -48,6 +48,31 @@ def test_align_single_session_returns_all():
     assert len(result["buckets"]) == 1 and result["buckets"][0]["sessions"] == ["s1"]
 
 
+def test_align_tolerates_incidental_api_noise():
+    """S34 多目标泛化：话多 SPA（Odoo 等）窗口 API 集带偶发请求
+    （autocomplete/mail 轮询），逐轮不同。锚点相同即同一步；骨架 API
+    取全会话交集（单侧独有 API 不进骨架——既有语义延伸到 API 级）。"""
+    s1 = [w("click", "New", [("POST", "/onchange")]),
+          w("click", "Save", [("POST", "/onchange"), ("POST", "/save"),
+                              ("POST", "/autocomplete")])]
+    s2 = [w("click", "New", [("POST", "/onchange")]),
+          w("click", "Save", [("POST", "/onchange"), ("POST", "/save")])]
+    result = align_skeletons([("s1", s1), ("s2", s2)])
+    sigs = [step["signature"] for step in result["skeleton"]]
+    assert sigs == ["click:New|POST:/onchange",
+                    "click:Save|POST:/onchange,POST:/save"]
+    # 偶发 API 差异不拆桶（同路径）
+    assert len(result["buckets"]) == 1
+
+
+def test_align_anchor_same_but_disjoint_apis_keeps_anchor_only():
+    """锚点相同但 API 完全不相交：步进骨架（锚点证据），API 段为空。"""
+    s1 = [w("click", "Save", [("POST", "/a")])]
+    s2 = [w("click", "Save", [("POST", "/b")])]
+    result = align_skeletons([("s1", s1), ("s2", s2)])
+    assert [s["signature"] for s in result["skeleton"]] == ["click:Save"]
+
+
 def _sess(sid, labels):
     """造 (sid, 窗口签名序列) 的最小替身——分桶只消费签名序列。"""
     return (sid, labels)

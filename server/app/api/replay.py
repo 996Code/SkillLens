@@ -37,7 +37,9 @@ async def replay(skill_id: int, body: ReplayRequest, db: Session = Depends(get_d
     return {"id": run.id, "skill_id": run.skill_id, "mode": run.mode, "status": run.status,
             "plan": run.plan, "executed": run.executed,
             "assertion_results": run.assertion_results,
-            "attribution": run.attribution, "artifact_path": run.artifact_path}
+            "attribution": run.attribution, "artifact_path": run.artifact_path,
+            "duration_ms": run.duration_ms, "flaky": run.flaky,
+            "created_at": run.created_at.isoformat() if run.created_at else None}
 
 
 class ReplayBatchRequest(BaseModel):
@@ -69,7 +71,9 @@ async def get_run(run_id: int, db: Session = Depends(get_db)) -> dict:
     return {"id": run.id, "skill_id": run.skill_id, "mode": run.mode, "status": run.status,
             "plan": run.plan, "executed": run.executed,
             "assertion_results": run.assertion_results,
-            "attribution": run.attribution, "artifact_path": run.artifact_path}
+            "attribution": run.attribution, "artifact_path": run.artifact_path,
+            "duration_ms": run.duration_ms, "flaky": run.flaky,
+            "created_at": run.created_at.isoformat() if run.created_at else None}
 
 
 _STEP_FILE_RE = re.compile(r"^(start|step-\d+)\.png$")

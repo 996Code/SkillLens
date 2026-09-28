@@ -6,15 +6,33 @@ export interface ElementDesc {
   path: string;
 }
 
+const ACTIONABLE = ["button", "a", "input", "select", "textarea"];
+
+/** S34：图标按钮泛化——点击命中的常是内部 <i>/<svg> 图标（Odoo 等
+ * 框架的 Save/Edit 按钮无文本只有图标），上溯到最近可操作祖先取其
+ * aria-label/text；3 层内无可操作祖先则保持原元素（避免过度上溯）。 */
+function resolveActionable(el: Element): Element {
+  let cur: Element | null = el;
+  for (let i = 0; cur && i < 3; i++) {
+    const tag = cur.tagName.toLowerCase();
+    if (ACTIONABLE.includes(tag) || cur.getAttribute("role") === "button") {
+      return cur;
+    }
+    cur = cur.parentElement;
+  }
+  return el;
+}
+
 export function describeElement(el: Element): ElementDesc {
-  const tag = el.tagName.toLowerCase();
-  const role = el.getAttribute("role") ?? implicitRole(el);
-  const text = (el.textContent ?? "").trim().slice(0, 100);
-  const label = el.getAttribute("aria-label")
-    ?? el.getAttribute("placeholder")
-    ?? el.getAttribute("title")
+  const target = resolveActionable(el);
+  const tag = target.tagName.toLowerCase();
+  const role = target.getAttribute("role") ?? implicitRole(target);
+  const text = (target.textContent ?? "").trim().slice(0, 100);
+  const label = target.getAttribute("aria-label")
+    ?? target.getAttribute("placeholder")
+    ?? target.getAttribute("title")
     ?? text;
-  return { tag, role, label, text, path: domPath(el) };
+  return { tag, role, label, text, path: domPath(target) };
 }
 
 function implicitRole(el: Element): string {

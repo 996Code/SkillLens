@@ -30,6 +30,7 @@ npm test           # vitest 单测（tests/*.spec.ts，jsdom 环境）
 | `/skills/:id` | `views/SkillDetail.vue` | 详情：概要 + 骨架步骤流 + 变量值域 + 断言表 + 窗口参数 + 最近回放；页脚「回放此 Skill」入口 |
 | `/reports/:deltaId` | `views/DeltaReport.vue` | 四分类报告（expected/missing/unexpected/drift 分色卡 + 需求上下文 + id 查询框） |
 | `/replay/:skillId` | `views/ReplayLaunch.vue` | 回放触发（Task 5）：overrides 编辑 + shadow/execute 模式门控 + 结果渲染 |
+| `/replay-runs/:runId` | `views/ReplayRunView.vue` | 回放 run 详情（S34）：状态/flaky/耗时 + 步骤表 + 截图墙（点击放大）+ 断言明细 + 归因 + 快照对比 |
 | `/audit` | `views/AuditView.vue` | 链路审计（S10.5 块 M）：会话列表→trace 下钻（窗口 kept/过滤原因→语义动作→对齐分桶→Skill→回放历史）+ 证据图过滤 + LLM 日志摘要 |
 | `/timeline` | `views/TimelineView.vue` | 链路时间线（S32）：全流水线环节倒序时间轴（8 类型色点+过滤 chip）；LLM 项点击展开完整 prompt/response |
 
@@ -42,7 +43,7 @@ npm test           # vitest 单测（tests/*.spec.ts，jsdom 环境）
 | `GET /api/v1/reports/{id}` | 四分类报告行（S9 新增） | DeltaReport |
 | `GET /api/v1/expected-deltas/{id}` | 需求上下文 | DeltaReport |
 | `POST /api/v1/expected-deltas/{id}/observe` | 触发回放观测（同步返回 replay_run_id + replay_status；409 = shadow 未执行 / delta 未确认） | ReplayLaunch |
-| `GET /api/v1/replay-runs/{id}` | run 明细（断言结果 attribution、plan 前后快照） | ReplayLaunch |
+| `GET /api/v1/replay-runs/{id}` | run 明细（断言结果 attribution、plan 前后快照；S34 补 duration/flaky/created_at） | ReplayLaunch / ReplayRunView |
 | `GET /api/v1/audit/sessions` | 审计会话列表（source/三计数，S10.5 新增） | AuditView |
 | `GET /api/v1/audit/sessions/{sid}/trace` | 单会话链路下钻（窗口/语义动作/对齐/Skill/回放，S10.5 新增） | AuditView |
 | `GET /api/v1/audit/evidence-edges` | 证据边列表（type/src_like 过滤，S10.5 新增） | AuditView |

@@ -220,6 +220,44 @@ async def test_replay_run_get_404(client):
     assert resp.status_code == 404
 
 
+async def test_replay_run_detail_fields(client, monkeypatch):
+    """S34：run 详情页数据契约——duration_ms/flaky/created_at 上响应
+    （时间线/详情页展示耗时与 flaky 徽标）。"""
+    skill_id = await _seed_skill(client, monkeypatch)
+
+    async def fake_execute_plan(page, plan, **kw):
+        return {"executed": [{"kind": "click", "label": "保存", "ok": True}],
+                "observed": [{"url": "http://t/a/9/save", "status": 200,
+                              "body": '{"code":200}'}]}
+
+    class FakePage:
+        async def goto(self, url): ...
+        async def wait_for_load_state(self, state, timeout=None): ...
+        def on(self, *a): ...
+        async def wait_for_timeout(self, ms): ...
+        async def query_selector_all(self, selector): return []
+    class FakeCtx:
+        async def new_page(self): return FakePage()
+    class FakeBrowser:
+        async def new_context(self, storage_state=None): return FakeCtx()
+        async def close(self): ...
+    class FakePW:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): ...
+        async def chromium_launch(self): return FakeBrowser()
+    import app.replay.runner as rm
+    monkeypatch.setattr(rm, "execute_plan", fake_execute_plan)
+    monkeypatch.setattr(rm, "_launch", lambda: FakePW())
+
+    resp = await client.post(f"/api/v1/skills/{skill_id}/replay",
+                             json={"overrides": {}, "confirm_side_effect": True})
+    run_id = resp.json()["id"]
+    detail = (await client.get(f"/api/v1/replay-runs/{run_id}")).json()
+    assert detail["duration_ms"] is not None and detail["duration_ms"] >= 0
+    assert detail["flaky"] is False
+    assert detail["created_at"]
+
+
 async def fake_execute_plan_ok(page, plan, **kw):
     return {"executed": [{"kind": "click", "label": "保存", "ok": True}],
             "observed": [{"url": "http://t/a/1/save", "status": 200, "body": '{"code":200}'}]}

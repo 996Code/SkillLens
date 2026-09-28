@@ -88,3 +88,33 @@ def test_skeleton_plan_override_value():
     plan = compile_skeleton_plan(EVENTS_SKELETON, skeleton, "s1", {"字段A": "new"},
                                  [{"name": "字段A", "values": {"s1": "old"}}])
     assert plan["steps"][0]["value"] == "new" and plan["steps"][0]["original_value"] == "old"
+
+
+def test_skeleton_plan_interleaves_input_by_event_order():
+    """S34 多目标泛化：Odoo 等系统表单在锚点点击后才出现（New → 填名 → Save）。
+    input 步须按参考会话事件时序插入锚点之间，而非一律前置——
+    否则回放在表单出现前 fill 必然定位失败。"""
+    events = [
+        ev("navigation", "page-load", url="http://t/odoo"),
+        ev("action", "click", target={"label": "New"}),
+        ev("action", "input", name="e.g. Lumber Inc", value="B1"),
+        ev("action", "click", target={"label": "Save manually"}),
+    ]
+    skeleton = [_win("New", 0), _win("Save manually", 1)]
+    plan = compile_skeleton_plan(events, skeleton, "s1", {},
+                                 [{"name": "e.g. Lumber Inc", "values": {"s1": "B1"}}])
+    kinds = [(s["kind"], s.get("label") or s.get("name")) for s in plan["steps"]]
+    assert kinds == [("click", "New"), ("input", "e.g. Lumber Inc"),
+                     ("click", "Save manually")]
+
+
+def test_skeleton_plan_override_without_event_prepends():
+    """overrides 造出的无事件变量（无时序信息）：保持旧语义插在最前。"""
+    events = [
+        ev("navigation", "page-load", url="http://t/f"),
+        ev("action", "click", target={"label": "保存"}),
+    ]
+    skeleton = [_win("保存", 0)]
+    plan = compile_skeleton_plan(events, skeleton, "s1", {"新变量": "v"}, [])
+    kinds = [(s["kind"], s.get("label") or s.get("name")) for s in plan["steps"]]
+    assert kinds == [("input", "新变量"), ("click", "保存")]
