@@ -32,6 +32,38 @@ const NODE_TYPES: NodeTypeMeta[] = [
   { type: "aggregate", label: "聚合", desc: "回放结果计数" },
   { type: "review_output", label: "评审输出", desc: "生成 markdown 摘要" },
 ];
+
+function nodeIcon(t: string): string {
+  const m: Record<string, string> = {
+    change_source: "\u25C8", impact_select: "\u2B21",
+    replay_batch: "\u25B6", aggregate: "\u03A3", review_output: "\u2713",
+  };
+  return m[t] || "\u25C7";
+}
+
+function nodeStatus(id: string): string | null {
+  if (!lastRun.value?.node_outputs) return null;
+  const node = nodes.value.find((n) => n.id === id);
+  if (!node) return null;
+  const seg = lastRun.value.node_outputs.find((s) => s.node === node.id);
+  return seg ? lastRun.value.status : null;
+}
+
+function headerPath(): string {
+  const r = 10, h = 36;
+  return `M0,${r} a${r},${r} 0 0 1 ${r},-${r} h${NODE_W - r * 2} a${r},${r} 0 0 1 ${r},${r} v${h - r} h-${NODE_W} z`;
+}
+
+function edgePath(e: { from: string; to: string }): string {
+  const from = nodes.value.find((n) => n.id === e.from);
+  const to = nodes.value.find((n) => n.id === e.to);
+  if (!from || !to) return "";
+  const x1 = from.x + NODE_W, y1 = from.y + NODE_H / 2;
+  const x2 = to.x, y2 = to.y + NODE_H / 2;
+  const cx = (x1 + x2) / 2;
+  return `M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}`;
+}
+
 function typeLabel(type: string): string {
   return NODE_TYPES.find((t) => t.type === type)?.label || type;
 }
@@ -326,35 +358,51 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- 中：SVG 画布 -->
+            <!-- 中：SVG 画布（S28 UI v2：圆角卡片节点+贝塞尔连线+点阵网格） -->
       <div class="canvas-wrap">
         <svg ref="svgEl" viewBox="0 0 1000 600" class="canvas-svg"
              data-testid="canvas-svg" @click.self="onCanvasBlank">
           <defs>
-            <marker id="arrow" markerWidth="8" markerHeight="8" refX="7"
-                    refY="4" orient="auto">
-              <path d="M0,0 L8,4 L0,8 z" class="edge-arrow" />
-            </marker>
+            <pattern id="dotgrid" width="20" height="20" patternUnits="userSpaceOnUse">
+              <circle cx="1" cy="1" r="1" fill="var(--color-gray-3)" opacity="0.5" />
+            </pattern>
+            <linearGradient id="edge-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="var(--color-primary)" stop-opacity="0.5" />
+              <stop offset="100%" stop-color="var(--color-primary)" />
+            </linearGradient>
+            <filter id="node-shadow" x="-5%" y="-5%" width="110%" height="115%">
+              <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.12" />
+            </filter>
           </defs>
-          <line v-for="(e, i) in edges" :key="i" v-bind="edgeCoords(e) || {}"
-                class="edge" data-testid="canvas-edge" marker-end="url(#arrow)" />
+          <rect width="1000" height="600" fill="url(#dotgrid)" />
+          <path v-for="(e, i) in edges" :key="i" :d="edgePath(e)"
+                class="edge" data-testid="canvas-edge" />
           <g v-for="n in nodes" :key="n.id" class="cnode"
              :class="nodeClass(n.id)" :transform="`translate(${n.x},${n.y})`"
              data-testid="canvas-node" :data-id="n.id"
              @click="onNodeClick(n)" @mousedown="onNodeMouseDown(n, $event)">
-            <rect class="node-rect" :width="NODE_W" :height="NODE_H" rx="6" />
-            <text class="node-text" :x="NODE_W / 2" :y="NODE_H / 2 + 5">
-              {{ typeLabel(n.type) }}
-            </text>
+            <rect :width="NODE_W" :height="NODE_H" rx="10" fill="var(--color-surface)"
+                  filter="url(#node-shadow)" />
+            <rect class="node-rect" :width="NODE_W" :height="NODE_H" rx="10" />
+            <path class="node-header" :d="headerPath()" />
+            <text class="node-icon" x="16" y="27">{{ nodeIcon(n.type) }}</text>
+            <text class="node-title" x="36" y="27">{{ typeLabel(n.type) }}</text>
+            <circle v-if="nodeStatus(n.id)" class="node-status-dot"
+                    :class="'dot-' + (nodeStatus(n.id) || '')"
+                    :cx="NODE_W - 16" :cy="22" r="5" />
+            <circle class="port port-in" cx="0" :cy="NODE_H / 2" r="5" />
             <circle class="port" :class="{ 'port-active': linkingFrom === n.id }"
                     :cx="NODE_W" :cy="NODE_H / 2" r="6" data-testid="node-port"
                     :data-id="n.id" @click.stop="onPortClick(n)" />
-            <text v-if="selectedNodeId === n.id" class="node-del" :x="NODE_W - 12"
-                  y="18" data-testid="node-delete" @click.stop="removeNode(n)">×</text>
+            <g v-if="selectedNodeId === n.id" class="node-del-group"
+               data-testid="node-delete" @click.stop="removeNode(n)">
+              <circle class="node-del-bg" :cx="NODE_W - 14" :cy="NODE_H - 14" r="9" />
+              <text class="node-del" :x="NODE_W - 14" :y="NODE_H - 10"
+                    text-anchor="middle">x</text>
+            </g>
           </g>
-          <text v-if="nodes.length === 0" class="empty-hint" x="500" y="300">
-            画布为空，点击左侧节点类型添加
-          </text>
+          <text v-if="nodes.length === 0" class="empty-hint" x="500" y="290">画布为空</text>
+          <text v-if="nodes.length === 0" class="empty-hint-sub" x="500" y="315">点击左侧节点类型添加，端口点击连线</text>
         </svg>
       </div>
 
@@ -421,43 +469,27 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-/* S16 块 Q：按钮/表格/代码块/分区块卡片走全局令牌类，这里只留画布布局与 SVG 着色 */
+/* S28 UI v2：画布全面重做——圆角卡片节点+贝塞尔连线+点阵网格底 */
 .toolbar {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-top: var(--space-4);
-  font-size: 13px;
-  flex-wrap: wrap;
+  display: flex; align-items: center; gap: 14px;
+  margin-top: var(--space-4); font-size: 13px; flex-wrap: wrap;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-3) var(--space-4);
 }
-.toolbar label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.toolbar input {
-  width: 180px;
-}
-.run-hint {
-  color: var(--color-success);
-  font-size: 13px;
-}
+.toolbar label { display: flex; align-items: center; gap: 6px; }
+.toolbar input { width: 180px; }
+.run-hint { color: var(--color-success); font-size: 13px; font-weight: 500; }
 .canvas-layout {
-  display: flex;
-  gap: var(--space-4);
-  margin-top: var(--space-4);
-  align-items: flex-start;
+  display: flex; gap: var(--space-4);
+  margin-top: var(--space-4); align-items: flex-start;
 }
-.palette {
-  width: 190px;
-  flex-shrink: 0;
-}
-.palette h2,
-.params h2 {
-  font-size: 14px;
-  border-bottom: 1px solid var(--color-gray-3);
-  padding-bottom: var(--space-1);
-  margin-top: 0;
+.palette { width: 200px; flex-shrink: 0; }
+.palette h2, .params h2 {
+  font-size: 14px; border-bottom: 1px solid var(--color-gray-3);
+  padding-bottom: var(--space-1); margin-top: 0;
 }
 .palette-card {
   background: var(--color-surface);
@@ -465,124 +497,75 @@ onMounted(async () => {
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
   padding: var(--space-2) var(--space-3);
-  margin-bottom: var(--space-2);
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  margin-bottom: var(--space-2); cursor: pointer;
+  display: flex; flex-direction: column; gap: 2px;
+  transition: all 0.15s ease;
 }
 .palette-card:hover {
   background: var(--color-primary-soft);
-  border-color: var(--color-primary-border);
+  border-color: var(--color-primary);
+  transform: translateX(3px);
+  box-shadow: var(--shadow-md);
 }
-.palette-label {
-  font-weight: 600;
-  font-size: 13px;
-}
-.palette-desc {
-  font-size: 12px;
-}
+.palette-label { font-weight: 600; font-size: 13px; }
+.palette-desc { font-size: 12px; }
 .canvas-wrap {
-  flex: 1;
-  min-width: 0;
+  flex: 1; min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  overflow: hidden; background: var(--color-surface);
+}
+.canvas-svg { width: 100%; height: auto; display: block; background: var(--color-gray-1); }
+.edge { stroke: url(#edge-grad); stroke-width: 2.5; fill: none; stroke-linecap: round; }
+.cnode { cursor: pointer; }
+.cnode .node-rect {
+  fill: var(--color-surface);
+  stroke: var(--color-border); stroke-width: 1.5;
+}
+.cnode:hover .node-rect { stroke: var(--color-primary); }
+.cnode.node-selected .node-rect { stroke: var(--color-primary); stroke-width: 2.5; }
+.cnode.node-ok .node-rect { stroke: var(--color-success); stroke-width: 2.5; }
+.cnode.node-error .node-rect { stroke: var(--color-danger); stroke-width: 2.5; }
+.node-header { fill: var(--color-primary); opacity: 0.08; }
+.node-icon { font-size: 14px; fill: var(--color-primary); user-select: none; }
+.node-title { font-size: 12.5px; font-weight: 600; fill: var(--color-gray-8); user-select: none; }
+.node-status-dot { stroke: var(--color-surface); stroke-width: 2; }
+.node-status-dot.dot-pass { fill: var(--color-success); }
+.node-status-dot.dot-fail { fill: var(--color-danger); }
+.node-status-dot.dot-error { fill: var(--color-warning); }
+.node-status-dot.dot-finished { fill: var(--color-success); }
+.port {
+  fill: var(--color-primary); stroke: var(--color-surface);
+  stroke-width: 2; cursor: crosshair; transition: r 0.15s ease;
+}
+.port:hover { r: 8; }
+.port-in { fill: var(--color-gray-4); }
+.port-active { fill: var(--color-warning); r: 8; }
+.node-del-group { cursor: pointer; }
+.node-del-bg { fill: var(--color-danger-soft); stroke: var(--color-danger); stroke-width: 1; }
+.node-del { font-size: 12px; font-weight: 700; fill: var(--color-danger); user-select: none; }
+.empty-hint { font-size: 16px; font-weight: 600; fill: var(--color-gray-5); text-anchor: middle; }
+.empty-hint-sub { font-size: 13px; fill: var(--color-gray-4); text-anchor: middle; }
+.params {
+  width: 280px; flex-shrink: 0;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  overflow: hidden;
-  background: var(--color-surface);
-}
-.canvas-svg {
-  width: 100%;
-  height: auto;
-  display: block;
-  background: var(--color-gray-1);
-}
-.edge {
-  stroke: var(--color-gray-6);
-  stroke-width: 2;
-}
-.edge-arrow {
-  fill: var(--color-gray-6);
-}
-.cnode {
-  cursor: pointer;
-}
-.cnode .node-rect {
-  fill: var(--color-surface);
-  stroke: var(--color-primary);
-  stroke-width: 1.5;
-}
-.cnode.node-selected .node-rect {
-  stroke-width: 3;
-}
-.cnode.node-ok .node-rect {
-  stroke: var(--color-success);
-  stroke-width: 3;
-}
-.cnode.node-error .node-rect {
-  stroke: var(--color-danger);
-  stroke-width: 3;
-}
-.node-text {
-  font-size: 13px;
-  text-anchor: middle;
-  fill: var(--color-gray-7);
-  user-select: none;
-}
-.port {
-  fill: var(--color-primary);
-  cursor: crosshair;
-}
-.port-active {
-  fill: var(--color-warning);
-  r: 8;
-}
-.node-del {
-  font-size: 16px;
-  fill: var(--color-danger);
-  cursor: pointer;
-  user-select: none;
-}
-.empty-hint {
-  font-size: 14px;
-  fill: var(--color-gray-5);
-  text-anchor: middle;
-}
-.params {
-  width: 260px;
-  flex-shrink: 0;
+  padding: var(--space-3) var(--space-4);
 }
 .params h3 {
-  font-size: 13px;
-  margin: var(--space-3) 0 var(--space-2);
+  font-size: 13px; margin: var(--space-3) 0 var(--space-2);
+  display: flex; align-items: center; gap: 6px;
 }
-.param-label {
-  display: block;
-  font-size: 12px;
-  color: var(--color-gray-6);
-  margin-bottom: 10px;
-}
+.param-label { display: block; font-size: 12px; color: var(--color-gray-6); margin-bottom: 10px; }
 .param-label textarea {
-  width: 100%;
-  margin-top: var(--space-1);
-  font-size: 12px;
-  font-family: var(--font-mono);
+  width: 100%; margin-top: var(--space-1);
+  font-size: 12px; font-family: var(--font-mono);
 }
-.warn-note {
-  color: var(--color-danger);
-  font-size: 12px;
-  margin: var(--space-1) 0 0;
-}
-.artifact {
-  margin-top: 14px;
-}
-.artifact h3 {
-  margin: var(--space-2) 0 6px;
-}
-/* 产物 JSON：覆盖全局 .code 限高 */
-.code {
-  font-size: 12px;
-  max-height: 260px;
-  overflow-y: auto;
-}
+.warn-note { color: var(--color-danger); font-size: 12px; margin: var(--space-1) 0 0; }
+.artifact { margin-top: 14px; border-top: 1px solid var(--color-gray-3); padding-top: var(--space-2); }
+.artifact h3 { margin: var(--space-2) 0 6px; }
+.code { font-size: 12px; max-height: 260px; overflow-y: auto; }
 </style>
