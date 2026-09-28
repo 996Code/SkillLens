@@ -35,11 +35,14 @@ TARGET_MENUS = [
 
 
 async def login_api() -> str:
-    """登录 SkillLens server 获取 token。"""
+    """登录 SkillLens server 获取 token（凭据从环境变量读，不硬编码）。"""
+    import os
+    pw = os.environ.get("S21_ADMIN_PW", "")
+    if not pw:
+        raise SystemExit("需要环境变量 S21_ADMIN_PW")
     async with httpx.AsyncClient(timeout=120.0) as c:
         resp = await c.post(f"{SERVER}/api/v1/auth/login",
-                            json={"username": "admin",
-                                  "password": "SkillLens@2026"})
+                            json={"username": "admin", "password": pw})
         return resp.json()["token"]
 
 
