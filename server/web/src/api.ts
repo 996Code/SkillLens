@@ -835,6 +835,38 @@ export async function createReview(
   return resp.json() as Promise<ReviewItem>;
 }
 
+// ---------- S32：链路时间线 + LLM IO 全留存 ----------
+
+export interface TimelineItem {
+  type: string; // session | alignment | skill | replay | report | review | llm | agent_run
+  id: number | string;
+  title: string;
+  subtitle: string;
+  ts: string;
+}
+
+export function getTimeline(limit = 100): Promise<TimelineItem[]> {
+  return get<TimelineItem[]>(`/api/v1/timeline?limit=${limit}`);
+}
+
+export interface LlmLogDetail {
+  id: number;
+  purpose: string;
+  provider: string;
+  model: string;
+  prompt: string;
+  response: string;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  latency_ms: number;
+  created_at: string;
+}
+
+/** 单条 LLM 调用完整 prompt/response（区别于列表 200 字符摘要）。 */
+export function getLlmLogDetail(id: number | string): Promise<LlmLogDetail> {
+  return get<LlmLogDetail>(`/api/v1/audit/llm-logs/${id}`);
+}
+
 export { ApiError };
 
 export interface GenericSkillItem {

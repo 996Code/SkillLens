@@ -110,6 +110,22 @@ async def list_llm_logs(limit: int = Query(50, ge=1, le=1000), db: Session = Dep
              "response_head": (r.response or "")[:HEAD_CHARS]} for r in rows]
 
 
+@router.get("/audit/llm-logs/{log_id}")
+async def llm_log_detail(log_id: int, db: Session = Depends(get_db)) -> dict:
+    # S32：链路可视化需要单条调用的完整 prompt/response（区别于列表 200 字符摘要）。
+    # 按需单条取用，不经列表端点全量外泄；鉴权同 audit 路由组（require_user）。
+    row = db.get(LlmCallLog, log_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="llm log not found")
+    return {"id": row.id, "purpose": row.purpose, "provider": row.provider,
+            "model": row.model, "prompt": row.prompt or "",
+            "response": row.response or "",
+            "prompt_tokens": row.prompt_tokens,
+            "completion_tokens": row.completion_tokens,
+            "latency_ms": row.latency_ms,
+            "created_at": row.created_at.isoformat()}
+
+
 def _forms_count(snapshot: dict | None) -> int | None:
     """快照 forms 计数；无快照（旧数据/未采集）为 None。"""
     if snapshot is None:

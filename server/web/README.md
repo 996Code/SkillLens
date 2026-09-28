@@ -31,6 +31,7 @@ npm test           # vitest 单测（tests/*.spec.ts，jsdom 环境）
 | `/reports/:deltaId` | `views/DeltaReport.vue` | 四分类报告（expected/missing/unexpected/drift 分色卡 + 需求上下文 + id 查询框） |
 | `/replay/:skillId` | `views/ReplayLaunch.vue` | 回放触发（Task 5）：overrides 编辑 + shadow/execute 模式门控 + 结果渲染 |
 | `/audit` | `views/AuditView.vue` | 链路审计（S10.5 块 M）：会话列表→trace 下钻（窗口 kept/过滤原因→语义动作→对齐分桶→Skill→回放历史）+ 证据图过滤 + LLM 日志摘要 |
+| `/timeline` | `views/TimelineView.vue` | 链路时间线（S32）：全流水线环节倒序时间轴（8 类型色点+过滤 chip）；LLM 项点击展开完整 prompt/response |
 
 ## API 依赖清单
 
@@ -46,6 +47,8 @@ npm test           # vitest 单测（tests/*.spec.ts，jsdom 环境）
 | `GET /api/v1/audit/sessions/{sid}/trace` | 单会话链路下钻（窗口/语义动作/对齐/Skill/回放，S10.5 新增） | AuditView |
 | `GET /api/v1/audit/evidence-edges` | 证据边列表（type/src_like 过滤，S10.5 新增） | AuditView |
 | `GET /api/v1/audit/llm-logs` | LLM 调用日志（200 字摘要，完整走 DB，S10.5 新增） | AuditView |
+| `GET /api/v1/audit/llm-logs/{id}` | 单条 LLM 调用完整 prompt/response（S32 新增，按需取用） | TimelineView |
+| `GET /api/v1/timeline` | 全流水线环节时间线聚合（8 类型，S32 新增） | TimelineView |
 
 ## 回放触发（C1 安全门控）
 

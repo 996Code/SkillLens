@@ -31,6 +31,7 @@ async function doLogout(): Promise<void> {
         <RouterLink to="/audit">审计</RouterLink>
         <RouterLink to="/canvas">画布</RouterLink>
         <RouterLink to="/reviews-portal">评审</RouterLink>
+        <RouterLink to="/timeline">链路</RouterLink>
       </nav>
       <div class="sidebar-foot">
         <div class="whoami" data-testid="current-user">
@@ -112,6 +113,12 @@ nav a:nth-child(4)::before {
 }
 nav a:nth-child(5)::before {
   content: "✓";
+}
+nav a:nth-child(6)::before {
+  content: "✓";
+}
+nav a:nth-child(7)::before {
+  content: "⌇";
 }
 nav a:hover {
   background: var(--color-sidebar-hover);

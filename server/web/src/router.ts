@@ -7,6 +7,7 @@ import ReplayLaunch from "./views/ReplayLaunch.vue";
 import AuditView from "./views/AuditView.vue";
 import CanvasView from "./views/CanvasView.vue";
 import ReviewPortal from "./views/ReviewPortal.vue";
+import TimelineView from "./views/TimelineView.vue";
 import LoginView from "./views/LoginView.vue";
 import { getToken } from "./api";
 
@@ -25,6 +26,7 @@ const router = createRouter({
     { path: "/audit", name: "audit", component: AuditView },
     { path: "/canvas", name: "canvas", component: CanvasView },
     { path: "/reviews-portal", name: "reviews-portal", component: ReviewPortal },
+    { path: "/timeline", name: "timeline", component: TimelineView },
   ],
 });
 
