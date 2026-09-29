@@ -129,3 +129,58 @@ def build_run_flow(run) -> dict:
 
     return {"nodes": nodes, "edges": edges,
             "run_status": run.status, "run_id": run.id}
+
+
+def build_skill_flow(skill) -> dict:
+    """S39 操作流程图：Skill 骨架 → 节点+边（流程图基座）。
+
+    节点：page（参考会话起始页）→ action×N（骨架步骤，签名拆解为
+    kind+label）→ assert×N（断言清单）。分支（buckets 多路径）后续扩展。
+    """
+    nodes: list[dict] = []
+    edges: list[dict] = []
+
+    def add(node: dict) -> str:
+        nodes.append(node)
+        return node["id"]
+
+    prev = add({"id": "n0", "type": "page", "label": "起始页",
+                "status": "pending",
+                "io": {"skeleton_steps": len(skill.skeleton or [])}})
+
+    for i, step in enumerate(skill.skeleton or [], start=1):
+        sig = str(step.get("signature", ""))
+        # 签名格式：click:label|APIs / input:name —— 拆出操作语义
+        action_part = sig.split("|")[0]
+        kind, _, label = action_part.partition(":")
+        apis = sig.split("|", 1)[1] if "|" in sig else ""
+        node = {"id": f"a{i}", "type": "action",
+                "label": f"{kind or 'step'} {label or '?'}",
+                "status": "pending",
+                "io": {"signature": sig[:120]}}
+        if apis:
+            node["io"]["apis"] = apis[:200]
+        cur = add(node)
+        edges.append({"from": prev, "to": cur})
+        prev = cur
+
+    # 断言节点（从关联断言清单；此处从 skill 的断言数概要呈现）
+    from app.db import SessionLocal
+    from app.models import OutcomeAssertion
+    db = SessionLocal()
+    try:
+        asserts = db.query(OutcomeAssertion).filter(
+            OutcomeAssertion.skill_id == skill.id).all()
+    finally:
+        db.close()
+    for i, a in enumerate(asserts, start=1):
+        p = a.payload or {}
+        kind = a.kind
+        label = str(p.get("api_template") or p.get("label") or p.get("field") or kind)
+        cur = add({"id": f"v{i}", "type": "assert", "label": f"{kind} {label}",
+                   "status": "pending",
+                   "io": {"expect": p.get("expect_status") or p.get("expect_value")
+                          or p.get("after")}})
+        edges.append({"from": prev, "to": cur})
+
+    return {"nodes": nodes, "edges": edges, "skill_id": skill.id}

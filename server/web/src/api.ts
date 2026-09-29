@@ -912,6 +912,11 @@ export function getRunFlow(runId: number | string): Promise<FlowGraphDTO> {
   return get<FlowGraphDTO>(`/api/v1/replay-runs/${runId}/flow`);
 }
 
+/** S39 操作流程图（骨架+断言 → 节点图）。 */
+export function getSkillFlow(skillId: number | string): Promise<FlowGraphDTO> {
+  return get<FlowGraphDTO>(`/api/v1/skills/${skillId}/flow`);
+}
+
 // ---------- S37-3：测试套件（操作流程组合 → 一键执行 → 汇总） ----------
 
 export interface SuiteSkillBrief {

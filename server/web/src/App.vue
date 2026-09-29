@@ -11,6 +11,8 @@ import { currentUser, logout } from "./api";
 const route = useRoute();
 const router = useRouter();
 const isLogin = computed(() => route.path === "/login");
+// S39 图工作台：全幅画布（自带左导航树），不走侧栏+限宽壳
+const isGraph = computed(() => route.path.startsWith("/graph"));
 // 依赖 isLogin：路由变化时重取（登录成功跳转后 App 壳不重挂载）
 const user = computed(() => (isLogin.value ? null : currentUser()));
 
@@ -21,7 +23,7 @@ async function doLogout(): Promise<void> {
 </script>
 
 <template>
-  <div class="shell" :class="{ bare: isLogin }">
+  <div class="shell" :class="{ bare: isLogin || isGraph }">
     <aside v-if="!isLogin" class="sidebar">
       <div class="brand">SkillLens</div>
       <nav>
@@ -44,7 +46,10 @@ async function doLogout(): Promise<void> {
         <div class="tagline">变更智能工作台</div>
       </div>
     </aside>
-    <main class="content">
+    <main v-if="isGraph" class="content content-full">
+      <RouterView />
+    </main>
+    <main v-else class="content">
       <div class="page">
         <RouterView />
       </div>
@@ -163,6 +168,10 @@ nav a.router-link-active {
   min-width: 0;
   overflow-y: auto;
   padding: var(--space-6) var(--space-8);
+}
+.content-full {
+  padding: 0;
+  overflow: hidden;
 }
 .page {
   max-width: 1100px;

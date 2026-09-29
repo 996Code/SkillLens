@@ -187,3 +187,43 @@ async def test_consistency_matches_realistic_result_rows(client):
     assert body["assertions"], body
     assert body["assertions"][0]["observed_values"] == [200, 200]
     assert body["consistent"] is True
+
+
+async def test_skill_flow_graph(client, monkeypatch):
+    """S39 操作流程图：GET /skills/{id}/flow 返回骨架步骤+断言节点图
+    （流程图基座——Skill 详情以图呈现，不再是表格）。"""
+    import json as _json
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_FAKE_RESPONSE",
+                       _json.dumps({"name": "FlowSkill", "description": "d"}))
+    sid = (await client.post("/api/v1/sessions", json={})).json()["session_id"]
+    events = [
+        {"seq": 0, "ts": 0, "kind": "navigation",
+         "payload": {"type": "page-load", "url": "http://t/f"}},
+        {"seq": 1, "ts": 100, "kind": "action",
+         "payload": {"type": "input", "name": "字段A", "value": "旧"}},
+        {"seq": 2, "ts": 200, "kind": "action",
+         "payload": {"type": "click", "target": {"label": "保存"}}},
+        {"seq": 3, "ts": 260, "kind": "network",
+         "payload": {"method": "POST", "url": "/a/1/save", "status": 200,
+                     "reqBody": "{}", "resBody": '{"code":200}'}},
+    ]
+    await client.post(f"/api/v1/sessions/{sid}/events", json=events)
+    await client.post(f"/api/v1/sessions/{sid}/process")
+    aid = (await client.post("/api/v1/align",
+                            json={"session_ids": [sid, sid]})).json()["alignment_id"]
+    skill = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
+    await client.post(f"/api/v1/skills/{skill['id']}/assertions")
+
+    flow = (await client.get(f"/api/v1/skills/{skill['id']}/flow")).json()
+    types = [n["type"] for n in flow["nodes"]]
+    assert types[0] == "page"
+    assert "action" in types
+    assert "assert" in types
+    # 骨架步骤节点带签名信息（label 含操作语义）
+    action = next(n for n in flow["nodes"] if n["type"] == "action")
+    assert action["label"]
+    # 边连通（链式）
+    ids = {n["id"] for n in flow["nodes"]}
+    for e in flow["edges"]:
+        assert e["from"] in ids and e["to"] in ids

@@ -36,6 +36,17 @@ def _last_run(db: Session, skill_id: int) -> dict | None:
             "flaky": bool(run.flaky), "ts": run.created_at.isoformat()}
 
 
+@router.get("/skills/{skill_id}/flow")
+async def get_skill_flow(skill_id: int, db: Session = Depends(get_db)) -> dict:
+    """S39 操作流程图：骨架步骤+断言 → 节点+边（流程图基座）。
+    Skill 详情以图呈现，不再是表格。"""
+    from app.replay.flow_graph import build_skill_flow
+    skill = db.get(Skill, skill_id)
+    if not skill:
+        raise HTTPException(status_code=404, detail="skill not found")
+    return build_skill_flow(skill)
+
+
 @router.get("/skills/{skill_id}/card")
 async def get_skill_card(skill_id: int, db: Session = Depends(get_db)) -> dict:
     skill = db.get(Skill, skill_id)

@@ -10,6 +10,9 @@ import CanvasView from "./views/CanvasView.vue";
 import ReviewPortal from "./views/ReviewPortal.vue";
 import TimelineView from "./views/TimelineView.vue";
 import SuitesView from "./views/SuitesView.vue";
+import GraphWorkspace from "./views/graph/GraphWorkspace.vue";
+import GraphOverview from "./views/graph/GraphOverview.vue";
+import SkillGraphView from "./views/graph/SkillGraphView.vue";
 import LoginView from "./views/LoginView.vue";
 import { getToken } from "./api";
 
@@ -18,7 +21,15 @@ import { getToken } from "./api";
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", redirect: "/dashboard" },
+    { path: "/", redirect: "/graph" },
+    {
+      path: "/graph",
+      component: GraphWorkspace,
+      children: [
+        { path: "", name: "graph", component: GraphOverview },
+        { path: "skill/:skillId", name: "graph-skill", component: SkillGraphView },
+      ],
+    },
     { path: "/login", name: "login", component: LoginView },
     { path: "/dashboard", name: "dashboard", component: DashboardView },
     { path: "/skills", name: "skills", component: SkillsList },
