@@ -1,10 +1,6 @@
 [
   {
     "flow": "ErpCreateCustomer",
-    "skill_id": 64
-  },
-  {
-    "flow": "ErpCreateLead",
-    "skill_id": 65
+    "skill_id": 2
   }
 ]
