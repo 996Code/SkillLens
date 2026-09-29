@@ -70,13 +70,51 @@ function emitSnapshotsAroundAnchor(): void {
   }, AFTER_SNAPSHOT_MS);
 }
 
+// S42：input 事件去抖采集。change 依赖 blur+dirty 标记——程序化填值
+// （Playwright fill 不置 dirty）与框架回显覆盖时序下不可靠（若依实测：
+// 同一脚本两轮录制，一轮丢 input 步骤导致骨架缺 fill）。input 事件是
+// 值变更的可靠信号：600ms 去抖后发一次终值；change 与近期 input 同元素
+// 同值时去重；点击/提交锚点前同步 flush（保证 input 先于锚点事件顺序）。
+const INPUT_DEBOUNCE_MS = 600;
+const INPUT_DEDUP_MS = 2000;
+const inputTimers = new Map<HTMLInputElement, ReturnType<typeof setTimeout>>();
+const lastInputEmit = new Map<HTMLInputElement, { ts: number; value: string }>();
+
+function emitInputAction(target: HTMLInputElement): void {
+  const key = inputKey(target);
+  if (!key) return;
+  const value = target.type === "password" ? "[REDACTED]" : target.value;
+  const now = Date.now();
+  const last = lastInputEmit.get(target);
+  lastInputEmit.set(target, { ts: now, value });
+  if (last && last.value === value && now - last.ts < 500) return;
+  void emit("action", {
+    type: "input",
+    target: describeElement(target),
+    name: key,
+    value: redactValue(key, value),
+  });
+}
+
+function flushPendingInputs(): void {
+  for (const [el, t] of inputTimers) {
+    clearTimeout(t);
+    inputTimers.delete(el);
+    emitInputAction(el);
+  }
+}
+
 document.addEventListener(
-  "click",
+  "input",
   (e) => {
-    const target = e.target as Element;
-    if (!target) return;
-    emitSnapshotsAroundAnchor();
-    void emit("action", { type: "click", target: describeElement(target), url: location.href });
+    const target = e.target as HTMLInputElement;
+    if (!target || !["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+    const t = inputTimers.get(target);
+    if (t) clearTimeout(t);
+    inputTimers.set(target, setTimeout(() => {
+      inputTimers.delete(target);
+      emitInputAction(target);
+    }, INPUT_DEBOUNCE_MS));
   },
   { capture: true },
 );
@@ -86,11 +124,24 @@ document.addEventListener(
   (e) => {
     const target = e.target as HTMLInputElement;
     if (!target) return;
+    // 挂起的 input 去抖由 change 收口（blur 即终值时刻）
+    const t = inputTimers.get(target);
+    if (t) {
+      clearTimeout(t);
+      inputTimers.delete(target);
+    }
+    // 近期 input 已发同值 → 去重（真实键入 blur 不双发）
+    const last = lastInputEmit.get(target);
+    if (last && last.value === (target.type === "password" ? "[REDACTED]" : target.value)
+        && Date.now() - last.ts < INPUT_DEDUP_MS) {
+      return;
+    }
     // njmind 等低代码设计器的输入框没有 name 属性，
     // 依次回退到 id / placeholder / aria-label，仍取不到则放弃采集。
     const key = inputKey(target);
     if (!key) return;
     const value = target.type === "password" ? "[REDACTED]" : target.value;
+    lastInputEmit.set(target, { ts: Date.now(), value });
     void emit("action", {
       type: "input",
       target: describeElement(target),
@@ -102,8 +153,21 @@ document.addEventListener(
 );
 
 document.addEventListener(
+  "click",
+  (e) => {
+    const target = e.target as Element;
+    if (!target) return;
+    flushPendingInputs();
+    emitSnapshotsAroundAnchor();
+    void emit("action", { type: "click", target: describeElement(target), url: location.href });
+  },
+  { capture: true },
+);
+
+document.addEventListener(
   "submit",
   (e) => {
+    flushPendingInputs();
     emitSnapshotsAroundAnchor();
     // S35：描述提交按钮（e.submitter）而非 form——form 的 textContent
     // 含内联脚本，label 被污染且无法用于回放定位

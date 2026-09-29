@@ -344,6 +344,40 @@ async def test_locate_multi_label_fallback():
         await browser.close()
 
 
+async def test_locate_prefers_enabled_among_visible():
+    """S42 业务测试发现（若依岗位管理）：同名可见按钮中首个可能 disabled
+    （受保护行），定位须优先 enabled 候选——否则回放点击 disabled 按钮报错。"""
+    from app.replay.locate import locate
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body>
+          <table>
+            <tr><td><button disabled aria-disabled="true">修改</button></td></tr>
+            <tr><td><button>修改</button></td></tr>
+          </table>
+        </body></html>""")
+        loc, strategy = await locate(page, "修改")
+        assert await loc.is_enabled()
+        assert strategy == "role-button"
+        await browser.close()
+
+
+async def test_locate_all_disabled_falls_through():
+    """全部候选 disabled 时不无限回退——仍返回首个可见（行为与修复前一致，
+    由上层 click 报错归因）。"""
+    from app.replay.locate import locate
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body><button disabled>保存</button></body></html>""")
+        loc, _ = await locate(page, "保存")
+        assert await loc.count() == 1
+        await browser.close()
+
+
 async def test_locate_structural_fallback():
     """S36 结构兜底：无任何属性的元素按 path+ordinal nth-of-type 定位
     （唯一命中才用，宁缺毋滥）。"""

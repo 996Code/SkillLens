@@ -32,6 +32,11 @@ describe("inputKey", () => {
     expect(inputKey(el)).toBeNull();
   });
 
+  it("S42：Element Plus el-id-* 框架 id 跳过，回退 placeholder", () => {
+    const el = makeEl({ id: "el-id-4647-65", placeholder: "请输入岗位名称" });
+    expect(inputKey(el)).toBe("请输入岗位名称");
+  });
+
   it("textarea 同样适用回退链", () => {
     const ta = document.createElement("textarea");
     ta.id = "desc";

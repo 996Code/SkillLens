@@ -314,7 +314,8 @@ async def _attempt(db: Session, browser, skill_id: int, plan: dict,
 
         results = evaluate_assertions(assertions, result["observed"],
                                       after_snapshot=after_snapshot,
-                                      observed_toasts=result.get("observed_toasts"))
+                                      observed_toasts=result.get("observed_toasts"),
+                                      executed_steps=result.get("executed") or [])
         any_ok_step = any(s.get("ok") for s in result["executed"])
         if not any_ok_step:
             status = "error"

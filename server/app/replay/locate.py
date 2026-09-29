@@ -41,20 +41,26 @@ async def _try_locate(page: Page, label: str,
             # S36：遍历可见匹配；多个可见时优先开放模态内的——
             # ERPNext 列表"存过滤器"的 Save 与模态 Save 同名同可见，
             # 用户交互上下文在顶层容器（模态），这是通用 UI 原则非框架适配
-            visible_idx = []
+            # S42：可见候选中优先 enabled——同名按钮首个可能 disabled
+            # （若依受保护行的 修改/删除），点击 disabled 只会报错
+            visible_idx: list[int] = []
+            enabled_idx: list[int] = []
             for i in range(min(count, 10)):
                 try:
                     if await locator.nth(i).is_visible():
                         visible_idx.append(i)
+                        if await locator.nth(i).is_enabled():
+                            enabled_idx.append(i)
                 except Exception:
                     continue
             if not visible_idx:
                 continue
-            if len(visible_idx) > 1:
-                in_modal = await _first_in_open_modal(page, locator, visible_idx)
+            usable = enabled_idx or visible_idx
+            if len(usable) > 1:
+                in_modal = await _first_in_open_modal(page, locator, usable)
                 if in_modal is not None:
                     return locator.nth(in_modal), strategy
-            return locator.nth(visible_idx[0]), strategy
+            return locator.nth(usable[0]), strategy
     return None
 
 

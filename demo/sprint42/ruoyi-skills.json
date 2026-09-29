@@ -1,0 +1,34 @@
+[
+  {
+    "flow": "RuoYiCreatePost",
+    "skill_id": 17,
+    "sessions": [
+      "663849a7",
+      "beceafe6"
+    ]
+  },
+  {
+    "flow": "RuoYiSearchPost",
+    "skill_id": 18,
+    "sessions": [
+      "d301bbb3",
+      "79504229"
+    ]
+  },
+  {
+    "flow": "RuoYiUpdatePost",
+    "skill_id": 19,
+    "sessions": [
+      "6f0d4777",
+      "89507ede"
+    ]
+  },
+  {
+    "flow": "RuoYiDeletePost",
+    "skill_id": 20,
+    "sessions": [
+      "2f6760ec",
+      "af6e72e6"
+    ]
+  }
+]

@@ -111,3 +111,87 @@ def test_evaluate_toast_with_observed_toasts_channel():
                              after_snapshot={"toasts": ["保存成功"]},
                              observed_toasts=[])
     assert r3[0]["passed"] is True
+
+
+def test_state_signal_row_context_recorded_not_judged():
+    """S42 业务测试发现（若依岗位修改）：GET /{id} 的行属性（如 status）
+    是行上下文——回放命中的行与录制行不同（首行受保护 disabled，
+    定位选首个 enabled），期望值天然漂移。此类断言记录不判定
+    （与 S37-1 视觉动态数据同哲学）。"""
+    assertions = [{"kind": "state_signal",
+                   "payload": {"api_template": "/prod-api/system/post/{id}",
+                               "field": "data.status", "expect_value": "0",
+                               "context": True}}]
+    observed = [{"url": "http://t/prod-api/system/post/9", "status": 200,
+                 "body": '{"code":200,"data":{"status":"1"}}'}]
+    r = evaluate_assertions(assertions, observed, after_snapshot={})
+    assert r[0]["passed"] is True
+    assert "上下文" in r[0].get("skipped", "")
+
+
+def test_state_signal_effect_still_judged():
+    """非 context 标记的 state_signal（写响应/集合读取）仍严格判定。"""
+    assertions = [{"kind": "state_signal",
+                   "payload": {"api_template": "/x/save", "field": "code",
+                               "expect_value": 200}}]
+    observed = [{"url": "http://t/x/save", "status": 200,
+                 "body": '{"code":500}'}]
+    r = evaluate_assertions(assertions, observed, after_snapshot={})
+    assert r[0]["passed"] is False
+
+
+def test_ui_text_field_consumed_by_submit_skipped():
+    """S42 业务测试发现：对话框表单提交后字段随对话框关闭——
+    input 步执行成功（字段存在且已填）+ after 快照字段缺失
+    → 字段被提交消费，非回归信号。"""
+    assertions = [{"kind": "ui_text",
+                   "payload": {"label": "请输入岗位名称", "before": "",
+                               "after": "回放值"}}]
+    observed = []
+    executed = [{"kind": "input", "name": "请输入岗位名称", "value": "回放值", "ok": True},
+                {"kind": "click", "label": "确 定", "ok": True}]
+    r = evaluate_assertions(assertions, observed,
+                            after_snapshot={"forms": []},
+                            executed_steps=executed)
+    assert r[0]["passed"] is True
+    assert "提交" in r[0].get("skipped", "")
+
+
+def test_ui_text_label_missing_without_input_step_still_fails():
+    """无对应 input 步的字段缺失仍是回归信号（表单未打开等）。"""
+    assertions = [{"kind": "ui_text",
+                   "payload": {"label": "请输入岗位名称", "before": "",
+                               "after": "x"}}]
+    observed = []
+    executed = [{"kind": "click", "label": "确 定", "ok": True}]
+    r = evaluate_assertions(assertions, observed,
+                            after_snapshot={"forms": []},
+                            executed_steps=executed)
+    assert r[0]["passed"] is False
+
+
+def test_ui_text_label_collision_filled_by_input_step():
+    """S42 业务测试发现：搜索框与对话框字段同 label（placeholder 相同），
+    after 快照命中的是搜索框（值空）。input 步已按期望值填入且 ok
+    → 值的设置有执行证据 → 记录不判定。"""
+    assertions = [{"kind": "ui_text",
+                   "payload": {"label": "请输入岗位名称", "before": "",
+                               "after": "回放值"}}]
+    executed = [{"kind": "input", "name": "请输入岗位名称", "value": "回放值", "ok": True},
+                {"kind": "click", "label": "确 定", "ok": True}]
+    # after 快照的 forms 命中同 label 的搜索框（值空）
+    r = evaluate_assertions(assertions, [],
+                            after_snapshot={"forms": [{"label": "请输入岗位名称", "value": ""}]},
+                            executed_steps=executed)
+    assert r[0]["passed"] is True
+    assert "input 步" in r[0].get("skipped", "")
+
+
+def test_ui_text_value_mismatch_without_fill_evidence_fails():
+    """无 input 步执行证据的值不符仍 FAIL（真实回归信号）。"""
+    assertions = [{"kind": "ui_text",
+                   "payload": {"label": "状态", "before": "草稿", "after": "已保存"}}]
+    r = evaluate_assertions(assertions, [],
+                            after_snapshot={"forms": [{"label": "状态", "value": "草稿"}]},
+                            executed_steps=[{"kind": "click", "label": "保存", "ok": True}])
+    assert r[0]["passed"] is False

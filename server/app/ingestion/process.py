@@ -121,7 +121,8 @@ def process_session(db: Session, session_id: str) -> dict:
         state_signals = []
         for m, call in zip(w["members"], api_calls):
             for s in extract_state_signals((m.get("payload") or {}).get("resBody")):
-                state_signals.append({"api": call["template"], **s})
+                state_signals.append({"api": call["template"],
+                                      "method": call.get("method") or "GET", **s})
         # S12 N3 层1：after 快照 toasts → toast 信号（field="toast"）。
         # extract_state_signals 只管 resBody（假设有 api 模板），toast 在此单独
         # append：api 用窗口首个 API 模板，无 API 成员的纯 UI 窗退回锚点 label。

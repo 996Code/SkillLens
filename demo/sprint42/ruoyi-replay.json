@@ -1,0 +1,30 @@
+[
+  {
+    "skill_id": 17,
+    "name": "CreatePosition",
+    "status": "pass",
+    "mode": "execute",
+    "attribution": null
+  },
+  {
+    "skill_id": 18,
+    "name": "PostSearchFlow",
+    "status": "pass",
+    "mode": "execute",
+    "attribution": null
+  },
+  {
+    "skill_id": 19,
+    "name": "PostUpdateFlow",
+    "status": "pass",
+    "mode": "execute",
+    "attribution": null
+  },
+  {
+    "skill_id": 20,
+    "name": "DeletePost",
+    "status": "pass",
+    "mode": "execute",
+    "attribution": null
+  }
+]

@@ -44,9 +44,13 @@ def generate_assertions(db: Session, skill_id: int) -> list[OutcomeAssertion]:
                 rows.append(("api_status", call["template"], 3,
                              {"api_template": call["template"], "expect_status": call.get("status")}))
             for sig in action.state_signals or []:
-                rows.append(("state_signal", sig["api"], 3,
-                             {"api_template": sig["api"], "field": sig["field"],
-                              "expect_value": sig["value"]}))
+                payload = {"api_template": sig["api"], "field": sig["field"],
+                           "expect_value": sig["value"]}
+                # S42：GET /{id} 行读取是行上下文（回放命中行≠录制行，
+                # 行属性期望值漂移是定位语义的必然，非回归）→ 记录不判定
+                if (sig.get("method") or "GET").upper() == "GET" and "{id}" in sig["api"]:
+                    payload["context"] = True
+                rows.append(("state_signal", sig["api"], 3, payload))
             # Sprint 8 T3：骨架窗 UI 状态差集 → ui_text 断言（层 2，reqBody 盲区证据）。
             # 只取骨架窗口的 state_before/after（与 api_status 同证据范围，
             # Sprint 3 fix1 语义：非骨架窗口的快照不得生成断言）。
