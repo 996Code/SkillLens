@@ -24,9 +24,10 @@ async function doLogout(): Promise<void> {
 
 <template>
   <div class="shell" :class="{ bare: isLogin || isGraph }">
-    <aside v-if="!isLogin" class="sidebar">
+    <aside v-if="!isLogin && !isGraph" class="sidebar">
       <div class="brand">SkillLens</div>
       <nav>
+        <RouterLink to="/graph">图工作台</RouterLink>
         <RouterLink to="/dashboard">仪表盘</RouterLink>
         <RouterLink to="/skills">操作流程</RouterLink>
         <RouterLink to="/reports/1">Reports</RouterLink>

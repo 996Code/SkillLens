@@ -75,9 +75,8 @@ onMounted(() => void load());
 <style scoped>
 .gw-shell {
   display: flex;
-  height: calc(100vh - 0px);
+  height: 100vh;
   overflow: hidden;
-  margin: calc(-1 * var(--space-6)) calc(-1 * var(--space-8));
 }
 .gw-tree {
   width: 230px;
