@@ -58,3 +58,17 @@ test("框架自动生成 id 被跳过（rc_select_N/ant-/纯数字）", () => {
   normal.id = "orderName";
   expect(inputKey(normal)).toBe("orderName");
 });
+
+// S36：Frappe（ERPNext）模态输入框只有 data-fieldname（无 name/id/placeholder/aria）
+test("data-fieldname 兜底为输入键", () => {
+  const el = document.createElement("input");
+  el.setAttribute("data-fieldname", "customer_name");
+  expect(inputKey(el)).toBe("customer_name");
+});
+
+test("有 name 时 data-fieldname 不抢先", () => {
+  const el = document.createElement("input");
+  el.name = "phone";
+  el.setAttribute("data-fieldname", "phone_field");
+  expect(inputKey(el)).toBe("phone");
+});

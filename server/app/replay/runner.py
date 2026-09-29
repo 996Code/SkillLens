@@ -62,13 +62,20 @@ async def _open_context(browser):
 
 
 async def _locate_with_repair(page, label: str,
-                             repair_map: dict[str, dict] | None):
+                             repair_map: dict[str, dict] | None,
+                             extra_labels: list[str] | None = None,
+                             tag: str | None = None,
+                             ordinal: int | None = None,
+                             path: str | None = None,
+                             prefer_controls: bool = False):
     """S24 块 U：定位失败时按提案库重试——返回 (locator, strategy, proposal_id)。
 
     无提案或提案也定位失败 → 抛 LookupError（步骤照常失败）。
     """
     try:
-        locator, strategy = await locate(page, label)
+        locator, strategy = await locate(
+            page, label, labels=extra_labels, tag=tag, ordinal=ordinal, path=path,
+            prefer_controls=prefer_controls)
         return locator, strategy, None
     except LookupError:
         rep = (repair_map or {}).get(label)
@@ -130,7 +137,9 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
         try:
             if step["kind"] == "click":
                 locator, strategy, rep_id = await _locate_with_repair(
-                    page, step["label"], repair_map)
+                    page, step["label"], repair_map,
+                    extra_labels=step.get("labels"), tag=step.get("tag"),
+                    ordinal=step.get("ordinal"), path=step.get("path"))
                 await locator.click(timeout=timeout_ms)
                 entry = {**step, "strategy": strategy,
                          **({"repair_proposal_id": rep_id} if rep_id else {}),
@@ -139,7 +148,10 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                 await _shot_step(page, shot_dir, i, entry)
             elif step["kind"] == "input":
                 locator, strategy, rep_id = await _locate_with_repair(
-                    page, step["name"], repair_map)
+                    page, step["name"], repair_map,
+                    extra_labels=step.get("labels"), tag=step.get("tag"),
+                    ordinal=step.get("ordinal"), path=step.get("path"),
+                    prefer_controls=True)
                 # 水合竞态防护：SPA 可能在 fill 后回写旧值（njmind 实测，
                 # 值被改回则保存的脏检查跳过、不发请求），确认值真的写入
                 filled = False

@@ -73,4 +73,37 @@ describe("describeElement", () => {
     const el = make(`<button name="btn1">保存</button>`);
     expect(describeElement(el).label).toBe("保存");
   });
+
+  // S36：Frappe（ERPNext）模态输入框只有 data-fieldname，无 placeholder/name/aria
+  it("data-fieldname 兜底为 label", () => {
+    const el = make(`<input data-fieldname="customer_name" />`);
+    expect(describeElement(el).label).toBe("customer_name");
+  });
+});
+
+// S36 多信号：labels 收集全部信号（去重有序）；ordinal 为同类兄弟序号
+describe("describeElement 多信号", () => {
+  it("labels 含全部可用信号且 label 取首个", () => {
+    const el = make(`<input name="phone" placeholder="电话" data-fieldname="phone_f" />`);
+    const d = describeElement(el);
+    expect(d.label).toBe("电话");
+    expect(d.labels).toEqual(["电话", "phone_f", "phone"]);
+  });
+
+  it("无任何属性时 labels 含文本", () => {
+    const el = make(`<button>保存</button>`);
+    expect(describeElement(el).labels).toEqual(["保存"]);
+  });
+
+  it("ordinal 是同类兄弟序号（1-based）", () => {
+    const div = make(`<div><button>甲</button><span>x</span><button>乙</button></div>`);
+    const btns = div.querySelectorAll("button");
+    expect(describeElement(btns[0]).ordinal).toBe(1);
+    expect(describeElement(btns[1]).ordinal).toBe(2);
+  });
+
+  it("框架自动生成 id 不进 labels", () => {
+    const el = make(`<input id="rc_select_0" />`);
+    expect(describeElement(el).labels).toEqual([]);
+  });
 });

@@ -93,9 +93,15 @@ def compile_skeleton_plan(events: list[dict], skeleton: list[dict], ref_session_
         if payload.get("type") not in ("click", "submit"):
             continue
         # S26：骨架步 healed label（自愈晋升回写）优先于录制时的 anchor label
-        label = step.get("label") or (payload.get("target") or {}).get("label") or ""
+        target = payload.get("target") or {}
+        label = step.get("label") or target.get("label") or ""
         if label:
-            skel_steps.append({"kind": "click", "label": label, "_wq": wq})
+            skel_steps.append({"kind": "click", "label": label, "_wq": wq,
+                               # S36 多信号：labels/tag/ordinal/path 透传给回放定位
+                               "labels": target.get("labels") or [],
+                               "tag": target.get("tag"),
+                               "ordinal": target.get("ordinal"),
+                               "path": target.get("path")})
     # 锚点事件 → 骨架步下标（按序消费）。按对象身份匹配：build_windows
     # 存的是同一批事件 dict 的引用（ts/seq 可能重号，身份唯一可靠）
     anchor_index: dict[int, int] = {}
@@ -122,18 +128,30 @@ def compile_skeleton_plan(events: list[dict], skeleton: list[dict], ref_session_
             if name in seen and name not in emitted_vars:
                 var = var_by_name.get(name)
                 original = _original_of(var) if var else event_inputs.get(name, "")
+                tgt = payload.get("target") or {}
                 steps.append({"kind": "input", "name": name,
                               "value": str(overrides.get(name, original)),
-                              "original_value": original})
+                              "original_value": original,
+                              "labels": tgt.get("labels") or [],
+                              "tag": tgt.get("tag"), "ordinal": tgt.get("ordinal"),
+                              "path": tgt.get("path")})
                 emitted_vars.add(name)
                 continue
         idx = anchor_index.get(id(e))
         if idx is not None and idx == next_skel:
-            steps.append({"kind": "click", "label": skel_steps[idx]["label"]})
+            s = skel_steps[idx]
+            steps.append({"kind": "click", "label": s["label"],
+                          "labels": s.get("labels") or [],
+                          "tag": s.get("tag"), "ordinal": s.get("ordinal"),
+                          "path": s.get("path")})
             next_skel += 1
     # 兜底：锚点事件缺失（窗口数据异常）时按序补齐 click 步
     while next_skel < len(skel_steps):
-        steps.append({"kind": "click", "label": skel_steps[next_skel]["label"]})
+        s = skel_steps[next_skel]
+        steps.append({"kind": "click", "label": s["label"],
+                      "labels": s.get("labels") or [],
+                      "tag": s.get("tag"), "ordinal": s.get("ordinal"),
+                      "path": s.get("path")})
         next_skel += 1
     # 兜底：变量有记录但参考会话无其事件（跨会话值域）——按序尾补 input
     emitted_names = {s.get("name") for s in steps if s["kind"] == "input"}

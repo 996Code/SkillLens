@@ -9,5 +9,7 @@ function isFrameworkId(id: string): boolean {
 export function inputKey(el: HTMLInputElement | HTMLTextAreaElement): string | null {
   const name = el.name || null;
   const id = el.id && !isFrameworkId(el.id) ? el.id : null;
-  return name || id || el.getAttribute("placeholder") || el.getAttribute("aria-label") || null;
+  // S36：Frappe（ERPNext）模态输入框只有 data-fieldname——语义键兜底
+  return name || id || el.getAttribute("placeholder") || el.getAttribute("aria-label")
+    || el.getAttribute("data-fieldname") || null;
 }

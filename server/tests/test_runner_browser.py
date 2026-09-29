@@ -324,3 +324,62 @@ class _FakeCtx:
 
     async def new_page(self):
         return self._page
+
+
+async def test_locate_multi_label_fallback():
+    """S36 多信号定位：首选 label 不存在时逐个尝试候选 labels
+    （Frappe 等框架首选 placeholder 缺失、只有 data-fieldname）。"""
+    from app.replay.locate import locate
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body>
+          <input data-fieldname="customer_name" />
+          <button id="b1">保存</button>
+        </body></html>""")
+        loc, strategy = await locate(page, "电话", labels=["customer_name"])
+        assert await loc.get_attribute("data-fieldname") == "customer_name"
+        assert strategy == "data-fieldname"
+        await browser.close()
+
+
+async def test_locate_structural_fallback():
+    """S36 结构兜底：无任何属性的元素按 path+ordinal nth-of-type 定位
+    （唯一命中才用，宁缺毋滥）。"""
+    from app.replay.locate import locate
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body>
+          <div><div><button>甲</button><button>乙</button><button>丙</button></div></div>
+        </body></html>""")
+        # 目标是第 2 个 button（乙），无任何属性
+        loc, strategy = await locate(page, "不存在的标签", tag="button",
+                                     ordinal=2, path="div>div>button")
+        assert await loc.text_content() == "乙"
+        assert strategy == "structural"
+        await browser.close()
+
+
+async def test_execute_plan_uses_label_fallback():
+    """S36 端到端：步骤首选 label 定位失败时用候选 labels（data-fieldname）
+    命中——多信号方案在执行器层生效。"""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body>
+          <input data-fieldname="customer_name" />
+          <button id="save-btn" data-fieldname="save_btn">Save</button>
+        </body></html>""")
+        plan = {"url": "about:blank", "steps": [
+            {"kind": "input", "name": "不存在的名字", "value": "v1",
+             "labels": ["customer_name"]},
+            {"kind": "click", "label": "保存", "labels": ["save_btn"]},
+        ]}
+        result = await execute_plan(page, plan)
+        await browser.close()
+    assert [s["ok"] for s in result["executed"]] == [True, True]
+    assert result["executed"][0]["strategy"] == "data-fieldname"

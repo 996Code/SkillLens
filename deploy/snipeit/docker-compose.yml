@@ -1,0 +1,42 @@
+services:
+  db:
+    image: mariadb:11
+    environment:
+      MYSQL_ROOT_PASSWORD: snipe-root-pw-local
+      MYSQL_DATABASE: snipeit
+      MYSQL_USER: snipeit
+      MYSQL_PASSWORD: snipe-pw-local
+    volumes:
+      - snipe-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h localhost -psnipe-root-pw-local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  snipeit:
+    image: snipe/snipe-it:latest
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8081:80"
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_KEY: base64:local-dev-key-only-not-secret-0000000000000000=
+      APP_URL: http://127.0.0.1:8081
+      APP_TIMEZONE: UTC
+      APP_LOCALE: zh-CN
+      # 镜像 .env 模板用 docker-link 旧式变量名（MYSQL_PORT_3306_TCP_ADDR 等）
+      MYSQL_PORT_3306_TCP_ADDR: db
+      MYSQL_PORT_3306_TCP_PORT: "3306"
+      MYSQL_USER: snipeit
+      MYSQL_DATABASE: snipeit
+      MYSQL_PASSWORD: snipe-pw-local
+    volumes:
+      - snipe-data:/var/lib/snipeit
+
+volumes:
+  snipe-db-data:
+  snipe-data:
