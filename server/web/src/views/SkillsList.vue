@@ -84,7 +84,7 @@ onMounted(async () => {
 
 <template>
   <section>
-    <h1>Skills</h1>
+    <h1>操作流程</h1>
 
     <!-- S10 Task5：基线对比区块（demo vs 真实流量，C2 = 置信度比 ≥ 80%）
          S16 块 Q：升级为醒目横幅卡（主色渐变 + 左侧色条） -->

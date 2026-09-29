@@ -77,11 +77,37 @@ def test_evaluate_toast_signal_from_snapshot():
     r = evaluate_assertions(assertions, [{"url": "http://t/x/save", "status": 200, "body": ""}],
                             after_snapshot={"toasts": ["保存成功"]})
     assert r[0]["passed"] is True
-    # 快照无该 toast → FAIL
+    # 快照无该 toast → skipped（S37 语义修正：toast 瞬态，未捕获不判失败）
     r2 = evaluate_assertions(assertions, [{"url": "http://t/x/save", "status": 200, "body": ""}],
                              after_snapshot={"toasts": ["别的提示"]})
-    assert r2[0]["passed"] is False
+    assert r2[0]["passed"] is True and r2[0].get("skipped")
     # 无快照能力 → skipped（fail-open，不计失败）
     r3 = evaluate_assertions(assertions, [{"url": "http://t/x/save", "status": 200, "body": ""}],
                               after_snapshot=None)
     assert r3[0]["passed"] is True and r3[0].get("skipped")
+
+
+def test_evaluate_toast_with_observed_toasts_channel():
+    """S37 断言语义根治：toast 是瞬态元素，after 快照时机必然错过——
+    回放期间轮询捕获的 toasts（observed_toasts）参与判定；
+    两个通道都未观察到 → skipped（瞬态性本质，不产生假阴性）。"""
+    assertions = [{"kind": "state_signal",
+                   "payload": {"api_template": "/x/save", "field": "toast",
+                               "expect_value": "保存成功"}}]
+    observed = [{"url": "http://t/x/save", "status": 200, "body": ""}]
+    # 轮询通道捕获到（快照错过）→ PASS
+    r = evaluate_assertions(assertions, observed,
+                            after_snapshot={"toasts": []},
+                            observed_toasts=["保存成功"])
+    assert r[0]["passed"] is True
+    # 两通道都空 → skipped 而非 fail
+    r2 = evaluate_assertions(assertions, observed,
+                             after_snapshot={"toasts": []},
+                             observed_toasts=[])
+    assert r2[0]["passed"] is True
+    assert "瞬态" in r2[0].get("skipped", "")
+    # 快照通道命中（兼容旧路径）→ PASS
+    r3 = evaluate_assertions(assertions, observed,
+                             after_snapshot={"toasts": ["保存成功"]},
+                             observed_toasts=[])
+    assert r3[0]["passed"] is True

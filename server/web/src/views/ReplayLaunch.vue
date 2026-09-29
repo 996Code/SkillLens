@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Task 5（S9 块C C3+C1 UI）：回放触发与结果。
+// Task 5（S9 块C C3+C1 UI）：自动测试触发与结果。
 // 提交走 POST /expected-deltas/{id}/observe（同步返回，无需轮询）；
 // observe 的 replay 概要在响应里，断言明细/快照再取 GET /replay-runs/{id}。
 // C1 门控：模式单选 shadow（默认）/execute + "我已确认副作用"复选，
@@ -118,9 +118,9 @@ onMounted(async () => {
 
     <template v-else-if="card">
       <header>
-        <h1>回放 Skill #{{ card.id }}：{{ card.name }}</h1>
+        <h1>自动测试 · 操作流程 #{{ card.id }}：{{ card.name }}</h1>
         <p class="muted">
-          通过目标 delta 触发回放观测（observe）：server 会真实执行回放，
+          通过目标 delta 执行自动测试观测（observe）：server 会真实执行回放，
           结果与 delta 观测一并落库。
         </p>
       </header>
@@ -147,11 +147,11 @@ onMounted(async () => {
           <div class="modes">
             <label class="mode">
               <input v-model="mode" type="radio" value="shadow" />
-              <span><strong>shadow</strong>（默认）——只规划不执行，安全核验</span>
+              <span><strong>预演</strong>（默认）——只规划不执行，安全核验</span>
             </label>
             <label class="mode">
               <input v-model="mode" type="radio" value="execute" />
-              <span><strong>execute</strong>——真实执行（含写操作副作用）</span>
+              <span><strong>执行</strong>——真实操作系统（含写操作副作用）</span>
             </label>
           </div>
           <label v-if="mode === 'execute'" class="confirm-box">
@@ -173,7 +173,7 @@ onMounted(async () => {
         </div>
 
         <button type="submit" class="btn btn-primary" :disabled="!canSubmit">
-          {{ submitting ? "回放中…（回放在常驻浏览器窗口执行，完成后此处显示结果）" : "触发回放" }}
+          {{ submitting ? "测试中…（回放在常驻浏览器窗口执行，完成后此处显示结果）" : "执行自动测试" }}
         </button>
         <p v-if="mode === 'execute' && !confirmed" class="muted gate-hint">
           勾选副作用确认后才能提交（C1 安全门控）。
@@ -182,7 +182,7 @@ onMounted(async () => {
 
       <!-- 409 等业务拒绝：友好展示 -->
       <div v-if="observeError" class="reject" :class="{ 'reject-409': observeErrorStatus === 409 }">
-        <h3>{{ observeErrorStatus === 409 ? "回放未执行（安全拒绝）" : `请求失败${observeErrorStatus ? `（${observeErrorStatus}）` : ""}` }}</h3>
+        <h3>{{ observeErrorStatus === 409 ? "测试未执行（安全拒绝）" : `请求失败${observeErrorStatus ? `（${observeErrorStatus}）` : ""}` }}</h3>
         <p class="mono">{{ observeError }}</p>
         <p v-if="observeErrorStatus === 409" class="muted">
           这是预期内的安全行为：observe 需要 execute 模式（勾选副作用确认）才会真实执行；
@@ -193,13 +193,13 @@ onMounted(async () => {
       <!-- 结果区 -->
       <template v-if="replayStatus">
         <div class="block">
-          <h2>回放结果</h2>
+          <h2>测试结果</h2>
           <p class="run-line">
             replay_run <span class="mono">#{{ runId }}</span>
             状态 <span class="run-status" :class="`st-${replayStatus}`">{{ replayStatus }}</span>
           </p>
           <p class="muted status-legend">
-            pass=全断言通过（绿） fail=有断言失败（红） shadow=只规划未执行（灰） error=执行异常（橙）
+            pass=全部通过（绿） fail=有失败（红） 预演=只规划未执行（灰） error=执行异常（橙）
           </p>
         </div>
 
@@ -239,7 +239,7 @@ onMounted(async () => {
 
         <!-- 前后快照对比（S8 产物） -->
         <div v-if="snapshotDiff.length" class="block">
-          <h2>回放前后快照对比（forms）</h2>
+          <h2>测试前后快照对比（forms）</h2>
           <p class="muted hint">只显示有差异的字段（前 10 行）。</p>
           <table class="tbl diff-tbl">
             <thead><tr><th>字段</th><th>before → after</th></tr></thead>

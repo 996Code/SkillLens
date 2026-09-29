@@ -1,10 +1,12 @@
 <script setup lang="ts">
-// S32 链路时间线：全流水线环节按时间倒序聚合（采集→对齐→Skill→回放→报告→
-// 评审→LLM→夜间运行），每一步的链路、日志、输入输出统一可视化。
-//   - 类型过滤 chip（全部 + 8 类型，带计数）
+// S37-2 时间线重构为**测试活动视角**：主行只有测试运行（自动测试）与
+// 录制学习两类（用户视角）；内部事件（LLM/夜间运行/报告/评审）经
+// "内部事件"开关附带（开发者视角）。
+//   - 类型过滤 chip（带计数）
 //   - 竖向时间轴：类型色点 + 时间 + 标题 + 摘要
-//   - LLM 项点击展开：按需拉取完整 prompt/response（IO 全留存）
-//   - skill/session 项提供下钻链接（详情页 / 审计页）
+//   - test_run 项展开：步骤截图墙 + 下钻 run 详情页
+//   - recording 项展开：学到的操作流程清单（链接详情页）
+//   - LLM 项展开：完整 prompt/response（IO 全留存）
 import { computed, onMounted, ref } from "vue";
 import { getLlmLogDetail, getReplayRun, getTimeline } from "../api";
 import type { LlmLogDetail, TimelineItem } from "../api";
@@ -13,19 +15,18 @@ import ShotGallery from "../components/ShotGallery.vue";
 import type { ShotItem } from "../components/ShotGallery.vue";
 
 const TYPE_META: Record<string, { label: string; color: string }> = {
-  session: { label: "采集", color: "#3b82f6" },
-  alignment: { label: "对齐", color: "#8b5cf6" },
-  skill: { label: "Skill", color: "#10b981" },
-  replay: { label: "回放", color: "#f59e0b" },
+  test_run: { label: "自动测试", color: "#f59e0b" },
+  recording: { label: "录制学习", color: "#3b82f6" },
+  llm: { label: "LLM", color: "#06b6d4" },
+  agent_run: { label: "夜间运行", color: "#64748b" },
   report: { label: "报告", color: "#ef4444" },
   review: { label: "评审", color: "#ec4899" },
-  llm: { label: "LLM", color: "#06b6d4" },
-  agent_run: { label: "运行", color: "#64748b" },
 };
 
 const items = ref<TimelineItem[]>([]);
 const loading = ref(true);
 const error = ref("");
+const showInternal = ref(false);
 
 const typeFilter = ref("");
 const typeCounts = computed(() => {
@@ -69,9 +70,10 @@ async function toggleItem(it: TimelineItem): Promise<void> {
     await expandLlm(it, key);
     return;
   }
-  if (it.type === "replay") {
+  if (it.type === "test_run") {
     await loadReplay(Number(it.id), key);
   }
+  // recording：skills 清单已在 it.skills，展开即渲染（无需拉取）
 }
 
 async function expandLlm(it: TimelineItem, key: string): Promise<void> {
@@ -93,11 +95,7 @@ async function expandLlm(it: TimelineItem, key: string): Promise<void> {
   }
 }
 
-function detailLink(it: TimelineItem): string | null {
-  if (it.type === "skill") return `/skills/${it.id}`;
-  if (it.type === "session") return "/audit";
-  return null;
-}
+
 
 // ---------- 回放步骤截图墙（S33/S34：ShotGallery 组件承载，含点击放大） ----------
 const replayShots = ref<ShotItem[]>([]);
@@ -129,27 +127,43 @@ async function loadReplay(id: number, key: string): Promise<void> {
   }
 }
 
-onMounted(async () => {
+async function load(): Promise<void> {
+  loading.value = true;
+  error.value = "";
   try {
-    items.value = await getTimeline();
+    items.value = await getTimeline(100, showInternal.value);
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
     loading.value = false;
   }
-});
+}
+
+async function toggleInternal(): Promise<void> {
+  showInternal.value = !showInternal.value;
+  expandedKey.value = null;
+  await load();
+}
+
+onMounted(() => void load());
 </script>
 
 <template>
   <section>
-    <h1>链路时间线</h1>
+    <h1>测试活动</h1>
     <p class="muted page-desc">
-      每一次运行、每一步的链路与输入输出统一留存：采集 → 对齐 → Skill 学习 → 回放 →
-      报告 → 评审，含 LLM 调用完整 IO。点击 LLM 项展开 prompt/response。
+      每一次自动测试与录制学习的完整记录：点开看步骤截图、学到的操作流程与
+      LLM 输入输出。内部事件（对齐/LLM 调用等）可按需展开。
     </p>
 
     <div class="block">
-      <!-- 类型过滤 -->
+      <!-- 内部事件开关 + 类型过滤 -->
+      <div class="view-controls">
+        <label class="internal-toggle" data-testid="internal-toggle">
+          <input :checked="showInternal" type="checkbox" @change="toggleInternal" />
+          显示内部事件（LLM/对齐等）
+        </label>
+      </div>
       <div class="type-filter" data-testid="type-filter">
         <button
           class="filter-chip"
@@ -174,7 +188,7 @@ onMounted(async () => {
       <p v-if="loading" class="muted">加载中…</p>
       <p v-else-if="error" class="error">加载失败：{{ error }}</p>
       <p v-else-if="shown.length === 0" class="muted empty-line">
-        暂无链路记录，先录制一轮操作
+        暂无测试活动，先录制一轮操作
       </p>
 
       <!-- 竖向时间轴 -->
@@ -218,9 +232,9 @@ onMounted(async () => {
               </template>
             </div>
 
-            <!-- 回放步骤截图墙（S33/S34：ShotGallery 含点击放大） -->
+            <!-- 测试运行步骤截图墙（S33/S34：ShotGallery 含点击放大） -->
             <div
-              v-if="expandedKey === `replay:${it.id}`"
+              v-if="expandedKey === `test_run:${it.id}`"
               class="replay-detail"
               data-testid="replay-detail"
               @click.stop
@@ -238,15 +252,24 @@ onMounted(async () => {
               </template>
             </div>
 
-            <!-- 非 LLM/replay 项：下钻链接 -->
+            <!-- 录制学习：学到的操作流程清单 -->
             <div
-              v-else-if="expandedKey === `${it.type}:${it.id}` && detailLink(it)"
-              class="tl-links"
+              v-else-if="expandedKey === `recording:${it.id}`"
+              class="rec-detail"
+              data-testid="rec-detail"
               @click.stop
             >
-              <RouterLink :to="detailLink(it)!" class="btn btn-secondary">
-                下钻查看
-              </RouterLink>
+              <p class="muted shot-hint">学到的操作流程（{{ (it.skills || []).length }}）</p>
+              <ul class="skill-list">
+                <li v-for="s in it.skills || []" :key="s.id">
+                  <RouterLink :to="`/skills/${s.id}`">{{ s.name }}</RouterLink>
+                </li>
+              </ul>
+              <div class="shot-links">
+                <RouterLink to="/skills" class="btn btn-secondary">
+                  查看全部操作流程
+                </RouterLink>
+              </div>
             </div>
           </div>
         </li>
@@ -258,6 +281,33 @@ onMounted(async () => {
 <style scoped>
 .empty-line {
   margin: var(--space-2) 0;
+}
+.view-controls {
+  margin-bottom: var(--space-2);
+}
+.internal-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-gray-6);
+  cursor: pointer;
+}
+.rec-detail {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-gray-3);
+  border-radius: var(--radius-md);
+}
+.skill-list {
+  list-style: none;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 13px;
 }
 .type-filter {
   display: flex;

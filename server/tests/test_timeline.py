@@ -71,21 +71,27 @@ async def test_timeline_aggregates_and_sorts_desc(client, monkeypatch):
         db.close()
     _add_llm_log("skill_naming", "P1", "R1")
 
+    # S37-2 新规格：默认主行只有测试活动（test_run/recording）
     rows = (await client.get("/api/v1/timeline")).json()
     types = {r["type"] for r in rows}
-    assert {"session", "alignment", "skill", "replay", "llm"} <= types
+    assert {"recording", "test_run"} <= types
+    assert types <= {"test_run", "recording"}
     # 倒序：ts 单调不增
     ts_list = [r["ts"] for r in rows]
     assert ts_list == sorted(ts_list, reverse=True)
     # 每项契约字段
     for r in rows:
         assert set(r) >= {"type", "id", "title", "subtitle", "ts"}
+    # include_internal 附带内部事件
+    rows2 = (await client.get("/api/v1/timeline?include_internal=true")).json()
+    assert "llm" in {r["type"] for r in rows2}
 
 
 async def test_timeline_limit(client):
     for i in range(3):
         _add_llm_log(f"p{i}", "P", "R")
-    rows = (await client.get("/api/v1/timeline?limit=2")).json()
+    # 内部事件走 include_internal 视图的 limit
+    rows = (await client.get("/api/v1/timeline?limit=2&include_internal=true")).json()
     assert len(rows) == 2
 
 
@@ -104,3 +110,51 @@ async def test_llm_log_detail_returns_full_io(client):
 async def test_llm_log_detail_404(client):
     resp = await client.get("/api/v1/audit/llm-logs/99999")
     assert resp.status_code == 404
+
+
+async def test_timeline_test_activity_view(client, monkeypatch):
+    """S37-2 时间线重构：默认只显示测试活动（test_run/recording），
+    内部事件（llm/alignment/session 处理等）不出现在主行——
+    include_internal=true 时才附带（开发者视角）。"""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_FAKE_RESPONSE",
+                       json.dumps({"name": "TlSkill2", "description": "d"}))
+    sid = await _seed_session(client, "活动视角会话")
+    aid = (await client.post("/api/v1/align",
+                             json={"session_ids": [sid, sid]})).json()["alignment_id"]
+    skill = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
+    db = SessionLocal()
+    try:
+        db.add(ReplayRun(skill_id=skill["id"], mode="execute", status="pass",
+                         plan={"url": "http://t/f", "steps": []}, executed=[]))
+        db.commit()
+    finally:
+        db.close()
+    _add_llm_log("skill_naming", "P", "R")
+
+    rows = (await client.get("/api/v1/timeline")).json()
+    types = {r["type"] for r in rows}
+    # 主行只有测试活动
+    assert types <= {"test_run", "recording"}, types
+    assert "test_run" in types and "recording" in types
+    # 内部事件默认不出现
+    assert "llm" not in types and "alignment" not in types and "session" not in types
+    # include_internal 附带
+    rows2 = (await client.get("/api/v1/timeline?include_internal=true")).json()
+    types2 = {r["type"] for r in rows2}
+    assert "llm" in types2
+
+
+async def test_timeline_recording_item_lists_skills(client, monkeypatch):
+    """录制学习行带学到的操作流程清单（skills 字段）。"""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_FAKE_RESPONSE",
+                       json.dumps({"name": "TlSkill3", "description": "d"}))
+    sid = await _seed_session(client, "带技能会话")
+    aid = (await client.post("/api/v1/align",
+                             json={"session_ids": [sid, sid]})).json()["alignment_id"]
+    skill = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
+    rows = (await client.get("/api/v1/timeline")).json()
+    rec = next(r for r in rows if r["type"] == "recording")
+    assert any(s["id"] == skill["id"] and s["name"] == "TlSkill3"
+               for s in rec.get("skills", []))

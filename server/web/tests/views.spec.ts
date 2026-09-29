@@ -332,7 +332,7 @@ describe("SkillDetail", () => {
     // 页脚回放入口（Task 5）：链接指向 /replay/3
     const cta = root.querySelector<HTMLAnchorElement>(".replay-btn");
     expect(cta?.getAttribute("href")).toBe("/replay/3");
-    expect(cta?.textContent).toContain("回放此 Skill");
+    expect(cta?.textContent).toContain("自动测试此流程");
   });
 
   it("renders 404 state", async () => {

@@ -96,7 +96,7 @@ class _FakeCtx:
         return self._page
 
 
-async def _replay(skill, html, monkeypatch):
+async def _replay(skill, html, monkeypatch, overrides=None):
     """route mock 页面 + 走 runner.run_replay（execute）。"""
     import app.replay.runner as rm
     from app.db import SessionLocal
@@ -113,7 +113,9 @@ async def _replay(skill, html, monkeypatch):
         monkeypatch.setattr(rm, "_launch", lambda: _FakePW(page, browser))
         db = SessionLocal()
         try:
-            run = await rm.run_replay(db, skill["id"], {"请输入": "注入值"}, True)
+            run = await rm.run_replay(db, skill["id"],
+                                      overrides if overrides is not None else {"请输入": "注入值"},
+                                      True)
             db.refresh(run)  # 预载属性，避免 close 后 DetachedInstanceError
             return run
         finally:
@@ -144,7 +146,7 @@ async def test_visual_regression_flips_run_to_fail(client, monkeypatch):
     assert run1.status == "pass"
 
     # 页面改版：表单行为不变（其余断言过），视觉大改 → visual 断言 fail
-    run2 = await _replay(skill, FORM_HTML_V2, monkeypatch)
+    run2 = await _replay(skill, FORM_HTML_V2, monkeypatch, overrides={})
     assert run2.status == "fail"
     visual = [r for r in run2.assertion_results
               if (r.get("payload") or {}).get("kind") == "visual_baseline"]
@@ -207,3 +209,19 @@ async def test_visual_baseline_endpoint(client, monkeypatch):
         f"/api/v1/skills/{skill['id']}/visual-baseline/image?which=baseline")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("image/")
+
+
+async def test_visual_diff_with_overrides_not_judged(client, monkeypatch):
+    """S37 断言语义根治：换参数据回放时页面内容变化是预期（模拟人工用
+    不同数据操作），视觉差异记录不判定——消除假阴性。"""
+    skill = await _prepare_skill(client, monkeypatch)
+    run1 = await _replay(skill, FORM_HTML, monkeypatch, overrides={})
+    assert run1.status == "pass"  # 建基线
+
+    # 换参 + 页面变化 → 视觉差异不判定，run 仍 pass
+    run2 = await _replay(skill, FORM_HTML_V2, monkeypatch,
+                         overrides={"请输入": "另一个值"})
+    assert run2.status == "pass"
+    visual = [a for a in (run2.assertion_results or [])
+              if (a.get("payload") or {}).get("kind") == "visual_baseline"]
+    assert visual and visual[0].get("skipped"), visual

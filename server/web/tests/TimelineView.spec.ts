@@ -9,14 +9,13 @@ import TimelineView from "../src/views/TimelineView.vue";
 // 挂载方式同 AuditView.spec.ts：createApp + memory router；fetch mock 按 URL 路由。
 
 const items = [
-  { type: "llm", id: 3, title: "LLM skill_naming", subtitle: "fake · 500ms · 100/20 tokens",
+  { type: "test_run", id: 9, title: "自动测试 · SaveForm",
+    subtitle: "pass · execute · 2 步 · 800ms",
     ts: "2026-09-28T12:33:00" },
-  { type: "skill", id: 5, title: "Skill #5 SaveForm", subtitle: "learned · 置信度 90% · 证据 2",
-    ts: "2026-09-28T12:32:00" },
-  { type: "session", id: "sess-aaaa1111", title: "采集 sess-aaaa",
-    subtitle: "事件 5 · 语义 1 · 时间线会话", ts: "2026-09-28T12:30:00" },
-  { type: "replay", id: 9, title: "回放 #9", subtitle: "pass · execute · 2 步 · 1 断言 · 800ms",
-    ts: "2026-09-28T12:28:00" },
+  { type: "recording", id: "sess-aaaa1111", title: "录制学习 · 时间线会话",
+    subtitle: "事件 5 · 学到 1 个操作流程",
+    ts: "2026-09-28T12:30:00",
+    skills: [{ id: 5, name: "SaveForm" }] },
 ];
 
 const llmDetail = {
@@ -56,7 +55,12 @@ function mockTimelineFetch() {
         status: 200, headers: { "content-type": "application/json" } });
     }
     if (url.includes("/api/v1/timeline")) {
-      return new Response(JSON.stringify(items), {
+      const internal = url.includes("include_internal=true");
+      const rows = internal
+        ? [...items, { type: "llm", id: 3, title: "LLM skill_naming",
+            subtitle: "fake · 500ms · 100/20 tokens", ts: "2026-09-28T12:35:00" }]
+        : items;
+      return new Response(JSON.stringify(rows), {
         status: 200, headers: { "content-type": "application/json" } });
     }
     return new Response("not found", { status: 404 });
@@ -99,18 +103,16 @@ describe("TimelineView", () => {
 
     const list = root.querySelector("[data-testid='timeline-list']");
     expect(list).not.toBeNull();
-    expect(root.querySelectorAll(".tl-item").length).toBe(4);
-    // 类型中文徽标 + 标题 + 摘要
-    expect(root.textContent).toContain("LLM skill_naming");
-    expect(root.textContent).toContain("Skill #5 SaveForm");
-    expect(root.textContent).toContain("置信度 90%");
-    expect(root.textContent).toContain("事件 5 · 语义 1");
-    expect(root.textContent).toContain("回放 #9");
+    expect(root.querySelectorAll(".tl-item").length).toBe(2);
+    // 类型徽标 + 标题 + 摘要
+    expect(root.textContent).toContain("自动测试 · SaveForm");
+    expect(root.textContent).toContain("录制学习 · 时间线会话");
+    expect(root.textContent).toContain("学到 1 个操作流程");
     // 时间格式化（T → 空格）
     expect(root.textContent).toContain("2026-09-28 12:33");
     // 过滤 chip 带计数
-    expect(root.textContent).toContain("全部 4");
-    expect(root.textContent).toContain("LLM 1");
+    expect(root.textContent).toContain("全部 2");
+    expect(root.textContent).toContain("自动测试 1");
   });
 
   it("filters items by type chip", async () => {
@@ -121,19 +123,19 @@ describe("TimelineView", () => {
     await flush();
     await flush();
 
-    (root.querySelector("[data-testid='filter-llm']") as HTMLElement).click();
+    (root.querySelector("[data-testid='filter-test_run']") as HTMLElement).click();
     await flush();
     expect(root.querySelectorAll(".tl-item").length).toBe(1);
-    expect(root.textContent).toContain("LLM skill_naming");
-    expect(root.textContent).not.toContain("Skill #5 SaveForm");
+    expect(root.textContent).toContain("自动测试 · SaveForm");
+    expect(root.textContent).not.toContain("录制学习 · 时间线会话");
 
     // 再点一次取消过滤
-    (root.querySelector("[data-testid='filter-llm']") as HTMLElement).click();
+    (root.querySelector("[data-testid='filter-test_run']") as HTMLElement).click();
     await flush();
-    expect(root.querySelectorAll(".tl-item").length).toBe(4);
+    expect(root.querySelectorAll(".tl-item").length).toBe(2);
   });
 
-  it("expands llm item to fetch and show full prompt/response", async () => {
+  it("internal toggle shows llm items and expands full prompt/response", async () => {
     const fetchMock = mockTimelineFetch();
     vi.stubGlobal("fetch", fetchMock);
     const root = document.createElement("div");
@@ -142,7 +144,12 @@ describe("TimelineView", () => {
     await flush();
     await flush();
 
-    expect(root.querySelector("[data-testid='llm-detail']")).toBeNull();
+    // 默认无 llm 行；打开内部事件开关后出现
+    expect(root.querySelector("[data-testid='tl-llm']")).toBeNull();
+    ;(root.querySelector("[data-testid='internal-toggle'] input") as HTMLElement).click();
+    await flush();
+    await flush();
+    expect(root.querySelector("[data-testid='tl-llm']")).not.toBeNull();
     (root.querySelector("[data-testid='tl-llm']") as HTMLElement).click();
     await flush();
     await flush();
@@ -166,7 +173,7 @@ describe("TimelineView", () => {
     expect(root.querySelector("[data-testid='llm-detail']")).toBeNull();
   });
 
-  it("expands skill item to show drill-down link", async () => {
+  it("expands recording item to show learned skills", async () => {
     vi.stubGlobal("fetch", mockTimelineFetch());
     const root = document.createElement("div");
     document.body.appendChild(root);
@@ -174,11 +181,13 @@ describe("TimelineView", () => {
     await flush();
     await flush();
 
-    (root.querySelector("[data-testid='tl-skill']") as HTMLElement).click();
+    (root.querySelector("[data-testid='tl-recording']") as HTMLElement).click();
     await flush();
-    const link = root.querySelector<HTMLAnchorElement>("a[href='/skills/5']");
-    expect(link).not.toBeNull();
-    expect(link?.textContent).toContain("下钻查看");
+    const detail = root.querySelector("[data-testid='rec-detail']");
+    expect(detail).not.toBeNull();
+    expect(detail?.textContent).toContain("学到的操作流程（1）");
+    const link = detail?.querySelector<HTMLAnchorElement>("a[href='/skills/5']");
+    expect(link?.textContent).toContain("SaveForm");
   });
 
   it("expands replay item to show step screenshot wall", async () => {
@@ -194,7 +203,7 @@ describe("TimelineView", () => {
     await flush();
 
     expect(root.querySelector("[data-testid='replay-detail']")).toBeNull();
-    (root.querySelector("[data-testid='tl-replay']") as HTMLElement).click();
+    (root.querySelector("[data-testid='tl-test_run']") as HTMLElement).click();
     await flush();
     await flush();
     await flush();

@@ -192,11 +192,23 @@ onMounted(async () => {
   max-width: 1200px;
 }
 /* 统计卡排 */
+/* S37-4 错位修复：auto-fit 换行时孤卡占满整行（4+1 形态视觉断裂）——
+   固定列数响应式：宽屏 5 列 / 中屏 3+2 / 窄屏 2 列，换行形态始终成组 */
 .stat-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(5, 1fr);
   gap: var(--space-4);
   margin-top: var(--space-6);
+}
+@media (max-width: 1200px) {
+  .stat-row {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (max-width: 800px) {
+  .stat-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 .stat-card {
   background: var(--color-surface);

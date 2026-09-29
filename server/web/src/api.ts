@@ -841,15 +841,22 @@ export async function createReview(
 // ---------- S32：链路时间线 + LLM IO 全留存 ----------
 
 export interface TimelineItem {
-  type: string; // session | alignment | skill | replay | report | review | llm | agent_run
+  // S37-2 测试活动视角：主行 test_run | recording；
+  // include_internal 时附带 llm | agent_run | report | review
+  type: string;
   id: number | string;
   title: string;
   subtitle: string;
   ts: string;
+  skills?: { id: number; name: string }[]; // recording 行的学习产出
 }
 
-export function getTimeline(limit = 100): Promise<TimelineItem[]> {
-  return get<TimelineItem[]>(`/api/v1/timeline?limit=${limit}`);
+export function getTimeline(
+  limit = 100,
+  includeInternal = false,
+): Promise<TimelineItem[]> {
+  return get<TimelineItem[]>(
+    `/api/v1/timeline?limit=${limit}&include_internal=${includeInternal}`);
 }
 
 export interface LlmLogDetail {
@@ -881,6 +888,89 @@ export async function fetchStepScreenshot(
     throw new ApiError(resp.status, `GET step-screenshot -> ${resp.status}`);
   }
   return URL.createObjectURL(await resp.blob());
+}
+
+// ---------- S37-3：测试套件（操作流程组合 → 一键执行 → 汇总） ----------
+
+export interface SuiteSkillBrief {
+  id: number;
+  name: string;
+  status: string;
+}
+
+export interface SuiteItem {
+  id: number;
+  name: string;
+  skill_ids: number[];
+  skills: SuiteSkillBrief[];
+  created_at: string;
+}
+
+export interface SuiteRunResult {
+  skill_id: number;
+  skill_name: string;
+  run_id: number;
+  status: string;
+  mode: string;
+}
+
+export interface SuiteRunSummary {
+  id: number;
+  suite_id: number;
+  total: number;
+  pass_count: number;
+  fail_count: number;
+  error_count: number;
+  shadow_count: number;
+  results: SuiteRunResult[];
+  created_at: string;
+}
+
+export function listSuites(): Promise<SuiteItem[]> {
+  return get<SuiteItem[]>("/api/v1/suites");
+}
+
+export async function createSuite(
+  name: string,
+  skillIds: number[],
+): Promise<SuiteItem> {
+  const resp = await authedFetch("/api/v1/suites", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: name, skill_ids: skillIds }),
+  });
+  if (!resp.ok) {
+    throw new ApiError(resp.status, `POST /suites -> ${resp.status}`);
+  }
+  return resp.json() as Promise<SuiteItem>;
+}
+
+export async function deleteSuite(id: number): Promise<{ ok: boolean }> {
+  const resp = await authedFetch(`/api/v1/suites/${id}`, { method: "DELETE" });
+  if (!resp.ok) {
+    throw new ApiError(resp.status, `DELETE /suites -> ${resp.status}`);
+  }
+  return resp.json() as Promise<{ ok: boolean }>;
+}
+
+/** 一键执行套件（confirm=false 各流程走预演门控；422=空套件）。 */
+export async function runSuite(
+  id: number,
+  confirmSideEffect: boolean,
+): Promise<SuiteRunSummary> {
+  const resp = await authedFetch(`/api/v1/suites/${id}/run`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ confirm_side_effect: confirmSideEffect }),
+  });
+  if (!resp.ok) {
+    throw new ApiError(resp.status, `POST /suites/run -> ${resp.status}`);
+  }
+  return resp.json() as Promise<SuiteRunSummary>;
+}
+
+export function listSuiteRuns(id: number): Promise<SuiteRunSummary[]> {
+  return get<SuiteRunSummary[]>(`/api/v1/suites/${id}/runs`);
 }
 
 export { ApiError };

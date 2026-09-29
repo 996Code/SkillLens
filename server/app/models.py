@@ -241,6 +241,37 @@ class SynthFlow(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
+class TestSuite(Base):
+    """S37-3 测试套件：操作流程组合（用户以套件为单位组织测试）。
+
+    - skill_ids: 组合的操作流程清单（JSON）
+    - suite_run 执行历史见 SuiteRun
+    """
+    __tablename__ = "test_suite"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100))
+    skill_ids: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class SuiteRun(Base):
+    """S37-3 套件执行记录：一次套件运行 = 逐操作流程自动测试 + 汇总。
+
+    - results: [{skill_id, skill_name, run_id, status, mode}]
+    - pass_count/fail_count/error_count/shadow_count/total 汇总
+    """
+    __tablename__ = "suite_run"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    suite_id: Mapped[int] = mapped_column(index=True)
+    results: Mapped[list] = mapped_column(JSON)
+    total: Mapped[int] = mapped_column(default=0)
+    pass_count: Mapped[int] = mapped_column(default=0)
+    fail_count: Mapped[int] = mapped_column(default=0)
+    error_count: Mapped[int] = mapped_column(default=0)
+    shadow_count: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
 class LlmCallLog(Base):
     __tablename__ = "llm_call_log"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)

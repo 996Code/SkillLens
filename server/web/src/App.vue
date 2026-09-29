@@ -26,11 +26,12 @@ async function doLogout(): Promise<void> {
       <div class="brand">SkillLens</div>
       <nav>
         <RouterLink to="/dashboard">仪表盘</RouterLink>
-        <RouterLink to="/skills">Skills</RouterLink>
+        <RouterLink to="/skills">操作流程</RouterLink>
         <RouterLink to="/reports/1">Reports</RouterLink>
         <RouterLink to="/audit">审计</RouterLink>
         <RouterLink to="/canvas">画布</RouterLink>
         <RouterLink to="/reviews-portal">评审</RouterLink>
+        <RouterLink to="/suites">套件</RouterLink>
         <RouterLink to="/timeline">链路</RouterLink>
       </nav>
       <div class="sidebar-foot">
@@ -119,6 +120,9 @@ nav a:nth-child(6)::before {
 }
 nav a:nth-child(7)::before {
   content: "⌇";
+}
+nav a:nth-child(8)::before {
+  content: "▤";
 }
 nav a:hover {
   background: var(--color-sidebar-hover);

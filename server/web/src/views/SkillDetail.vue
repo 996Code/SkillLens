@@ -364,7 +364,7 @@ onMounted(async () => {
 
       <!-- 页脚：回放入口（Task 5，U1 缓解：详情页给"接下来做什么"的显式引导） -->
       <footer class="replay-cta">
-        <RouterLink :to="`/replay/${card.id}`" class="replay-btn btn btn-primary">回放此 Skill</RouterLink>
+        <RouterLink :to="`/replay/${card.id}`" class="replay-btn btn btn-primary">自动测试此流程</RouterLink>
         <button
           class="btn"
           data-testid="export-playwright-btn"

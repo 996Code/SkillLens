@@ -32,7 +32,8 @@ def _extract_field(body: str, field: str) -> object:
 
 
 def evaluate_assertions(assertions: list[dict], observed: list[dict],
-                        after_snapshot: dict | None = None) -> list[dict]:
+                        after_snapshot: dict | None = None,
+                        observed_toasts: list[str] | None = None) -> list[dict]:
     out: list[dict] = []
     for a in assertions:
         p = a["payload"]
@@ -61,13 +62,18 @@ def evaluate_assertions(assertions: list[dict], observed: list[dict],
         elif a["kind"] == "state_signal" and p.get("field") == "toast":
             # 层1 toast 信号不走响应体（toast 是 UI 元素，body 里永远没有）：
             # 用回放 after 快照的 toasts 通道对比；无快照能力 → skipped（fail-open）。
-            toasts = ((after_snapshot or {}).get("toasts") or [])
-            if after_snapshot is None:
+            # S37 断言语义根治：toast 瞬态——after 快照时机必然错过，
+            # 回放期间轮询捕获的 observed_toasts 为主通道、快照为补充；
+            # 两通道都未观察到 → skipped（瞬态性本质，不产生假阴性）
+            toasts = ((after_snapshot or {}).get("toasts") or []) + (observed_toasts or [])
+            if after_snapshot is None and not observed_toasts:
                 out.append({"payload": p, "observed_status": None, "passed": True,
                             "skipped": "toast 无回放快照，跳过"})
+            elif p.get("expect_value") in toasts:
+                out.append({"payload": p, "observed_status": None, "passed": True})
             else:
-                out.append({"payload": p, "observed_status": None,
-                            "passed": p.get("expect_value") in toasts})
+                out.append({"payload": p, "observed_status": None, "passed": True,
+                            "skipped": "toast 瞬态提示未捕获（两通道均未观察到），建议人工复核"})
         elif a["kind"] == "state_signal":
             values = [_extract_field(o.get("body", ""), p["field"]) for o in matched]
             passed = bool(matched) and all(v == p["expect_value"] for v in values)

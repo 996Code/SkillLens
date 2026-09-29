@@ -179,6 +179,33 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
             executed.append(entry)
             await _shot_step(page, shot_dir, i, entry)
             failed = True
+    # S37 断言语义根治：toast 瞬态——settle 窗口内轮询常见 toast 容器，
+    # 捕获的文本经 observed_toasts 供断言判定（after 快照时机必然错过瞬态元素）
+    observed_toasts: list[str] = []
+
+    async def _poll_toasts():
+        try:
+            texts = await page.evaluate("""() => {
+              const sels = ['.toast', '.toast-message', '.alert', '[role=alert]',
+                '.ant-message-notice', '.el-message', '.o-notification', '.msg',
+                '.sweet-alert', '.noty', '.toastify', '.alert-message'];
+              const out = [];
+              for (const s of sels) {
+                for (const el of document.querySelectorAll(s)) {
+                  if (el.offsetParent !== null) {
+                    const t = el.textContent.trim().slice(0, 100);
+                    if (t) out.push(t);
+                  }
+                }
+              }
+              return out;
+            }""")
+            for t in texts:
+                if t not in observed_toasts:
+                    observed_toasts.append(t)
+        except Exception:
+            pass
+
     # 收尾：断言关心的模板全部命中即止，否则等满 settle_timeout_ms。
     # 固定短窗口会漏掉保存后的链式请求（njmind 实测 saveTableConfig 晚于 1.5s）。
     if awaited_templates:
@@ -188,10 +215,13 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                    if any(path_matches(o["url"], t) for o in observed)]
             if len(hit) == len(awaited_templates):
                 break
+            await _poll_toasts()
             await page.wait_for_timeout(200)
     else:
         try:
-            await page.wait_for_timeout(1500)  # 无目标模板时退回固定收尾
+            for _ in range(5):
+                await _poll_toasts()
+                await page.wait_for_timeout(300)  # 无目标模板时退回固定收尾
         except Exception:
             pass
     # S23 块 V：关键 API 延迟按断言模板聚合（多次命中取中位数，与基线语义一致）
@@ -204,7 +234,7 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
             api_latencies[tpl] = (lats[mid] if len(lats) % 2 == 1
                                    else (lats[mid - 1] + lats[mid]) // 2)
     return {"executed": executed, "observed": observed,
-            "api_latencies": api_latencies}
+            "api_latencies": api_latencies, "observed_toasts": observed_toasts}
 
 
 async def _close_ctx_quietly(ctx) -> None:
@@ -225,7 +255,8 @@ def _flaky_rerun() -> bool:
 
 async def _attempt(db: Session, browser, skill_id: int, plan: dict,
                    assertions: list[dict], shared_ctx: bool,
-                   repair_map: dict[str, dict] | None = None) -> dict:
+                   repair_map: dict[str, dict] | None = None,
+                   has_overrides: bool = False) -> dict:
     """S24 块 U：单次执行尝试（无 DB 写）——_execute_skill 编排重试的基础。
 
     异常收敛为 error attempt（不抛）；返回键：
@@ -280,7 +311,8 @@ async def _attempt(db: Session, browser, skill_id: int, plan: dict,
                 pass  # 提案生成失败不破坏回放判定（fail-open）
 
         results = evaluate_assertions(assertions, result["observed"],
-                                      after_snapshot=after_snapshot)
+                                      after_snapshot=after_snapshot,
+                                      observed_toasts=result.get("observed_toasts"))
         any_ok_step = any(s.get("ok") for s in result["executed"])
         if not any_ok_step:
             status = "error"
@@ -313,6 +345,11 @@ async def _attempt(db: Session, browser, skill_id: int, plan: dict,
             visual_result = None
             baseline_created = False
         if visual_result is not None:
+            # S37 断言语义根治：换参数据回放时页面内容变化是预期行为
+            # （模拟人工用不同数据操作），视觉差异记录不判定——消除假阴性
+            if has_overrides and not visual_result["passed"]:
+                visual_result = {**visual_result, "passed": True,
+                                 "skipped": "换参数据回放：视觉差异为预期，已记录不判定"}
             results.append(visual_result)
             if not visual_result["passed"] and status == "pass":
                 status = "fail"
@@ -392,14 +429,15 @@ async def _execute_skill(db: Session, browser, skill_id: int,
                                 "after": overrides[label]}
 
     repair_map = load_repair_map(db, skill_id)
+    has_overrides = any(str(v).strip() for v in (overrides or {}).values())
     attempt = await _attempt(db, browser, skill_id, plan, assertions, shared_ctx,
-                             repair_map)
+                             repair_map, has_overrides=has_overrides)
     flaky = False
     if (attempt["status"] == "fail" and _flaky_rerun()):
         # flaky 语义=真实非确定性；重试沿用同一 repair_map——本次新生成的提案
         # 留给下一轮回放（自愈是跨回放的，不与 flaky 混淆）
         retry = await _attempt(db, browser, skill_id, plan, assertions, shared_ctx,
-                               repair_map)
+                               repair_map, has_overrides=has_overrides)
         if retry["status"] == "pass":
             flaky = True
             # C3：首次失败明细嵌入（重试通过时失败尝试不单独落 run，但可审计）

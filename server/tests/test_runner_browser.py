@@ -383,3 +383,30 @@ async def test_execute_plan_uses_label_fallback():
         await browser.close()
     assert [s["ok"] for s in result["executed"]] == [True, True]
     assert result["executed"][0]["strategy"] == "data-fieldname"
+
+
+async def test_execute_plan_captures_transient_toast():
+    """S37 断言语义根治：toast 瞬态（500ms 后消失）——settle 窗口内
+    轮询捕获，after 快照时机必然错过但 observed_toasts 能拿到。"""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body>
+          <button id="save">保存</button>
+          <div class="toast" id="t" style="display:none">保存成功</div>
+          <script>
+            document.getElementById('save').addEventListener('click', () => {
+              const t = document.getElementById('t');
+              t.style.display = 'block';
+              setTimeout(() => { t.style.display = 'none'; }, 600);
+            });
+          </script>
+        </body></html>""")
+        plan = {"url": "about:blank", "steps": [
+            {"kind": "click", "label": "保存"},
+        ]}
+        result = await execute_plan(page, plan)
+        await browser.close()
+    assert result["executed"][0]["ok"] is True
+    assert "保存成功" in result.get("observed_toasts", []), result.get("observed_toasts")
