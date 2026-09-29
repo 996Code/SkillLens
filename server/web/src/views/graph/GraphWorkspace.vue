@@ -106,6 +106,7 @@ async function doLogout(): Promise<void> {
               :to="`/graph/skill/${s.id}`"
               class="gw-tree-leaf"
               :class="{ active: currentSkillId === String(s.id) }"
+              :data-testid="`gw-skill-${s.id}`"
             >
               {{ s.name }}
             </RouterLink>

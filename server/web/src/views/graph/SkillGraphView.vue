@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // S39 操作流程图（图工作台内）：骨架+断言 → 节点图；
 // 底部该流程的执行历史（点开=执行图）。下钻链：总览→流程图→执行图。
-import { onMounted, ref } from "vue";
+import { onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { getSkillCard, getSkillFlow } from "../../api";
 import type { FlowGraphDTO, SkillCard } from "../../api";
@@ -13,7 +13,11 @@ const flow = ref<FlowGraphDTO | null>(null);
 const loading = ref(true);
 const error = ref("");
 
-onMounted(async () => {
+async function load(): Promise<void> {
+  loading.value = true;
+  error.value = "";
+  card.value = null;
+  flow.value = null;
   try {
     [card.value, flow.value] = await Promise.all([
       getSkillCard(String(route.params.skillId)),
@@ -24,7 +28,14 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+}
+
+// S41 修复：路由参数变化时重新加载（左树切换流程不刷新的根因）
+watch(() => route.params.skillId, () => {
+  if (route.name === "graph-skill") void load();
 });
+
+onMounted(() => void load());
 </script>
 
 <template>
