@@ -31,11 +31,29 @@ const runDetail = {
   artifact_path: "",
 };
 
+const runFlow = {
+  nodes: [
+    { id: "n0", type: "page", label: "/t/f", status: "ok" },
+    { id: "a1", type: "action", label: "input 请输入", status: "ok",
+      screenshot: "step-01.png", io: { strategy: "placeholder" } },
+    { id: "s1", type: "state", label: "status=SUCCESS", status: "ok" },
+    { id: "v1", type: "assert", label: "api_status /a/1/save", status: "fail" },
+  ],
+  edges: [
+    { from: "n0", to: "a1" }, { from: "a1", to: "s1" }, { from: "s1", to: "v1" },
+  ],
+  run_id: 9, run_status: "fail",
+};
+
 function mockFetch() {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/step-screenshot?file=")) {
       return new Response(new Blob(["png"], { type: "image/png" }), { status: 200 });
+    }
+    if (url.includes("/api/v1/replay-runs/9/flow")) {
+      return new Response(JSON.stringify(runFlow), {
+        status: 200, headers: { "content-type": "application/json" } });
     }
     if (url.includes("/api/v1/replay-runs/9")) {
       return new Response(JSON.stringify(runDetail), {
@@ -94,6 +112,9 @@ describe("ReplayRunView", () => {
     expect(root.textContent).toContain("placeholder");
     expect(root.textContent).toContain("semantic locate failed");
 
+    // S38 执行流程图上屏（节点含业务状态）
+    expect(root.querySelector("[data-testid='run-flow-block']")).not.toBeNull();
+    expect(root.textContent).toContain("status=SUCCESS");
     // 断言明细 + 归因
     expect(root.textContent).toContain("/a/1/save → 200");
     expect(root.textContent).toContain("FAILED");

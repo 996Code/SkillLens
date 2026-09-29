@@ -158,3 +158,26 @@ async def test_timeline_recording_item_lists_skills(client, monkeypatch):
     rec = next(r for r in rows if r["type"] == "recording")
     assert any(s["id"] == skill["id"] and s["name"] == "TlSkill3"
                for s in rec.get("skills", []))
+
+
+async def test_timeline_items_have_system(client, monkeypatch):
+    """S38：测试活动行带目标系统（test_run/recording 均有 system 字段）。"""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_FAKE_RESPONSE",
+                       json.dumps({"name": "SysSkill", "description": "d"}))
+    sid = await _seed_session(client, "系统维度会话")
+    aid = (await client.post("/api/v1/align",
+                             json={"session_ids": [sid, sid]})).json()["alignment_id"]
+    skill = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
+    db = SessionLocal()
+    try:
+        db.add(ReplayRun(skill_id=skill["id"], mode="shadow", status="shadow",
+                         plan={"url": "http://t/f", "steps": []}, executed=None))
+        db.commit()
+    finally:
+        db.close()
+    rows = (await client.get("/api/v1/timeline")).json()
+    tr = next(r for r in rows if r["type"] == "test_run")
+    rec = next(r for r in rows if r["type"] == "recording")
+    assert tr["system"] == "t"
+    assert rec["system"] == "t"

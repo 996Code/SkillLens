@@ -16,6 +16,7 @@ from app.replay.locate import locate
 from app.replay.page_snapshot import collect_page_snapshot
 from app.replay.plan import compile_skeleton_plan, requires_confirmation
 from app.replay.repair import generate_proposals, load_repair_map, record_usage
+from app.replay.flow_graph import derive_states
 from app.replay.visual import compare_images, dhash, visual_dir
 
 MAX_BODY = 8192
@@ -465,7 +466,9 @@ async def _execute_skill(db: Session, browser, skill_id: int,
     # S23 块 V：API 延迟同样旁挂（api_latencies 键，替身 execute_plan 无此键时跳过）
     plan = {**plan, "before_snapshot": attempt["before_snapshot"],
             "after_snapshot": attempt["after_snapshot"],
-            "api_latencies": result.get("api_latencies") or {}}
+            "api_latencies": result.get("api_latencies") or {},
+            # S38 业务状态（流程图基座）：观测响应派生，确定性规则
+            "business_states": derive_states(result.get("observed") or [])}
     # S33：步骤截图清单旁挂（起始页 + 每步一张；fail-open 无截图不挂键）
     shot_files = []
     if attempt.get("start_shot"):

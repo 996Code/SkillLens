@@ -4,8 +4,9 @@
 // 入口：时间线 replay 项"下钻查看"；数据 GET /replay-runs/{id}。
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
-import { getReplayRun } from "../api";
-import type { ReplayRunDetail } from "../api";
+import { getReplayRun, getRunFlow } from "../api";
+import type { FlowGraphDTO, ReplayRunDetail } from "../api";
+import FlowGraph from "../components/FlowGraph.vue";
 import ShotGallery from "../components/ShotGallery.vue";
 import type { ShotItem } from "../components/ShotGallery.vue";
 import {
@@ -24,6 +25,9 @@ const error = ref("");
 
 const snapshotDiff = computed(() => snapshotDiffRows(run.value?.plan ?? null));
 
+// S38：统一流程图（执行图：节点着色+截图+IO）
+const flow = ref<FlowGraphDTO | null>(null);
+
 const shotItems = computed<ShotItem[]>(() => {
   const meta = stepScreenshotFiles(run.value?.plan ?? null);
   if (!meta) return [];
@@ -40,6 +44,7 @@ function fmtTime(ts: string | null | undefined): string {
 onMounted(async () => {
   try {
     run.value = await getReplayRun(String(route.params.runId));
+    flow.value = await getRunFlow(String(route.params.runId)).catch(() => null);
   } catch (e) {
     if (e instanceof Error && "status" in e && (e as { status: number }).status === 404) {
       notFound.value = true;
@@ -79,6 +84,13 @@ onMounted(async () => {
           pass=全断言通过 fail=有断言失败 shadow=只规划未执行 error=执行异常
         </p>
       </header>
+
+      <!-- S38：执行流程图（统一基座：节点着色+点开截图/IO） -->
+      <div v-if="flow" class="block" data-testid="run-flow-block">
+        <h2>执行流程图</h2>
+        <p class="muted hint">节点按结果着色（绿=通过 红=失败 灰=跳过）；点击节点看截图与输入输出。</p>
+        <FlowGraph :nodes="flow.nodes" :edges="flow.edges" :run-id="run.id" />
+      </div>
 
       <!-- 执行步骤（含每步截图） -->
       <div class="block">

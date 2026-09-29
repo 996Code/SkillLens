@@ -79,3 +79,58 @@ async def test_suite_run_shadow(client, monkeypatch):
     runs = (await client.get(f"/api/v1/suites/{suite['id']}/runs")).json()
     assert len(runs) >= 1
     assert runs[0]["total"] == 1
+
+
+async def test_suite_skills_have_system(client, monkeypatch):
+    """S38：套件 skill 概要带目标系统（参考会话 navigation host 派生）。"""
+    skill_id = await _seed_skill(client, monkeypatch)
+    suite = (await client.post("/api/v1/suites", json={
+        "name": "系统维度套件", "skill_ids": [skill_id]})).json()
+    assert suite["skills"][0]["system"] == "t"  # mock url http://t/f → host t
+
+
+async def test_suite_creates_canvas_pipeline(client, monkeypatch):
+    """S38 套件↔流水线合并：创建套件自动生成线性 canvas_dag
+    （skill_source → replay_batch → aggregate），套件与画布同一对象。"""
+    skill_id = await _seed_skill(client, monkeypatch)
+    suite = (await client.post("/api/v1/suites", json={
+        "name": "合并套件", "skill_ids": [skill_id]})).json()
+    assert suite["canvas_id"], "套件应关联流水线"
+    # 画布端可见同一条流水线
+    from app.db import SessionLocal
+    from app.models import CanvasDag
+    db = SessionLocal()
+    try:
+        canvas = db.get(CanvasDag, suite["canvas_id"])
+        types = [n["type"] for n in canvas.dag["nodes"]]
+        assert types == ["skill_source", "replay_batch", "aggregate"]
+        assert canvas.dag["nodes"][0]["params"]["skill_ids"] == [skill_id]
+    finally:
+        db.close()
+
+
+async def test_suite_run_via_canvas(client, monkeypatch):
+    """套件执行走画布运行机制：agent_run 落全量节点产物，汇总从
+    node_outputs 派生（replay_results + aggregate）。"""
+    skill_id = await _seed_skill(client, monkeypatch)
+    suite = (await client.post("/api/v1/suites", json={
+        "name": "画布执行套件", "skill_ids": [skill_id]})).json()
+    r = await client.post(f"/api/v1/suites/{suite['id']}/run",
+                          json={"confirm_side_effect": False})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["agent_run_id"], "应走画布运行（agent_run 落产物）"
+    assert body["total"] == 1
+    assert body["results"][0]["skill_id"] == skill_id
+    assert body["results"][0]["status"] == "shadow"
+    # agent_run 的 node_outputs 含 replay_results 与 aggregate
+    from app.db import SessionLocal
+    from app.models import AgentRun
+    db = SessionLocal()
+    try:
+        ar = db.get(AgentRun, body["agent_run_id"])
+        outputs = {no["node"]: no["output"] for no in (ar.node_outputs or [])}
+        assert any("replay_results" in o for o in outputs.values())
+        assert any("aggregate" in o for o in outputs.values())
+    finally:
+        db.close()

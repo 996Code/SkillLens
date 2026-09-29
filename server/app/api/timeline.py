@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.models import (AgentRun, Alignment, DeltaReport, LlmCallLog,
                         RawEvent, RecordingSession, ReplayRun, Review, Skill)
+from app.system import session_system, skill_systems
 
 router = APIRouter()
 
@@ -45,6 +46,7 @@ async def get_timeline(
     db: Session = Depends(get_db),
 ) -> list:
     items: list[dict] = []
+    systems = skill_systems(db)  # S38：目标系统维度
 
     # 测试运行（自动测试）
     for r in db.query(ReplayRun).order_by(
@@ -53,11 +55,13 @@ async def get_timeline(
         skill_name = skill.name if skill else f"#{r.skill_id}"
         steps = len((r.executed or []))
         dur = f"{r.duration_ms}ms" if r.duration_ms else "—"
+        system = systems.get(r.skill_id, "未知系统")
         items.append({
             "type": "test_run", "id": r.id,
             "title": f"自动测试 · {skill_name}",
-            "subtitle": f"{r.status} · {r.mode} · {steps} 步 · {dur}",
+            "subtitle": f"{system} · {r.status} · {r.mode} · {steps} 步 · {dur}",
             "ts": r.created_at.isoformat(),
+            "system": system,
         })
 
     # 录制学习会话（含学习产出清单）
@@ -72,12 +76,14 @@ async def get_timeline(
             sub += f" · 学到 {len(learned)} 个操作流程"
         if s.note:
             sub += f" · {s.note}"
+        system = session_system(db, s.id)
         items.append({
             "type": "recording", "id": s.id,
             "title": f"录制学习 · {(s.note or s.id[:8])}",
-            "subtitle": sub,
+            "subtitle": f"{system} · {sub}",
             "ts": s.started_at.isoformat(),
             "skills": learned,
+            "system": system,
         })
 
     if include_internal:

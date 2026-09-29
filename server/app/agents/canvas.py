@@ -20,7 +20,7 @@ from app.learning import impact
 from app.models import AgentRun, CanvasDag, utcnow
 from app.replay.runner import run_replay_batch
 
-NODE_TYPES = {"change_source", "impact_select", "replay_batch",
+NODE_TYPES = {"change_source", "impact_select", "skill_source", "replay_batch",
               "aggregate", "review_output"}
 
 MAX_OUT_DEGREE = 1   # v1：每节点出度 ≤1（线性链，无分叉并行）
@@ -103,6 +103,10 @@ def validate_dag(dag) -> tuple[bool, list[str]]:
         if ntype == "change_source":
             if not (params.get("api_templates") or params.get("anchor_labels")):
                 errors.append("change_source 需要非空 api_templates 或 anchor_labels")
+        if ntype == "skill_source":
+            # S38 套件合并：固定技能清单节点（套件生成的流水线起点）
+            if not (params.get("skill_ids") or []):
+                errors.append("skill_source 需要非空 skill_ids")
         if ntype == "replay_batch":
             if not isinstance(params.get("confirm_side_effect", False), bool):
                 errors.append("replay_batch 的 confirm_side_effect 必须是布尔")
@@ -185,6 +189,12 @@ def _make_step(db: Session, node: dict):
                                            cs.get("anchor_labels") or [])
             return {"skills": [s["skill_id"] for s in
                                result.get("affected_skills") or []]}
+    elif ntype == "skill_source":
+        # S38 套件合并：固定技能清单 → skills 状态（replay_batch 消费）
+        skill_ids = [int(s) for s in params.get("skill_ids") or []]
+
+        async def step(state: CanvasState) -> dict:
+            return {"skills": skill_ids}
     elif ntype == "replay_batch":
         # C1：confirm_side_effect 从节点 params 读（编译期定格，默认 False），
         # 运行时不可临时改

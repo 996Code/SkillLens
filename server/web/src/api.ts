@@ -890,6 +890,28 @@ export async function fetchStepScreenshot(
   return URL.createObjectURL(await resp.blob());
 }
 
+// ---------- S38：统一流程图 ----------
+
+export interface FlowNodeDTO {
+  id: string;
+  type: string; // page | action | state | assert
+  label: string;
+  status: string;
+  screenshot?: string;
+  io?: Record<string, unknown>;
+}
+
+export interface FlowGraphDTO {
+  nodes: FlowNodeDTO[];
+  edges: { from: string; to: string }[];
+  run_id: number;
+  run_status: string;
+}
+
+export function getRunFlow(runId: number | string): Promise<FlowGraphDTO> {
+  return get<FlowGraphDTO>(`/api/v1/replay-runs/${runId}/flow`);
+}
+
 // ---------- S37-3：测试套件（操作流程组合 → 一键执行 → 汇总） ----------
 
 export interface SuiteSkillBrief {

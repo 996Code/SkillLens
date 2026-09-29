@@ -1,5 +1,7 @@
 import json
 
+from pathlib import Path
+
 import app.replay.runner as runner_mod
 
 
@@ -326,3 +328,64 @@ async def test_shadow_never_launches_browser(client, monkeypatch):
                               json={"skill_ids": [skill_id], "confirm_side_effect": False})
     assert resp2.status_code == 200 and resp2.json()["results"][0]["mode"] == "shadow"
     assert launches == []
+
+
+async def test_run_flow_graph(client, monkeypatch):
+    """S38 统一流程图：GET /replay-runs/{id}/flow 返回节点+边+执行注记。
+    节点含 page/action/state/assert 四类业务语义；状态节点从
+    plan.business_states（执行时派生）读取。"""
+    skill_id = await _seed_skill(client, monkeypatch)
+
+    async def fake_execute_plan(page, plan, **kw):
+        shot_dir = kw.get("shot_dir")
+        import os
+        if shot_dir is not None:
+            os.makedirs(shot_dir, exist_ok=True)
+            for name in ("start.png", "step-01.png"):
+                (Path(shot_dir) / name).write_bytes(
+                    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00"
+                    b"\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89")
+        return {"executed": [{"kind": "click", "label": "保存", "ok": True,
+                              "strategy": "text", "screenshot": "step-01.png"}],
+                "observed": [{"url": "http://t/a/9/save", "status": 200,
+                              "body": '{"status":"SUCCESS","code":200}'}],
+                "observed_toasts": []}
+
+    class FakePage:
+        async def goto(self, url): ...
+        async def wait_for_load_state(self, state, timeout=None): ...
+        def on(self, *a): ...
+        async def wait_for_timeout(self, ms): ...
+        async def query_selector_all(self, selector): return []
+        async def screenshot(self, path=None): pass
+    class FakeCtx:
+        async def new_page(self): return FakePage()
+    class FakeBrowser:
+        async def new_context(self, storage_state=None): return FakeCtx()
+        async def close(self): ...
+    class FakePW:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): ...
+        async def chromium_launch(self): return FakeBrowser()
+    import app.replay.runner as rm
+    monkeypatch.setattr(rm, "execute_plan", fake_execute_plan)
+    monkeypatch.setattr(rm, "_launch", lambda: FakePW())
+
+    r = await client.post(f"/api/v1/skills/{skill_id}/replay",
+                          json={"overrides": {}, "confirm_side_effect": True})
+    run_id = r.json()["id"]
+    # plan 落了业务状态
+    assert r.json()["plan"]["business_states"] == [
+        {"field": "status", "value": "SUCCESS", "source": "GET /a/{id}/save"}]
+
+    flow = (await client.get(f"/api/v1/replay-runs/{run_id}/flow")).json()
+    types = [n["type"] for n in flow["nodes"]]
+    assert types[0] == "page"
+    assert "action" in types
+    assert "state" in types  # 业务状态节点
+    assert "assert" in types
+    # 执行注记：action 节点带截图与成败
+    action = next(n for n in flow["nodes"] if n["type"] == "action")
+    assert action["status"] == "ok" and action["screenshot"] == "step-01.png"
+    # 边连通
+    assert len(flow["edges"]) >= len(flow["nodes"]) - 1

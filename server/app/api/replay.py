@@ -76,6 +76,17 @@ async def get_run(run_id: int, db: Session = Depends(get_db)) -> dict:
             "created_at": run.created_at.isoformat() if run.created_at else None}
 
 
+@router.get("/replay-runs/{run_id}/flow")
+async def get_run_flow(run_id: int, db: Session = Depends(get_db)) -> dict:
+    """S38 统一流程图：Run → 节点+边+执行注记（流程图基座）。
+    节点类型：page/action/state/assert（业务语义层）。"""
+    from app.replay.flow_graph import build_run_flow
+    run = db.get(ReplayRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="replay run not found")
+    return build_run_flow(run)
+
+
 _STEP_FILE_RE = re.compile(r"^(start|step-\d+)\.png$")
 
 

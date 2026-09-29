@@ -53,6 +53,7 @@ async def induce(alignment_id: int, db: Session = Depends(get_db)) -> dict:
 async def list_skills(db: Session = Depends(get_db)) -> list:
     from app.api.baseline import _skill_source
     from app.models import Alignment
+    from app.system import skill_systems
     sources = {sid: source for sid, source in db.execute(
         select(RecordingSession.id, RecordingSession.source)).all()}
     alignments = {a.id: a for a in db.query(Alignment).all()}

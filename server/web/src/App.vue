@@ -29,7 +29,7 @@ async function doLogout(): Promise<void> {
         <RouterLink to="/skills">操作流程</RouterLink>
         <RouterLink to="/reports/1">Reports</RouterLink>
         <RouterLink to="/audit">审计</RouterLink>
-        <RouterLink to="/canvas">画布</RouterLink>
+        <RouterLink to="/canvas">编排</RouterLink>
         <RouterLink to="/reviews-portal">评审</RouterLink>
         <RouterLink to="/suites">套件</RouterLink>
         <RouterLink to="/timeline">链路</RouterLink>

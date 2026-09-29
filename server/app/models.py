@@ -251,6 +251,8 @@ class TestSuite(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100))
     skill_ids: Mapped[list] = mapped_column(JSON)
+    # S38 套件↔流水线合并：指向最新版本 canvas_dag（套件=线性流水线）
+    canvas_id: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
@@ -263,6 +265,8 @@ class SuiteRun(Base):
     __tablename__ = "suite_run"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     suite_id: Mapped[int] = mapped_column(index=True)
+    # S38：执行走画布运行机制，agent_run 存全量节点产物（可下钻）
+    agent_run_id: Mapped[int | None] = mapped_column(nullable=True)
     results: Mapped[list] = mapped_column(JSON)
     total: Mapped[int] = mapped_column(default=0)
     pass_count: Mapped[int] = mapped_column(default=0)
