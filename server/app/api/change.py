@@ -30,7 +30,7 @@ class ConfirmRequest(BaseModel):
 
 @router.post("/expected-deltas", status_code=201)
 async def create_expected(body: CreateDeltaRequest, db: Session = Depends(get_db)) -> dict:
-    row = generate_expected_delta(db, body.requirement_text, body.requirement_id)
+    row = await generate_expected_delta(db, body.requirement_text, body.requirement_id)
     if body.external_ref:
         row.external_ref = body.external_ref
         db.commit()

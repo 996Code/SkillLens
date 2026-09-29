@@ -33,7 +33,7 @@ class DevPlanCreateRequest(BaseModel):
 @router.post("/dev-plans", status_code=201)
 async def create_dev_plan(body: DevPlanCreateRequest,
                           db: Session = Depends(get_db)) -> dict:
-    row = generate_dev_plan(db, body.requirement_text, body.target_form)
+    row = await generate_dev_plan(db, body.requirement_text, body.target_form)
     return {"id": row.id, "status": row.status, "target_form": row.target_form,
             "changes": row.changes, "notes": row.notes}
 

@@ -3,7 +3,7 @@ import re
 
 from sqlalchemy.orm import Session
 
-from app.llm.gateway import complete
+from app.llm.gateway import acomplete
 from app.learning.evidence import sync_evidence_edges
 from app.models import Alignment, Skill, SkillStrategy
 
@@ -89,7 +89,7 @@ def _confidence(alignment: Alignment) -> float:
     return round(api_steps / total * 0.6 + has_vars * 0.4, 2)
 
 
-def induce_skill(db: Session, alignment_id: int) -> Skill:
+async def induce_skill(db: Session, alignment_id: int) -> Skill:
     alignment = db.get(Alignment, alignment_id)
     # 空骨架（不同锚点流不归并的合法场景）→ 不调 LLM：无证据可命名，
     # 调用只会产生幻觉名（网易实测：空骨架被命名为无关业务名）
@@ -110,7 +110,7 @@ def induce_skill(db: Session, alignment_id: int) -> Skill:
         db.commit()
         db.refresh(skill)
         return skill
-    result = complete(db, "skill_naming", build_prompt(alignment))
+    result = await acomplete(db, "skill_naming", build_prompt(alignment))
     proposal = parse_llm_skill(result.text)
     status, name, desc, notes = "candidate", "Candidate", "", ""
     if proposal is None:

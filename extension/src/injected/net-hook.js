@@ -20,7 +20,46 @@ function redactBody(raw) {
   try {
     return JSON.stringify(redact(JSON.parse(text))).slice(0, 2000);
   } catch {
-    return text.slice(0, 2000);
+    return redactFormString(text).slice(0, 2000);
+  }
+}
+
+// S42 安全红线：请求体字符串形态（JSON / urlencoded）必须脱敏——
+// fetch(url, {body: JSON.stringify({password})}) 是最常见登录形态。
+function redactReqBody(body) {
+  if (body == null) return null;
+  if (typeof body === "string") return redactBody(body);
+  if (typeof FormData !== "undefined" && body instanceof FormData) {
+    const entries = {};
+    for (const [k, v] of body.entries()) entries[k] = typeof v === "string" ? v : "[FILE]";
+    return JSON.stringify(redact(entries)).slice(0, 2000);
+  }
+  return redact(body);
+}
+
+// urlencoded 键值串脱敏（password=x&user=y 形态）。
+function redactFormString(text) {
+  return String(text).replace(
+    /(^|[&;])([^=&;]+)=([^&;]*)/g,
+    (m, p, k) => (SENSITIVE.test(k) ? `${p}${k}=${MASK}` : m),
+  );
+}
+
+// S42 安全红线：URL query 中的凭据参数（?token=/api_key=）脱敏。
+function redactUrl(u) {
+  const s = String(u);
+  try {
+    const url = new URL(s, location.href);
+    let changed = false;
+    for (const [k] of url.searchParams) {
+      if (SENSITIVE.test(k)) {
+        url.searchParams.set(k, MASK);
+        changed = true;
+      }
+    }
+    return changed ? url.toString() : s;
+  } catch {
+    return redactFormString(s);
   }
 }
 
@@ -39,8 +78,8 @@ window.fetch = async (...args) => {
     const clone = resp.clone();
     const resBody = redactBody(await clone.text().catch(() => ""));
     post({
-      method, url, status: resp.status, duration: Math.round(performance.now() - started),
-      reqBody: redact(init?.body ?? null), resBody,
+      method, url: redactUrl(url), status: resp.status, duration: Math.round(performance.now() - started),
+      reqBody: redactReqBody(init?.body ?? null), resBody,
     });
   } catch { /* 观察失败不影响页面 */ }
   return resp;
@@ -55,10 +94,15 @@ XMLHttpRequest.prototype.open = function (method, url, ...rest) {
 XMLHttpRequest.prototype.send = function (body) {
   this._t0 = performance.now();
   this.addEventListener("load", () => {
+    // responseType 非 text 时访问 responseText 抛 InvalidStateError，须容错
+    let resBody = "";
+    try {
+      resBody = redactBody(this.responseText);
+    } catch { /* 保持空串 */ }
     post({
-      method: this._m, url: this._u, status: this.status,
+      method: this._m, url: redactUrl(this._u), status: this.status,
       duration: Math.round(performance.now() - (this._t0 ?? 0)),
-      reqBody: redact(body), resBody: redactBody(this.responseText),
+      reqBody: redactReqBody(body), resBody,
     });
   });
   return OrigSend.call(this, body);

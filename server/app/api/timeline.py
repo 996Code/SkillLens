@@ -10,12 +10,13 @@ GET /api/v1/timeline → 按时间倒序的**测试活动**列表（用户视角
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.models import (AgentRun, Alignment, DeltaReport, LlmCallLog,
                         RawEvent, RecordingSession, ReplayRun, Review, Skill)
-from app.system import session_system, skill_systems
+from app.system import session_systems, skill_systems
 
 router = APIRouter()
 
@@ -46,11 +47,12 @@ async def get_timeline(
     db: Session = Depends(get_db),
 ) -> list:
     items: list[dict] = []
-    systems = skill_systems(db)  # S38：目标系统维度
+    run_rows = db.query(ReplayRun).order_by(
+        ReplayRun.created_at.desc()).limit(limit).all()
+    systems = skill_systems(db, [r.skill_id for r in run_rows])  # S38：目标系统维度
 
     # 测试运行（自动测试）
-    for r in db.query(ReplayRun).order_by(
-            ReplayRun.created_at.desc()).limit(limit).all():
+    for r in run_rows:
         skill = db.get(Skill, r.skill_id)
         skill_name = skill.name if skill else f"#{r.skill_id}"
         steps = len((r.executed or []))
@@ -66,17 +68,22 @@ async def get_timeline(
 
     # 录制学习会话（含学习产出清单）
     skills_by_session = _session_skills(db)
-    for s in db.query(RecordingSession).order_by(
-            RecordingSession.started_at.desc()).limit(limit).all():
-        ev = db.query(RawEvent.id).filter(
-            RawEvent.session_id == s.id).count()
+    sess_rows = db.query(RecordingSession).order_by(
+        RecordingSession.started_at.desc()).limit(limit).all()
+    # S42：事件计数与目标系统批量派生（此前逐会话 2 次查询的 N+1）
+    ev_counts = dict(db.query(RawEvent.session_id, func.count(RawEvent.id))
+                     .filter(RawEvent.session_id.in_([s.id for s in sess_rows] or [""]))
+                     .group_by(RawEvent.session_id).all())
+    sess_systems = session_systems(db, [s.id for s in sess_rows])
+    for s in sess_rows:
+        ev = ev_counts.get(s.id, 0)
         learned = skills_by_session.get(s.id, [])
         sub = f"事件 {ev}"
         if learned:
             sub += f" · 学到 {len(learned)} 个操作流程"
         if s.note:
             sub += f" · {s.note}"
-        system = session_system(db, s.id)
+        system = sess_systems.get(s.id, "未知系统")
         items.append({
             "type": "recording", "id": s.id,
             "title": f"录制学习 · {(s.note or s.id[:8])}",

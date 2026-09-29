@@ -1,17 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp, h } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
-import SkillDetail from "../src/views/SkillDetail.vue";
 import DeltaReport from "../src/views/DeltaReport.vue";
 
-// S25 块 W 前端：①SkillDetail 导出 Playwright 脚本按钮 ②DeltaReport 外部需求编号展示。
-
-const card = {
-  id: 3, name: "SaveForm", description: "d", status: "learned",
-  confidence: 1.0, evidence_count: 1, alignment_id: 1,
-  skeleton: [], input_variables: [], param_variables: [], assertions: [],
-  last_run: null, window_params: {}, notes: "",
-};
+// S25 块 W 前端：DeltaReport 外部需求编号展示。
+// （SkillDetail 导出按钮用例已随 S42 合并迁至 graph-skill.spec.ts）
 
 const report = {
   id: 1, expected_delta_id: 5, observed_delta_id: 6,
@@ -43,17 +36,15 @@ function mockFetch(routes: Record<string, unknown>) {
   });
 }
 
-async function mountView(root: HTMLElement, view: unknown, path: string) {
+async function mountView(root: HTMLElement, path: string) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: "/graph/run/:runId", component: { render: () => null } },
-      { path: "/graph/skill/:id", component: { render: () => null } },
       { path: "/graph/reports/:deltaId", component: { render: () => null } },
     ],
   });
   await router.push(path);
-  const app = createApp({ render: () => h(view as never) });
+  const app = createApp({ render: () => h(DeltaReport) });
   app.use(router);
   app.mount(root);
 }
@@ -67,20 +58,6 @@ afterEach(() => {
 });
 
 describe("S25 integration UI", () => {
-  it("SkillDetail shows export Playwright button", async () => {
-    loginAs("admin");
-    vi.stubGlobal("fetch", mockFetch({
-      "/card": card, "/consistency": {}, "visual-baseline": { baseline: null },
-      "locate-proposals": [],
-    }));
-    const root = document.createElement("div");
-    document.body.appendChild(root);
-    await mountView(root, SkillDetail, "/graph/skill/3");
-    for (let i = 0; i < 6; i++) await flush();
-    expect(root.querySelector("[data-testid='export-playwright-btn']")
-      ?.textContent).toContain("导出 Playwright 脚本");
-  });
-
   it("DeltaReport shows external_ref when present, hides when null", async () => {
     loginAs("admin");
     vi.stubGlobal("fetch", mockFetch({
@@ -91,7 +68,7 @@ describe("S25 integration UI", () => {
     }));
     const root = document.createElement("div");
     document.body.appendChild(root);
-    await mountView(root, DeltaReport, "/graph/reports/1");
+    await mountView(root, "/graph/reports/1");
     for (let i = 0; i < 6; i++) await flush();
     expect(root.querySelector("[data-testid='external-ref']")?.textContent)
       .toContain("PROJ-123");
@@ -106,7 +83,7 @@ describe("S25 integration UI", () => {
       "/api/v1/reports/1": report,
       "/api/v1/expected-deltas/5": { ...expectedDeltaWithRef, external_ref: null },
     }));
-    await mountView(root2, DeltaReport, "/graph/reports/1");
+    await mountView(root2, "/graph/reports/1");
     for (let i = 0; i < 6; i++) await flush();
     expect(root2.querySelector("[data-testid='external-ref']")).toBeNull();
   });

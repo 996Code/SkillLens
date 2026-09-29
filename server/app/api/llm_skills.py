@@ -41,7 +41,7 @@ async def induce(alignment_id: int, db: Session = Depends(get_db)) -> dict:
     from app.models import Alignment
     if not db.get(Alignment, alignment_id):
         raise HTTPException(status_code=404, detail="alignment not found")
-    skill = induce_skill(db, alignment_id)
+    skill = await induce_skill(db, alignment_id)
     return {"id": skill.id, "alignment_id": skill.alignment_id, "name": skill.name,
             "description": skill.description, "status": skill.status,
             "skeleton": skill.skeleton, "param_variables": skill.param_variables,

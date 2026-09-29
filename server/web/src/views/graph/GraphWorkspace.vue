@@ -14,6 +14,7 @@ const skills = ref<SkillListItem[]>([]);
 const loading = ref(true);
 const search = ref("");
 const collapsed = ref<Set<string>>(new Set());
+const error = ref("");
 
 const currentSkillId = computed(() =>
   route.name === "graph-skill" ? String(route.params.skillId) : "");
@@ -24,7 +25,7 @@ const grouped = computed(() => {
   const groups = new Map<string, SkillListItem[]>();
   for (const s of skills.value) {
     if (q && !s.name.toLowerCase().includes(q)) continue;
-    const sys = (s as { system?: string }).system || "其他";
+    const sys = s.system || "其他";
     if (!groups.has(sys)) groups.set(sys, []);
     groups.get(sys)!.push(s);
   }
@@ -49,8 +50,11 @@ function isCollapsed(sys: string): boolean {
 
 async function load(): Promise<void> {
   loading.value = true;
+  error.value = "";
   try {
     [suites.value, skills.value] = await Promise.all([listSuites(), getSkills()]);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e);
   } finally {
     loading.value = false;
   }
@@ -136,6 +140,7 @@ async function doLogout(): Promise<void> {
 
     <!-- 中：当前页面 -->
     <main class="gw-canvas">
+      <p v-if="error" class="error">左树加载失败：{{ error }}</p>
       <RouterView @graph-changed="load" />
     </main>
   </div>

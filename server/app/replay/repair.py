@@ -8,7 +8,7 @@ import json
 
 from sqlalchemy.orm import Session
 
-from app.llm.gateway import complete
+from app.llm.gateway import acomplete
 from app.models import LocateProposal
 from app.replay.locate import locate
 from app.replay.page_snapshot import collect_page_snapshot
@@ -48,7 +48,7 @@ async def generate_proposals(db: Session, page, skill_id: int,
             "从上述元素中选出最可能对应同一操作的新标签，"
             "只输出标签文本本身，不要任何解释。"
         )
-        result = complete(db, "locate_repair", prompt)
+        result = await acomplete(db, "locate_repair", prompt)
         proposed = (result.text or "").strip().strip('"').splitlines()[0].strip()[:100]
         if not proposed or proposed == label:
             continue

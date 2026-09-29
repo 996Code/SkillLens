@@ -21,6 +21,10 @@ class Provider(ABC):
     @abstractmethod
     def complete(self, prompt: str) -> LlmResult: ...
 
+    async def acomplete(self, prompt: str) -> LlmResult:
+        """默认同步实现（Fake 等零 IO provider 直接复用）。"""
+        return self.complete(prompt)
+
 
 class FakeProvider(Provider):
     name = "fake"
@@ -53,6 +57,21 @@ class OpenAICompatProvider(Provider):
                       "messages": [{"role": "user", "content": prompt}]},
                 timeout=60,
             )
+        return self._parse(resp)
+
+    async def acomplete(self, prompt: str) -> LlmResult:
+        # S42：async 端点走 AsyncClient——同步 Client 会阻塞事件循环最长 60s
+        async with httpx.AsyncClient(transport=self.transport) as client:
+            resp = await client.post(
+                f"{self.base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json={"model": self.model, "max_tokens": self.max_tokens,
+                      "messages": [{"role": "user", "content": prompt}]},
+                timeout=60,
+            )
+        return self._parse(resp)
+
+    def _parse(self, resp: httpx.Response) -> LlmResult:
         resp.raise_for_status()
         data = resp.json()
         usage = data.get("usage") or {}

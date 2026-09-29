@@ -1,3 +1,5 @@
+import { SENSITIVE_KEY_RE } from "./redact";
+
 export interface ElementDesc {
   tag: string;
   role: string;
@@ -91,9 +93,15 @@ function isFrameworkId(id: string): boolean {
 }
 
 /** S35：input[type=submit/button] 的 value 是唯一人读标签
- * （Dolibarr 等经典表单的提交按钮无文本只有 value）。 */
+ * （Dolibarr 等经典表单的提交按钮无文本只有 value）。
+ * S42 安全红线：密码框与敏感命名字段的 value 不得进 labels——
+ * 否则明文经定位信号通道绕过 capture 层脱敏直接落库。 */
 function inputValue(el: Element): string | undefined {
   if (!(el instanceof HTMLInputElement)) return undefined;
+  if (el.type === "password") return undefined;
+  if ((el.getAttribute("autocomplete") ?? "").toLowerCase().includes("password")) return undefined;
+  const identity = `${el.name ?? ""} ${el.id ?? ""}`;
+  if (SENSITIVE_KEY_RE.test(identity)) return undefined;
   return clean(el.value);
 }
 

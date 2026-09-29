@@ -5,6 +5,9 @@
 //   - 执行汇总：X 个操作 / Y 通过 / 失败明细（链接 run 详情）
 //   - 执行历史
 import { onMounted, ref } from "vue";
+
+// S42：套件增删后通知壳刷新左树计数（此前 graph-changed 是死接线）
+const emit = defineEmits<{ graphChanged: [] }>();
 import {
   createSuite,
   deleteSuite,
@@ -54,6 +57,7 @@ async function create(): Promise<void> {
     newName.value = "";
     checked.value = new Set();
     await load();
+    emit("graph-changed");
   } catch (e) {
     createError.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -87,6 +91,7 @@ async function showHistory(id: number): Promise<void> {
 async function remove(id: number): Promise<void> {
   await deleteSuite(id);
   await load();
+  emit("graph-changed");
 }
 
 async function load(): Promise<void> {

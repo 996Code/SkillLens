@@ -3,7 +3,7 @@ import re
 
 from sqlalchemy.orm import Session
 
-from app.llm.gateway import complete
+from app.llm.gateway import acomplete
 from app.models import DiscoveredFeature, ExpectedDelta
 
 ALLOWED_TYPES = {"ui_action", "api_add", "api_status"}
@@ -49,9 +49,9 @@ def verify_delta(changes: list) -> tuple[bool, str]:
     return True, ""
 
 
-def generate_expected_delta(db: Session, requirement_text: str,
-                            requirement_id: str) -> ExpectedDelta:
-    result = complete(db, "expected_delta", build_prompt(requirement_text))
+async def generate_expected_delta(db: Session, requirement_text: str,
+                                   requirement_id: str) -> ExpectedDelta:
+    result = await acomplete(db, "expected_delta", build_prompt(requirement_text))
     proposal = parse_delta(result.text)
     changes, feature, notes = [], "", ""
     if proposal is None:

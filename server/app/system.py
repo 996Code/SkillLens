@@ -26,12 +26,17 @@ def system_label(host: str) -> str:
     return HOST_SYSTEM.get(host, host)
 
 
-def _session_hosts(db: Session) -> dict[str, str]:
-    """session_id → 首条 navigation 的 host（一次查询批量派生）。"""
+def _session_hosts(db: Session, session_ids: set[str] | None = None) -> dict[str, str]:
+    """session_id → 首条 navigation 的 host（一次查询批量派生）。
+    S42：给定 session_ids 时只查相关行——全表 navigation 扫描是
+    list_suites 等列表端点的 N+1 放大器。"""
     nav: dict[str, str] = {}
-    rows = db.execute(
-        select(RawEvent.session_id, RawEvent.payload).where(RawEvent.kind == "navigation")
-        .order_by(RawEvent.ts, RawEvent.seq)).all()
+    q = select(RawEvent.session_id, RawEvent.payload).where(RawEvent.kind == "navigation")
+    if session_ids is not None:
+        if not session_ids:
+            return nav
+        q = q.where(RawEvent.session_id.in_(session_ids))
+    rows = db.execute(q.order_by(RawEvent.ts, RawEvent.seq)).all()
     for sid, payload in rows:
         if sid not in nav:
             url = (payload or {}).get("url", "")
@@ -39,17 +44,30 @@ def _session_hosts(db: Session) -> dict[str, str]:
     return nav
 
 
-def skill_systems(db: Session) -> dict[int, str]:
-    """skill_id → 目标系统名（活跃 skill 批量派生）。"""
-    nav = _session_hosts(db)
+def skill_systems(db: Session, skill_ids: list[int] | None = None) -> dict[int, str]:
+    """skill_id → 目标系统名（活跃 skill 批量派生）。
+    S42：可选 skill_ids 过滤——列表端点按需派生，不再全表扫描。"""
+    q = db.query(Skill.id, Skill.alignment_id).filter(Skill.status != "superseded")
+    if skill_ids is not None:
+        if not skill_ids:
+            return {}
+        q = q.filter(Skill.id.in_(skill_ids))
+    skills = q.all()
+    if not skills:
+        return {}
     aligns = {a.id: (a.session_ids or [])
-              for a in db.query(Alignment.id, Alignment.session_ids).all()}
-    out: dict[int, str] = {}
-    for s in db.query(Skill.id, Skill.alignment_id).filter(
-            Skill.status != "superseded").all():
-        ref = (aligns.get(s.alignment_id) or [""])[0]
-        out[s.id] = system_label(nav.get(ref, ""))
-    return out
+              for a in db.query(Alignment.id, Alignment.session_ids).filter(
+                  Alignment.id.in_({s.alignment_id for s in skills})).all()}
+    ref_sids = {(a or [""])[0] for a in aligns.values() if a}
+    nav = _session_hosts(db, ref_sids)
+    return {s.id: system_label(nav.get((aligns.get(s.alignment_id) or [""])[0], ""))
+            for s in skills}
+
+
+def session_systems(db: Session, session_ids: list[str]) -> dict[str, str]:
+    """S42：批量版 session_system——时间线 recording 行逐条查询的 N+1 修复。"""
+    hosts = _session_hosts(db, set(session_ids))
+    return {sid: system_label(h) for sid, h in hosts.items()}
 
 
 def session_system(db: Session, session_id: str) -> str:

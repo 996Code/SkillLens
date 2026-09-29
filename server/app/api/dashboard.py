@@ -13,7 +13,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
-from app.models import (DeltaReport, GenericSkill, ReplayRun, Review, Skill)
+from app.models import (AgentRun, DeltaReport, GenericSkill,
+                        ReplayRun, Review, Skill)
 
 router = APIRouter()
 
@@ -41,35 +42,48 @@ async def get_dashboard(db: Session = Depends(get_db)) -> dict:
     generic_learned = db.query(func.count(GenericSkill.id)).filter(
         GenericSkill.status == "learned").scalar() or 0
 
-    runs = db.query(ReplayRun).order_by(ReplayRun.id.desc()).all()
+    # S42：GROUP BY 聚合替代全量加载（ReplayRun 行含巨型 JSON 列，
+    # 整表载入仅为计数在回放次数多时拖垮首页）
+    status_rows = db.query(ReplayRun.status, func.count(ReplayRun.id)).group_by(
+        ReplayRun.status).all()
     by_status: dict[str, int] = {"pass": 0, "fail": 0, "error": 0, "shadow": 0}
-    flaky = 0
-    for r in runs:
-        if r.status in by_status:
-            by_status[r.status] += 1
-        if r.flaky:
-            flaky += 1
+    total = 0
+    for status, n in status_rows:
+        total += n
+        if status in by_status:
+            by_status[status] = n
+    flaky = db.query(func.count(ReplayRun.id)).filter(
+        ReplayRun.flaky == True).scalar() or 0  # noqa: E712
 
-    skill_names = {s.id: s.name for s in db.query(Skill.id, Skill.name).all()}
+    recent_rows = db.query(ReplayRun).order_by(
+        ReplayRun.id.desc()).limit(10).all()
+    skill_names = {s.id: s.name for s in db.query(Skill.id, Skill.name).filter(
+        Skill.id.in_([r.skill_id for r in recent_rows] or [0])).all()}
     recent = [{
         "id": r.id, "skill_id": r.skill_id,
         "skill_name": skill_names.get(r.skill_id, f"#{r.skill_id}"),
         "status": r.status, "mode": r.mode, "flaky": bool(r.flaky),
         "duration_ms": r.duration_ms, "ts": r.created_at.isoformat(),
-    } for r in runs[:10]]
+    } for r in recent_rows]
 
-    # 趋势：最近 14 天每日回放计数（含 pass）
+    # 趋势：最近 14 天每日回放计数（含 pass）——SQL 按日聚合
     days: dict[str, dict] = {}
     today = datetime.now(timezone.utc).replace(tzinfo=None)
     for i in range(13, -1, -1):
         d = today - timedelta(days=i)
         days[_day_key(d)] = {"date": _day_key(d), "total": 0, "pass": 0}
-    for r in runs:
-        k = _day_key(r.created_at.replace(tzinfo=None))
+    since = (today - timedelta(days=13)).replace(
+        hour=0, minute=0, second=0, microsecond=0)
+    trend_rows = db.query(
+        func.date(ReplayRun.created_at), ReplayRun.status, func.count(ReplayRun.id)
+    ).filter(ReplayRun.created_at >= since).group_by(
+        func.date(ReplayRun.created_at), ReplayRun.status).all()
+    for d, status, n in trend_rows:
+        k = str(d)
         if k in days:
-            days[k]["total"] += 1
-            if r.status == "pass":
-                days[k]["pass"] += 1
+            days[k]["total"] += n
+            if status == "pass":
+                days[k]["pass"] += n
 
     reports_total = db.query(func.count(DeltaReport.id)).scalar() or 0
     last_report = db.query(DeltaReport).order_by(DeltaReport.id.desc()).first()
@@ -84,13 +98,17 @@ async def get_dashboard(db: Session = Depends(get_db)) -> dict:
             "created_at": last_report.created_at.isoformat(),
         }
 
-    reviews_pending = db.query(Review).count()
+    # S42：待评审数 = 未评审的 agent_run（此前误统计全部 Review 行，
+    # 字段名与语义不符）
+    reviewed_ids = {rid for (rid,) in db.query(Review.agent_run_id).all()}
+    reviews_pending = db.query(AgentRun).filter(
+        ~AgentRun.id.in_(reviewed_ids or [0])).count()
 
     return {
         "skills": {"total": skills_total, "learned": skills_learned,
                    "candidate": skills_candidate,
                    "generic_learned": generic_learned},
-        "replays": {"total": len(runs), **by_status, "flaky": flaky,
+        "replays": {"total": total, **by_status, "flaky": flaky,
                     "recent": recent},
         "reports": {"total": reports_total, "last": reports_last},
         "reviews_pending": reviews_pending,

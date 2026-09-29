@@ -115,6 +115,7 @@ export interface SkillListItem {
   evidence_count: number;
   notes: string;
   source: string; // demo | real_traffic（S10：会话来源徽标）
+  system: string; // S38：目标系统（后端 list 端点实际返回）
 }
 
 export interface SkeletonStep {
@@ -290,24 +291,6 @@ export interface SkillConsistency {
   assertions: ConsistencyItem[]; // 无观测的断言（ui_text 等）不输出
   consistent: boolean;
   inconsistent_count: number;
-}
-
-// ---------- 类型（S10 基线对比，Task 5） ----------
-
-export interface BaselineSide {
-  count: number;
-  avg_confidence: number | null;
-  avg_pass_rate: number | null;
-}
-
-export interface BaselineCompare {
-  demo: BaselineSide;
-  real_traffic: BaselineSide;
-  vs_baseline: {
-    confidence_ratio: number | null;
-    pass_rate_ratio: number | null;
-    meets_c2: boolean;
-  };
 }
 
 // ---------- 类型（S10.5 块M 审计页） ----------
@@ -499,10 +482,6 @@ export function getSkills(): Promise<SkillListItem[]> {
   return get<SkillListItem[]>("/api/v1/skills");
 }
 
-export function getBaselineCompare(): Promise<BaselineCompare> {
-  return get<BaselineCompare>("/api/v1/baseline/compare");
-}
-
 export function getSkillCard(id: number | string): Promise<SkillCard> {
   return get<SkillCard>(`/api/v1/skills/${id}/card`);
 }
@@ -579,40 +558,6 @@ export async function fetchVisualImage(
 
 export function getReport(id: number | string): Promise<Report> {
   return get<Report>(`/api/v1/reports/${id}`);
-}
-
-// ---------- S28 块 Y：仪表盘 ----------
-
-export interface DashboardRecentRun {
-  id: number;
-  skill_id: number;
-  skill_name: string;
-  status: string;
-  mode: string;
-  flaky: boolean;
-  duration_ms: number | null;
-  ts: string;
-}
-
-export interface DashboardData {
-  skills: { total: number; learned: number; candidate: number; generic_learned: number };
-  replays: {
-    total: number; pass: number; fail: number; error: number; shadow: number;
-    flaky: number; recent: DashboardRecentRun[];
-  };
-  reports: {
-    total: number;
-    last: {
-      id: number; expected: number; missing: number;
-      unexpected: number; drift: number; created_at: string;
-    } | null;
-  };
-  reviews_pending: number;
-  trend: { date: string; total: number; pass: number }[];
-}
-
-export function getDashboard(): Promise<DashboardData> {
-  return get<DashboardData>("/api/v1/dashboard");
 }
 
 // ---------- S25 块 W：Playwright 脚本导出 ----------
@@ -923,6 +868,7 @@ export interface SuiteSkillBrief {
   id: number;
   name: string;
   status: string;
+  system: string;
 }
 
 export interface SuiteItem {
@@ -1001,17 +947,3 @@ export function listSuiteRuns(id: number): Promise<SuiteRunSummary[]> {
 }
 
 export { ApiError };
-
-export interface GenericSkillItem {
-  id: number;
-  name: string;
-  description: string;
-  status: string;
-  source_skill_ids: number[];
-  slots_schema: { slot: string; description: string }[];
-  notes: string;
-}
-
-export async function getGenericSkills(): Promise<GenericSkillItem[]> {
-  return get("/api/v1/generic-skills") as Promise<GenericSkillItem[]>;
-}

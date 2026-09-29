@@ -9,6 +9,7 @@ import time
 from playwright.async_api import async_playwright
 from sqlalchemy.orm import Session
 
+from app.sanitize import sanitize_error
 from app.models import DevPlan
 
 DESIGNER_URL = "http://192.168.99.22/mb3/1/mind-designer/field-edit?formCode={code}"
@@ -104,7 +105,7 @@ async def execute_dev_plan(db: Session, plan: DevPlan) -> DevPlan:
         steps = compile_steps(plan.changes or [])
     except ValueError as e:
         plan.status = "error"
-        plan.execution_log = log + [{"step": "compile", "error": str(e)}]
+        plan.execution_log = log + [{"step": "compile", "error": sanitize_error(e)}]
         db.commit()
         return plan
 
@@ -157,7 +158,7 @@ async def execute_dev_plan(db: Session, plan: DevPlan) -> DevPlan:
                     await browser.close()  # CDP 仅断连
     except Exception as exc:
         plan.status = "error"
-        log.append({"step": "exception", "error": str(exc)[:200]})
+        log.append({"step": "exception", "error": sanitize_error(exc)[:200]})
     plan.execution_log = log
     db.commit()
     db.refresh(plan)

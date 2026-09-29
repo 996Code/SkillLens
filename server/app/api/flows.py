@@ -32,7 +32,7 @@ class FlowGenerateRequest(BaseModel):
 @router.post("/flows/generate", status_code=201)
 async def generate_flow(body: FlowGenerateRequest,
                         db: Session = Depends(get_db)) -> dict:
-    row = synth_flow(db, body.goal, body.system_hint)
+    row = await synth_flow(db, body.goal, body.system_hint)
     return {"id": row.id, "goal": row.goal, "system_hint": row.system_hint,
             "status": row.status, "steps": row.steps, "notes": row.notes,
             "evidence_refs": row.evidence_refs}

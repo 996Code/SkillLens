@@ -22,7 +22,8 @@ const MASK = "[REDACTED]";
 
 export function redactValue(key: string, value: unknown): unknown {
   if (SENSITIVE_KEY_RE.test(key)) return MASK;
-  if (value && typeof value === "object" && !Array.isArray(value)) {
+  if (Array.isArray(value)) return value.map((v) => redactValue(key, v));
+  if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, redactValue(k, v)]),
     );

@@ -8,7 +8,7 @@ from playwright.async_api import Page, async_playwright
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.llm.gateway import complete
+from app.llm.gateway import acomplete
 from app.models import (Alignment, LocateProposal, OutcomeAssertion,
                       RawEvent, ReplayRun, Skill, VisualBaseline)
 from app.replay.assert_eval import evaluate_assertions, path_matches
@@ -16,6 +16,7 @@ from app.replay.locate import locate
 from app.replay.page_snapshot import collect_page_snapshot
 from app.replay.plan import compile_skeleton_plan, requires_confirmation
 from app.replay.repair import generate_proposals, load_repair_map, record_usage
+from app.sanitize import sanitize_error
 from app.replay.flow_graph import derive_states
 from app.replay.visual import compare_images, dhash, visual_dir
 
@@ -406,15 +407,6 @@ async def _execute_skill(db: Session, browser, skill_id: int,
     plan = compile_skeleton_plan(events, skill.skeleton, ref_sid, overrides or {},
                                  skill.input_variables)
 
-    shadow = requires_confirmation(skill.skeleton) and not confirm_side_effect
-    if shadow:
-        run = ReplayRun(skill_id=skill_id, mode="shadow", status="shadow",
-                        plan=plan, executed=None, assertion_results=None)
-        db.add(run)
-        db.commit()
-        db.refresh(run)
-        return run
-
     # CDP 常驻 context 由 _open_context 复用返回，逐 skill 收尾时不能关
     shared_ctx = bool(_cdp_url() and getattr(browser, "contexts", None))
     assertions = [{"kind": a.kind, "payload": a.payload} for a in
@@ -448,10 +440,11 @@ async def _execute_skill(db: Session, browser, skill_id: int,
             attempt = retry
 
     if attempt["status"] == "error" and attempt["error_text"] is not None:
-        # 执行阶段异常也必须落 error run（C3：执行审计不可缺）
+        # 执行阶段异常也必须落 error run（C3：执行审计不可缺）；
+        # 安全红线：error_text 落库前 URL 脱敏
         run = ReplayRun(skill_id=skill_id, mode="execute", status="error",
                         plan=plan, executed=None, assertion_results=None,
-                        attribution=attempt["error_text"])
+                        attribution=sanitize_error(attempt["error_text"]))
         db.add(run)
         db.commit()
         db.refresh(run)
@@ -522,8 +515,13 @@ async def _execute_skill(db: Session, browser, skill_id: int,
             f"失败的断言：{json.dumps(failed_asserts, ensure_ascii=False)}\n"
             "只输出一段中文归因，不超过 100 字。"
         )
-        r = complete(db, "replay_failure_attribution", prompt)
-        run.attribution = r.text
+        # S42：归因失败不得把已落库的 fail run 变成重复 error run
+        # （异常传到 run_replay 兜底会再落一条 error，时间线重复计数）。
+        try:
+            r = await acomplete(db, "replay_failure_attribution", prompt)
+            run.attribution = r.text
+        except Exception as exc:
+            run.attribution = f"归因调用失败：{sanitize_error(exc)}"
         run.artifact_path = attempt["screenshot_path"] or ""
         db.commit()
         db.refresh(run)
@@ -531,10 +529,11 @@ async def _execute_skill(db: Session, browser, skill_id: int,
 
 
 def _error_run(db: Session, skill_id: int, exc: Exception) -> ReplayRun:
-    """启动阶段异常的兜底 error run（C3：此阶段 plan 未编译，落 None）。"""
+    """启动阶段异常的兜底 error run（C3：此阶段 plan 未编译，落 None）。
+    安全红线：attribution 落库前 URL 脱敏（异常常内嵌目标系统地址）。"""
     run = ReplayRun(skill_id=skill_id, mode="execute", status="error",
                     plan=None, executed=None, assertion_results=None,
-                    attribution=str(exc)[:500])
+                    attribution=sanitize_error(exc))
     db.add(run)
     db.commit()
     db.refresh(run)

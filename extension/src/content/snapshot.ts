@@ -25,6 +25,8 @@ export function collectSnapshot(doc: Document, phase: "before" | "after"): Snaps
     if (overflow) return;
     const input = el as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
     if (input.type === "password") return;
+    // autocomplete=password 旁路形态（text 框存密码）同样跳过
+    if ((input.getAttribute("autocomplete") ?? "").toLowerCase().includes("password")) return;
     if (forms.length >= MAX_FIELDS) {
       overflow = true;
       return;

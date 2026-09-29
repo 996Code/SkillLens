@@ -61,9 +61,10 @@ def _dag_confirm(dag: dict) -> bool:
     return False
 
 
-def _suite_item(db: Session, s: TestSuite) -> dict:
+def _suite_item(db: Session, s: TestSuite, systems: dict[int, str] | None = None) -> dict:
     skills = [db.get(Skill, sid) for sid in (s.skill_ids or [])]
-    systems = skill_systems(db)
+    if systems is None:
+        systems = skill_systems(db, s.skill_ids or [])
     return {
         "id": s.id, "name": s.name,
         "skill_ids": s.skill_ids or [],
@@ -116,7 +117,10 @@ async def create_suite(body: SuiteIn, db: Session = Depends(get_db)) -> dict:
 @router.get("/suites")
 async def list_suites(db: Session = Depends(get_db)) -> list:
     rows = db.query(TestSuite).order_by(TestSuite.id.desc()).all()
-    return [_suite_item(db, r) for r in rows]
+    # S42：目标系统一次派生复用（此前每套件一次全表 navigation 扫描）
+    all_ids = sorted({sid for r in rows for sid in (r.skill_ids or [])})
+    systems = skill_systems(db, all_ids)
+    return [_suite_item(db, r, systems) for r in rows]
 
 
 @router.get("/suites/{suite_id}")

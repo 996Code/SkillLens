@@ -16,6 +16,7 @@ from typing import Any, TypedDict
 from langgraph.graph import END, START, StateGraph
 from sqlalchemy.orm import Session
 
+from app.sanitize import sanitize_error
 from app.learning import impact
 from app.models import AgentRun, CanvasDag, utcnow
 from app.replay.runner import run_replay_batch
@@ -290,7 +291,7 @@ async def compile_and_run(db: Session, canvas_row) -> AgentRun:
         # 保证 error commit 不二次抛出（不向上抛承诺，同 run_graph）
         db.rollback()
         run.status = "error"
-        run.error_text = str(exc)[:500]
+        run.error_text = sanitize_error(exc)
         run.finished_at = utcnow()
         db.commit()
     db.refresh(run)

@@ -107,3 +107,33 @@ describe("describeElement 多信号", () => {
     expect(describeElement(el).labels).toEqual([]);
   });
 });
+
+// S42 安全红线：密码/敏感字段值不得经 labels 通道泄漏（双脱敏旁路修复）
+describe("describeElement 脱敏", () => {
+  it("密码框的 value 不进 labels（placeholder 可保留）", () => {
+    const el = make(`<input type="password" placeholder="密码" />`);
+    (el as HTMLInputElement).value = "s3cretPa55";
+    const d = describeElement(el);
+    expect(d.labels).toContain("密码");
+    expect(d.labels).not.toContain("s3cretPa55");
+  });
+
+  it("敏感命名的输入框 value 不进 labels", () => {
+    const el = make(`<input name="token" />`);
+    (el as HTMLInputElement).value = "sk-abc123";
+    expect(describeElement(el).labels).not.toContain("sk-abc123");
+  });
+
+  it("autocomplete=new-password 的 text 输入 value 不进 labels", () => {
+    const el = make(`<input type="text" autocomplete="new-password" placeholder="新密码" />`);
+    (el as HTMLInputElement).value = "plainText";
+    const d = describeElement(el);
+    expect(d.labels).toContain("新密码");
+    expect(d.labels).not.toContain("plainText");
+  });
+
+  it("普通输入框 value 仍可作为信号（不误伤）", () => {
+    const el = make(`<input type="submit" name="save" value="创建第三方" />`);
+    expect(describeElement(el).labels).toContain("创建第三方");
+  });
+});

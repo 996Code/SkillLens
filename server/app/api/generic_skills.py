@@ -67,7 +67,7 @@ def _load_sources(db: Session, skill_ids: list[int]) -> list[Skill]:
 @router.post("/generic-skills/induce")
 async def induce(body: InduceRequest, db: Session = Depends(get_db)) -> dict:
     skills = _load_sources(db, body.skill_ids)
-    return _item(induce_generic(db, skills))
+    return _item(await induce_generic(db, skills))
 
 
 @router.get("/generic-skills")

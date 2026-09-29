@@ -100,7 +100,7 @@ async function load(id: string | number) {
 function submitQuery() {
   const id = queryId.value.trim();
   if (!id || !/^\d+$/.test(id)) return;
-  router.push(`/reports/${id}`);
+  router.push(`/graph/reports/${id}`);
 }
 
 onMounted(() => {

@@ -1,10 +1,29 @@
 <script setup lang="ts">
-// S39 操作流程图（图工作台内）：骨架+断言 → 节点图；
-// 底部该流程的执行历史（点开=执行图）。下钻链：总览→流程图→执行图。
-import { onMounted, ref, watch } from "vue";
+// S39/S42 操作流程图（图工作台内）：骨架+断言 → 节点图 + 详情面板。
+// S42：SkillDetail 独有能力（断言表/变量/自愈提案/视觉回归/导出）并入——
+// 单一流程详情页，旧 /skills/:id 视图废弃。
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { getSkillCard, getSkillFlow } from "../../api";
-import type { FlowGraphDTO, SkillCard } from "../../api";
+import {
+  currentUser,
+  exportSkillPlaywright,
+  fetchVisualImage,
+  getLocateProposals,
+  getSkillCard,
+  getSkillConsistency,
+  getSkillFlow,
+  getVisualBaseline,
+  rejectLocateProposal,
+  resetVisualBaseline,
+} from "../../api";
+import type {
+  AssertionRow,
+  FlowGraphDTO,
+  LocateProposalItem,
+  SkillCard,
+  SkillConsistency,
+  VisualBaselineResponse,
+} from "../../api";
 import FlowGraph from "../../components/FlowGraph.vue";
 
 const route = useRoute();
@@ -13,16 +32,99 @@ const flow = ref<FlowGraphDTO | null>(null);
 const loading = ref(true);
 const error = ref("");
 
+// S12 N4 层5：断言观测一致性（非关键路径失败只藏行）
+const consistency = ref<SkillConsistency | null>(null);
+// S24 块 U：定位修复提案（自愈闭环）
+const proposals = ref<LocateProposalItem[]>([]);
+const proposalBusy = ref(false);
+const user = currentUser();
+const canRejectProposal = computed(
+  () => user?.role === "admin" || user?.role === "reviewer");
+
+// S22 块 T：视觉回归（基线/最新图并排）
+const visual = ref<VisualBaselineResponse | null>(null);
+const visualBaselineUrl = ref("");
+const visualLatestUrl = ref("");
+const visualBusy = ref(false);
+const visualMsg = ref("");
+const canResetVisual = computed(
+  () => user?.role === "admin" || user?.role === "reviewer");
+
+const diffPct = computed(() => {
+  const ratio = visual.value?.last_result?.payload.diff_ratio;
+  return ratio == null ? "—" : `${(ratio * 100).toFixed(2)}%`;
+});
+
+async function loadSideData(id: string): Promise<void> {
+  getSkillConsistency(id)
+    .then((c) => {
+      if (typeof c?.consistent === "boolean") consistency.value = c;
+    })
+    .catch(() => {});
+  try {
+    visual.value = await getVisualBaseline(id);
+    if (visual.value.baseline) {
+      visualBaselineUrl.value = await fetchVisualImage(id, "baseline");
+      if (visual.value.last_result) {
+        visualLatestUrl.value = await fetchVisualImage(id, "latest");
+      }
+    }
+  } catch {
+    visual.value = null;
+  }
+  try {
+    proposals.value = await getLocateProposals(id);
+  } catch {
+    proposals.value = [];
+  }
+}
+
+async function rejectProposal(pid: number): Promise<void> {
+  proposalBusy.value = true;
+  try {
+    await rejectLocateProposal(pid);
+  } catch {
+    /* 409 已否决等：刷新列表兜底 */
+  } finally {
+    proposals.value = await getLocateProposals(String(route.params.skillId))
+      .catch(() => []);
+    proposalBusy.value = false;
+  }
+}
+
+async function resetBaseline(): Promise<void> {
+  visualBusy.value = true;
+  visualMsg.value = "";
+  try {
+    await resetVisualBaseline(String(route.params.skillId));
+    visualMsg.value = "已重置——下次 execute PASS 回放将重建基线";
+    visual.value = await getVisualBaseline(String(route.params.skillId));
+    visualBaselineUrl.value = "";
+    visualLatestUrl.value = "";
+  } catch (e) {
+    visualMsg.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    visualBusy.value = false;
+  }
+}
+
 async function load(): Promise<void> {
   loading.value = true;
   error.value = "";
   card.value = null;
   flow.value = null;
+  consistency.value = null;
+  proposals.value = [];
+  visual.value = null;
+  visualBaselineUrl.value = "";
+  visualLatestUrl.value = "";
   try {
+    const id = String(route.params.skillId);
     [card.value, flow.value] = await Promise.all([
-      getSkillCard(String(route.params.skillId)),
-      getSkillFlow(String(route.params.skillId)),
+      getSkillCard(id),
+      getSkillFlow(id),
     ]);
+    void loadSideData(id);
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -35,6 +137,27 @@ watch(() => route.params.skillId, () => {
   if (route.name === "graph-skill") void load();
 });
 
+/** 断言 payload 摘要：按 kind 提取人读期望。 */
+function payloadSummary(a: AssertionRow): string {
+  const p = a.payload || {};
+  switch (a.kind) {
+    case "api_status":
+      return `${p.api_template} → ${p.expect_status}`;
+    case "state_signal":
+      return `${p.field}=${p.expect_value}（${p.api_template}）`;
+    case "ui_text":
+      return `${p.label}: ${p.before} → ${p.after}`;
+    case "field_change":
+      return `${p.field}: ${p.before} → ${p.after}（${p.api_template}）`;
+    default:
+      return JSON.stringify(p);
+  }
+}
+
+function varValues(values: Record<string, string> | undefined): string[] {
+  return Object.values(values ?? {});
+}
+
 onMounted(() => void load());
 </script>
 
@@ -44,10 +167,23 @@ onMounted(() => void load());
     <p v-else-if="error" class="error">加载失败：{{ error }}</p>
 
     <template v-else-if="card && flow">
-      <h1>{{ card.name }}</h1>
+      <h1>
+        {{ card.name }}
+        <span class="badge" :class="card.status === 'learned' ? 'badge-learned' : 'badge-candidate'">
+          {{ card.status }}
+        </span>
+      </h1>
       <p class="muted page-desc">
         {{ card.description }} · 置信度 {{ Math.round(card.confidence * 100) }}% ·
-        证据 {{ card.evidence_count }}
+        证据 {{ card.evidence_count }} · 断言 {{ card.assertions.length }}
+        <span v-if="consistency">
+          · <span v-if="consistency.runs === 0">一致性：暂无回放观测</span>
+          <span v-else-if="consistency.consistent" class="ok">一致性 ✓</span>
+          <span v-else class="error">一致性：{{ consistency.inconsistent_count }} 项不一致</span>
+        </span>
+      </p>
+      <p v-if="card.superseded_by" class="superseded-hint">
+        ⚠ 该版本已被 v{{ card.superseded_by }} 取代——回放/断言/验证请使用新版本（历史版本仅作审计）
       </p>
 
       <!-- 流程图（骨架+断言节点） -->
@@ -59,16 +195,142 @@ onMounted(() => void load());
         <FlowGraph :nodes="flow.nodes" :edges="flow.edges" />
       </div>
 
-      <!-- 执行历史（下钻到执行图） -->
-      <div v-if="card.last_run" class="block" data-testid="skill-run-history">
+      <!-- 断言表 -->
+      <div class="block">
+        <h2>断言（{{ card.assertions.length }}）</h2>
+        <p v-if="card.assertions.length === 0" class="muted">无</p>
+        <table v-else class="tbl">
+          <thead><tr><th>kind</th><th>layer</th><th>期望</th></tr></thead>
+          <tbody>
+            <tr v-for="a in card.assertions" :key="a.id">
+              <td><span class="badge badge-kind">{{ a.kind }}</span></td>
+              <td>L{{ a.layer }}</td>
+              <td class="mono">{{ payloadSummary(a) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 输入变量 -->
+      <div class="block">
+        <h2>输入变量</h2>
+        <p v-if="card.input_variables.length === 0" class="muted">无</p>
+        <table v-else class="tbl">
+          <thead><tr><th>变量</th><th>采集值</th></tr></thead>
+          <tbody>
+            <tr v-for="v in card.input_variables" :key="v.name">
+              <td>{{ v.name }}</td>
+              <td>
+                <span v-for="(val, i) in varValues(v.values)" :key="i" class="chip">{{ val }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <template v-if="card.param_variables.length">
+          <h3>API 参数变量</h3>
+          <table class="tbl">
+            <thead><tr><th>参数</th><th>采集值</th></tr></thead>
+            <tbody>
+              <tr v-for="p in card.param_variables" :key="String(p.param)">
+                <td>{{ p.param }}</td>
+                <td>
+                  <span v-for="(val, i) in varValues(p.values)" :key="i" class="chip">{{ val }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </template>
+      </div>
+
+      <!-- 自愈提案 -->
+      <div v-if="proposals.length" class="block" data-testid="proposal-section">
+        <h2>自愈提案</h2>
+        <table class="tbl">
+          <thead><tr><th>原标签</th><th>提案标签</th><th>状态</th><th>验证次数</th><th>源归因</th><th v-if="canRejectProposal"></th></tr></thead>
+          <tbody>
+            <tr v-for="p in proposals" :key="p.id">
+              <td class="mono">{{ p.step_label }}</td>
+              <td class="mono">{{ p.proposed_label }}</td>
+              <td>
+                <span class="badge" :class="`badge-${p.status}`">{{ p.status }}</span>
+                <span v-if="p.applied_skill_id" class="muted">→ v#{{ p.applied_skill_id }}</span>
+              </td>
+              <td class="mono">{{ p.verify_count }}</td>
+              <td class="attr-cell" :title="p.attribution ?? ''">
+                {{ (p.attribution ?? "—").slice(0, 40) }}
+              </td>
+              <td v-if="canRejectProposal">
+                <button
+                  v-if="p.status !== 'rejected'"
+                  class="btn btn-sm"
+                  :disabled="proposalBusy"
+                  :data-testid="`reject-${p.id}`"
+                  @click="rejectProposal(p.id)"
+                >否决</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 视觉回归 -->
+      <div v-if="visual" class="block" data-testid="visual-section">
+        <h2>视觉回归</h2>
+        <p v-if="!visual.baseline" class="muted" data-testid="visual-empty">
+          未建立视觉基线——首次 execute PASS 回放后自动建立
+        </p>
+        <template v-else>
+          <dl class="meta">
+            <div>
+              <dt>最近比对</dt>
+              <dd>
+                <span v-if="visual.last_result" class="dot"
+                  :class="visual.last_result.passed ? 'dot-pass' : 'dot-fail'"></span>
+                {{ visual.last_result ? (visual.last_result.passed ? "一致" : "视觉差异") : "未比对（基线刚建立）" }}
+              </dd>
+            </div>
+            <div><dt>差异占比</dt><dd class="mono">{{ diffPct }}</dd></div>
+          </dl>
+          <div class="visual-pair" data-testid="visual-pair">
+            <figure>
+              <img v-if="visualBaselineUrl" :src="visualBaselineUrl" alt="视觉基线截图" />
+              <figcaption>基线</figcaption>
+            </figure>
+            <figure v-if="visualLatestUrl">
+              <img :src="visualLatestUrl" alt="最近回放截图" />
+              <figcaption>最近回放</figcaption>
+            </figure>
+          </div>
+          <button v-if="canResetVisual" class="btn" :disabled="visualBusy"
+            data-testid="visual-reset-btn" @click="resetBaseline">
+            {{ visualBusy ? "重置中…" : "重置基线" }}
+          </button>
+          <span v-if="visualMsg" class="muted">{{ visualMsg }}</span>
+        </template>
+      </div>
+
+      <!-- 执行历史（下钻到执行图）+ 操作入口 -->
+      <div class="block" data-testid="skill-run-history">
         <h2>最近执行</h2>
-        <RouterLink :to="`/graph/run/${card.last_run.id}`" class="run-link">
+        <p v-if="!card.last_run" class="muted">未回放</p>
+        <RouterLink v-else :to="`/graph/run/${card.last_run.id}`" class="run-link">
           <span class="dot" :class="`dot-${card.last_run.status}`"></span>
           {{ card.last_run.status }} · {{ card.last_run.mode }} ·
           {{ card.last_run.ts.replace("T", " ").slice(0, 16) }}
+          <span v-if="card.last_run.flaky" class="badge badge-flaky" data-testid="flaky-badge">flaky</span>
           <span class="muted">（点开看执行图）</span>
         </RouterLink>
       </div>
+
+      <footer class="replay-cta">
+        <RouterLink :to="`/graph/replay/${card.id}`" class="replay-btn btn btn-primary">
+          自动测试此流程
+        </RouterLink>
+        <button class="btn" data-testid="export-playwright-btn"
+          @click="exportSkillPlaywright(card.id).catch(() => {})">
+          导出 Playwright 脚本
+        </button>
+      </footer>
     </template>
   </section>
 </template>
@@ -83,6 +345,53 @@ onMounted(() => void load());
   align-items: center;
   gap: var(--space-2);
   font-size: 14px;
+  text-decoration: none;
+}
+.superseded-hint {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+.meta {
+  margin: var(--space-2) 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+}
+.meta dt {
+  font-size: 12px;
+  color: var(--color-gray-5);
+}
+.meta dd {
+  margin: 2px 0 0;
+}
+.visual-pair {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.visual-pair figure {
+  margin: 0;
+  max-width: 45%;
+}
+.visual-pair img {
+  max-width: 100%;
+  border: 1px solid var(--color-border, #ddd);
+  border-radius: 6px;
+}
+.visual-pair figcaption {
+  font-size: 12px;
+  color: #888;
+  margin-top: 4px;
+}
+.replay-cta {
+  margin-top: var(--space-6);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-gray-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.replay-btn {
   text-decoration: none;
 }
 </style>

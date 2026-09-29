@@ -7,7 +7,7 @@
 """
 from sqlalchemy.orm import Session
 
-from app.llm.gateway import complete
+from app.llm.gateway import acomplete
 from app.learning.skill import parse_llm_skill
 from app.models import Alignment, RawEvent, Skill, SynthFlow
 
@@ -144,12 +144,12 @@ def verify_steps(steps, evidence: dict) -> tuple[bool, str]:
     return True, ""
 
 
-def synth_flow(db: Session, goal: str, system_hint: str) -> SynthFlow:
+async def synth_flow(db: Session, goal: str, system_hint: str) -> SynthFlow:
     """LLM 目标分解 + 确定性回查 → 落库 proposed。回查失败 → notes 记原因
     仍落库（人工看 notes 修订——与 dev_plan 同模式）。evidence_refs 落
     证据快照（C3：提案可追溯）。"""
     evidence = collect_evidence(db, system_hint)
-    result = complete(db, "flow_synthesis", build_prompt(goal, evidence))
+    result = await acomplete(db, "flow_synthesis", build_prompt(goal, evidence))
     proposal = parse_llm_skill(result.text)
     steps: list = []
     notes = ""

@@ -7,7 +7,7 @@ slots_schema（落 llm_call_log，purpose=generic_skill_induction）；
 """
 from sqlalchemy.orm import Session
 
-from app.llm.gateway import complete
+from app.llm.gateway import acomplete
 from app.learning.skill import PASCAL, parse_llm_skill
 from app.models import GenericSkill, OutcomeAssertion, ReplayRun, Skill
 
@@ -98,12 +98,12 @@ def verify_generic_proposal(proposal: dict, skills: list[Skill],
     return True, ""
 
 
-def induce_generic(db: Session, skills: list[Skill]) -> GenericSkill:
+async def induce_generic(db: Session, skills: list[Skill]) -> GenericSkill:
     """从 ≥2 个源 skill 归纳通用模板。回查失败→candidate+notes；
     通过→仍 candidate（晋升 promote 是独立步骤）。全字段落库（C3）。"""
     assertion_texts = _assertion_texts(db, skills)
-    result = complete(db, "generic_skill_induction",
-                      build_prompt(skills, assertion_texts))
+    result = await acomplete(db, "generic_skill_induction",
+                             build_prompt(skills, assertion_texts))
     proposal = parse_llm_skill(result.text)
     name, desc, slots, notes = "Candidate", "", [], ""
     if proposal is None:

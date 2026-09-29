@@ -24,22 +24,27 @@ npm test           # vitest 单测（tests/*.spec.ts，jsdom 环境）
 
 | 路径 | 视图 | 说明 |
 | --- | --- | --- |
-| `/` | — | 重定向 `/skills` |
-| `/login` | `views/LoginView.vue` | 登录页（S21 块 S：唯一免认证页；成功存 token 跳 /skills） |
-| `/skills` | `views/SkillsList.vue` | Skill 卡片网格（name/status/置信度/证据数/断言数/最近 run 状态点） |
-| `/skills/:id` | `views/SkillDetail.vue` | 详情：概要 + 骨架步骤流 + 变量值域 + 断言表 + 窗口参数 + 最近回放；页脚「回放此 Skill」入口 |
-| `/reports/:deltaId` | `views/DeltaReport.vue` | 四分类报告（expected/missing/unexpected/drift 分色卡 + 需求上下文 + id 查询框） |
-| `/replay/:skillId` | `views/ReplayLaunch.vue` | 回放触发（Task 5）：overrides 编辑 + shadow/execute 模式门控 + 结果渲染 |
-| `/replay-runs/:runId` | `views/ReplayRunView.vue` | 回放 run 详情（S34）：状态/flaky/耗时 + 步骤表 + 截图墙（点击放大）+ 断言明细 + 归因 + 快照对比 |
-| `/audit` | `views/AuditView.vue` | 链路审计（S10.5 块 M）：会话列表→trace 下钻（窗口 kept/过滤原因→语义动作→对齐分桶→Skill→回放历史）+ 证据图过滤 + LLM 日志摘要 |
-| `/timeline` | `views/TimelineView.vue` | 链路时间线（S32）：全流水线环节倒序时间轴（8 类型色点+过滤 chip）；LLM 项点击展开完整 prompt/response |
+| `/` | — | 重定向 `/graph` |
+| `/login` | `views/LoginView.vue` | 登录页（S21 块 S：唯一免认证页；成功存 token 跳 /graph） |
+| `/graph` | `views/graph/GraphWorkspace.vue` + `GraphOverview.vue` | 图工作台壳（S39-S42：左树=唯一导航，分组折叠+搜索）+ 系统总览（流水线卡片 + 按系统分组的流程入口） |
+| `/graph/skill/:skillId` | `views/graph/SkillGraphView.vue` | 流程详情（S42 合并旧 SkillDetail）：流程图 + 断言表 + 变量值域 + 自愈提案 + 视觉回归 + 导出/回放入口 |
+| `/graph/suites` | `views/SuitesView.vue` | 测试套件（S37-3）：组合操作流程 → 一键执行 → 汇总 + 执行历史 |
+| `/graph/timeline` | `views/TimelineView.vue` | 测试活动时间线（S37-2 重构）：test_run/recording 两类；include_internal 开发者视角 |
+| `/graph/run/:runId` | `views/ReplayRunView.vue` | 回放 run 详情（S34）：状态/flaky/耗时 + 步骤表 + 截图墙（点击放大）+ 断言明细 + 归因 + 快照对比 |
+| `/graph/replay/:skillId` | `views/ReplayLaunch.vue` | 回放触发（Task 5）：overrides 编辑 + shadow/execute 模式门控 + 结果渲染 |
+| `/graph/reports/:deltaId` | `views/DeltaReport.vue` | 四分类报告（expected/missing/unexpected/drift 分色卡 + 需求上下文 + id 查询框） |
+| `/graph/audit` | `views/AuditView.vue` | 链路审计（S10.5 块 M）：会话列表→trace 下钻（窗口 kept/过滤原因→语义动作→对齐分桶→Skill→回放历史）+ 证据图过滤 + LLM 日志摘要 |
+| `/graph/canvas` | `views/CanvasView.vue` | 编排画布（S14） |
+| `/graph/reviews-portal` | `views/ReviewPortal.vue` | 评审门户（S15） |
+
+旧路径（`/skills/:id`、`/replay-runs/:runId` 等 11 条）全部重定向到对应 `/graph/*` 新路径（不丢深链）。
 
 ## API 依赖清单
 
 | 端点 | 用途 | 消费方 |
 | --- | --- | --- |
-| `GET /api/v1/skills` | Skill 列表 | SkillsList |
-| `GET /api/v1/skills/{id}/card` | Skill 聚合卡片（S9 新增，14 字段） | SkillsList / SkillDetail / ReplayLaunch |
+| `GET /api/v1/skills` | Skill 列表（含 system 目标系统） | GraphWorkspace 左树 / GraphOverview / SuitesView |
+| `GET /api/v1/skills/{id}/card` | Skill 聚合卡片（S9 新增，14 字段） | SkillGraphView / ReplayLaunch |
 | `GET /api/v1/reports/{id}` | 四分类报告行（S9 新增） | DeltaReport |
 | `GET /api/v1/expected-deltas/{id}` | 需求上下文 | DeltaReport |
 | `POST /api/v1/expected-deltas/{id}/observe` | 触发回放观测（同步返回 replay_run_id + replay_status；409 = shadow 未执行 / delta 未确认） | ReplayLaunch |

@@ -9,7 +9,7 @@ import re
 
 from sqlalchemy.orm import Session
 
-from app.llm.gateway import complete
+from app.llm.gateway import acomplete
 from app.learning.skill import parse_llm_skill
 from app.models import DevPlan, RawEvent, Skill
 
@@ -89,11 +89,11 @@ def verify_dev_plan(proposal: dict, target_form: str,
     return True, ""
 
 
-def generate_dev_plan(db: Session, requirement_text: str,
-                      target_form: str) -> DevPlan:
+async def generate_dev_plan(db: Session, requirement_text: str,
+                           target_form: str) -> DevPlan:
     """LLM 结构化 + 确定性回查 → 落库 draft。回查失败→draft+notes
     （人工看 notes 修订——与 expected_delta 同模式）。"""
-    result = complete(db, "dev_plan", build_prompt(requirement_text, target_form))
+    result = await acomplete(db, "dev_plan", build_prompt(requirement_text, target_form))
     proposal = parse_llm_skill(result.text)
     changes: list = []
     notes = ""
