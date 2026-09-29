@@ -56,4 +56,21 @@ describe("describeElement", () => {
     ).querySelector("i")!;
     expect(describeElement(el).tag).toBe("i");
   });
+
+  // S35：input[type=submit] 的 value 是唯一人读标签（Dolibarr 等经典表单）
+  it("提交按钮 input 的 value 兜底为 label", () => {
+    const el = make(`<input type="submit" name="save" value="创建第三方" />`);
+    expect(describeElement(el).label).toBe("创建第三方");
+  });
+
+  // S35：无任何可访问名的图标按钮（Dolibarr 搜索键）——name 属性兜底
+  it("无文本图标按钮的 name 属性兜底为 label", () => {
+    const el = make(`<button type="submit" name="button_search_x"><i class="fa"></i></button>`);
+    expect(describeElement(el).label).toBe("button_search_x");
+  });
+
+  it("有文本时 name 属性不抢先", () => {
+    const el = make(`<button name="btn1">保存</button>`);
+    expect(describeElement(el).label).toBe("保存");
+  });
 });

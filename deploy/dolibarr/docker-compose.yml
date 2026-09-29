@@ -1,0 +1,40 @@
+services:
+  db:
+    image: mariadb:11
+    environment:
+      MARIADB_ROOT_PASSWORD: doli-root-pw-local
+      MARIADB_DATABASE: dolibarr
+      MARIADB_USER: dolibarr
+      MARIADB_PASSWORD: doli-pw-local
+    volumes:
+      - doli-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h localhost -pdoli-root-pw-local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  dolibarr:
+    image: dolibarr/dolibarr:latest
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    environment:
+      DOLI_INSTALL_AUTO: "1"
+      DOLI_DB_HOST: db
+      DOLI_DB_NAME: dolibarr
+      DOLI_DB_USER: dolibarr
+      DOLI_DB_PASSWORD: doli-pw-local
+      DOLI_ADMIN_LOGIN: admin
+      DOLI_ADMIN_PASSWORD: doli-admin-local
+      DOLI_URL_ROOT: "http://127.0.0.1:8080"
+    volumes:
+      - doli-docs:/var/www/documents
+      - doli-custom:/var/www/html/custom
+
+volumes:
+  doli-db-data:
+  doli-docs:
+  doli-custom:

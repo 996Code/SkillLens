@@ -1,0 +1,18 @@
+[
+  {
+    "flow": "OdooUpdateContact",
+    "skill_id": 39
+  },
+  {
+    "flow": "OdooDeleteContact",
+    "skill_id": 40
+  },
+  {
+    "flow": "OdooCreateContactRich",
+    "skill_id": 41
+  },
+  {
+    "flow": "OdooCreateTag",
+    "skill_id": 42
+  }
+]

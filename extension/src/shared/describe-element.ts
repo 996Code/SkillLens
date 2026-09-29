@@ -31,8 +31,25 @@ export function describeElement(el: Element): ElementDesc {
   const label = target.getAttribute("aria-label")
     ?? target.getAttribute("placeholder")
     ?? target.getAttribute("title")
-    ?? text;
+    ?? inputValue(target)
+    ?? (text !== "" ? text : undefined)
+    ?? nameAttr(target);
   return { tag, role, label, text, path: domPath(target) };
+}
+
+/** S35：无任何可访问名的图标按钮（Dolibarr 搜索键 name="button_search_x"）
+ * ——name 属性兜底（机器名但稳定可定位）。 */
+function nameAttr(el: Element): string | undefined {
+  const v = el.getAttribute("name");
+  return v && v.trim() !== "" ? v.trim().slice(0, 100) : undefined;
+}
+
+/** S35：input[type=submit/button] 的 value 是唯一人读标签
+ * （Dolibarr 等经典表单的提交按钮无文本只有 value）。 */
+function inputValue(el: Element): string | undefined {
+  if (!(el instanceof HTMLInputElement)) return undefined;
+  const v = el.value;
+  return typeof v === "string" && v.trim() !== "" ? v.trim().slice(0, 100) : undefined;
 }
 
 function implicitRole(el: Element): string {

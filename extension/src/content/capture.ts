@@ -105,7 +105,10 @@ document.addEventListener(
   "submit",
   (e) => {
     emitSnapshotsAroundAnchor();
-    void emit("action", { type: "submit", target: describeElement(e.target as Element), url: location.href });
+    // S35：描述提交按钮（e.submitter）而非 form——form 的 textContent
+    // 含内联脚本，label 被污染且无法用于回放定位
+    const el = (e as SubmitEvent).submitter ?? (e.target as Element);
+    void emit("action", { type: "submit", target: describeElement(el), url: location.href });
   },
   { capture: true },
 );
