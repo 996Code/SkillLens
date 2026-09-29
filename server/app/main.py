@@ -47,11 +47,17 @@ class SPAStaticFiles(StaticFiles):
 
     async def get_response(self, path: str, scope):
         try:
-            return await super().get_response(path, scope)
+            resp = await super().get_response(path, scope)
         except HTTPException as exc:
             if exc.status_code == 404 and "." not in path.rsplit("/", 1)[-1]:
-                return await super().get_response("index.html", scope)
-            raise
+                resp = await super().get_response("index.html", scope)
+            else:
+                raise
+        # S38：HTML 不缓存（带哈希的 assets 可长缓存）——根治"改版后
+        # 浏览器拿旧 index.html 引旧 JS"的缓存问题（按 content-type 判定）
+        if "text/html" in resp.headers.get("content-type", ""):
+            resp.headers["Cache-Control"] = "no-cache"
+        return resp
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
