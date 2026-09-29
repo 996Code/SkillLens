@@ -47,13 +47,13 @@ onMounted(async () => {
         <h2>流水线（{{ suites.length }}）</h2>
         <p v-if="!suites.length" class="muted">
           暂无流水线，去
-          <RouterLink to="/suites">套件页</RouterLink> 创建
+          <RouterLink to="/graph/suites">套件页</RouterLink> 创建
         </p>
         <div v-else class="pipe-grid">
           <RouterLink
             v-for="s in suites"
             :key="s.id"
-            to="/suites"
+            to="/graph/suites"
             class="pipe-card"
             :data-testid="`pipe-${s.id}`"
           >

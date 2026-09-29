@@ -68,12 +68,12 @@ async function mountView(root: HTMLElement) {
     history: createMemoryHistory(),
     routes: [
       { path: "/", component: { render: () => null } },
-      { path: "/replay-runs/:runId", component: { render: () => null } },
-      { path: "/skills/:id", component: { render: () => null } },
-      { path: "/timeline", component: { render: () => null } },
+      { path: "/graph/run/:runId", component: { render: () => null } },
+      { path: "/graph/skill/:id", component: { render: () => null } },
+      { path: "/graph/timeline", component: { render: () => null } },
     ],
   });
-  await router.push("/replay-runs/9");
+  await router.push("/graph/run/9");
   const app = createApp({ render: () => h(ReplayRunView) });
   app.use(router);
   app.mount(root);
@@ -105,7 +105,7 @@ describe("ReplayRunView", () => {
     expect(root.textContent).toContain("flaky");
     expect(root.textContent).toContain("4321ms");
     expect(root.textContent).toContain("2026-09-28 12:00");
-    const skillLink = root.querySelector<HTMLAnchorElement>("a[href='/skills/5']");
+    const skillLink = root.querySelector<HTMLAnchorElement>("a[href='/graph/skill/5']");
     expect(skillLink?.textContent).toContain("Skill #5");
 
     // 执行步骤表：2 步（ok/failed + 定位策略 + 失败原因）

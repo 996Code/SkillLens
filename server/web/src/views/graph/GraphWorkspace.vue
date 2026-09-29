@@ -1,14 +1,13 @@
 <script setup lang="ts">
-// S39 图工作台壳：流程图基座的导航骨架——
-//   左：图导航树（系统总览→流水线→流程，当前层高亮）
-//   中：当前层级的图（RouterView：总览/流程图/执行图）
-// 旧页面（报告/审计/编排等）保留深链，从树底部可达。
+// S39b 图工作台壳（唯一导航壳）：左树=全系统导航 + 登出；
+// 中=RouterView（所有页面都在壳内渲染）。
 import { computed, onMounted, ref } from "vue";
-import { useRoute } from "vue-router";
-import { getSkills, listSuites } from "../../api";
+import { useRoute, useRouter } from "vue-router";
+import { getSkills, listSuites, logout } from "../../api";
 import type { SkillListItem, SuiteItem } from "../../api";
 
 const route = useRoute();
+const router = useRouter();
 const suites = ref<SuiteItem[]>([]);
 const skills = ref<SkillListItem[]>([]);
 const loading = ref(true);
@@ -25,25 +24,33 @@ async function load(): Promise<void> {
   }
 }
 onMounted(() => void load());
+
+async function doLogout(): Promise<void> {
+  await logout();
+  router.push("/login");
+}
 </script>
 
 <template>
   <div class="gw-shell" data-testid="graph-workspace">
-    <!-- 左：图导航树 -->
+    <!-- 左：全系统导航树 -->
     <aside class="gw-tree">
-      <div class="gw-tree-title">图导航</div>
+      <div class="gw-brand">SkillLens</div>
       <RouterLink to="/graph" class="gw-tree-root" data-testid="gw-overview-link">
         ◈ 系统总览
       </RouterLink>
-      <div v-if="suites.length" class="gw-tree-group">流水线</div>
+
+      <div class="gw-tree-group">流水线（{{ suites.length }}）</div>
+      <RouterLink to="/graph/suites" class="gw-tree-leaf">▤ 套件管理</RouterLink>
       <RouterLink
-        v-for="s in suites"
+        v-for="s in suites.slice(0, 5)"
         :key="s.id"
-        to="/suites"
+        to="/graph/suites"
         class="gw-tree-leaf"
       >
-        ▤ {{ s.name }}
+        └ {{ s.name }}
       </RouterLink>
+
       <div class="gw-tree-group">操作流程（{{ skills.length }}）</div>
       <div class="gw-tree-scroll">
         <RouterLink
@@ -52,20 +59,30 @@ onMounted(() => void load());
           :to="`/graph/skill/${s.id}`"
           class="gw-tree-leaf"
           :class="{ active: currentSkillId === String(s.id) }"
-          :data-testid="`gw-skill-${s.id}`"
         >
           <span class="gw-sys">{{ (s as { system?: string }).system || "" }}</span>
           {{ s.name }}
         </RouterLink>
       </div>
-      <div class="gw-tree-group">其他</div>
-      <RouterLink to="/dashboard" class="gw-tree-leaf">▤ 仪表盘</RouterLink>
-      <RouterLink to="/reports/1" class="gw-tree-leaf">⌕ 报告</RouterLink>
-      <RouterLink to="/audit" class="gw-tree-leaf">⬡ 审计</RouterLink>
-      <RouterLink to="/canvas" class="gw-tree-leaf">✎ 编排</RouterLink>
+
+      <div class="gw-tree-group">测试活动</div>
+      <RouterLink to="/graph/timeline" class="gw-tree-leaf">⌇ 时间线</RouterLink>
+
+      <div class="gw-tree-group">工具</div>
+      <RouterLink to="/graph/canvas" class="gw-tree-leaf">✎ 编排画布</RouterLink>
+      <RouterLink to="/graph/audit" class="gw-tree-leaf">⬡ 审计</RouterLink>
+      <RouterLink to="/graph/reports/1" class="gw-tree-leaf">⌕ 报告</RouterLink>
+      <RouterLink to="/graph/reviews-portal" class="gw-tree-leaf">✓ 评审</RouterLink>
+
+      <div class="gw-tree-foot">
+        <button class="logout-btn" data-testid="logout-btn" @click="doLogout">
+          登出
+        </button>
+        <div class="tagline">变更智能工作台</div>
+      </div>
     </aside>
 
-    <!-- 中：当前层级的图 -->
+    <!-- 中：当前页面（所有路由都在壳内） -->
     <main class="gw-canvas">
       <RouterView @graph-changed="load" />
     </main>
@@ -85,13 +102,16 @@ onMounted(() => void load());
   background: var(--color-gray-1);
   overflow-y: auto;
   padding: var(--space-3) var(--space-2);
+  display: flex;
+  flex-direction: column;
 }
-.gw-tree-title {
-  font-size: 12px;
+.gw-brand {
   font-weight: 700;
-  color: var(--color-gray-5);
-  padding: 0 var(--space-2) var(--space-2);
-  letter-spacing: 0.05em;
+  font-size: 16px;
+  color: var(--color-gray-8);
+  padding: var(--space-2) var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-gray-3);
+  margin-bottom: var(--space-2);
 }
 .gw-tree-root {
   display: block;
@@ -113,7 +133,7 @@ onMounted(() => void load());
   font-weight: 600;
 }
 .gw-tree-scroll {
-  max-height: 40vh;
+  max-height: 35vh;
   overflow-y: auto;
 }
 .gw-tree-leaf {
@@ -140,6 +160,31 @@ onMounted(() => void load());
   font-size: 10px;
   color: var(--color-gray-5);
   margin-right: 4px;
+}
+.gw-tree-foot {
+  margin-top: auto;
+  padding: var(--space-3) var(--space-2);
+  border-top: 1px solid var(--color-gray-3);
+}
+.logout-btn {
+  width: 100%;
+  padding: 6px 0;
+  background: transparent;
+  color: var(--color-gray-5);
+  border: 1px solid var(--color-gray-4);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.logout-btn:hover {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+.tagline {
+  font-size: 11px;
+  color: var(--color-gray-5);
+  text-align: center;
+  margin-top: var(--space-1);
 }
 .gw-canvas {
   flex: 1;

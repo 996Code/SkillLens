@@ -53,9 +53,10 @@ function mockFetch(withProposals = true) {
 async function mountDetail(root: HTMLElement) {
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: "/skills/:id", component: { render: () => null } }],
+    routes: [
+      { path: "/graph/run/:runId", component: { render: () => null } },{ path: "/graph/skill/:id", component: { render: () => null } }],
   });
-  await router.push("/skills/3");
+  await router.push("/graph/skill/3");
   const app = createApp({ render: () => h(SkillDetail) });
   app.use(router);
   app.mount(root);

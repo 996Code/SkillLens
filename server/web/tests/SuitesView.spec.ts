@@ -66,12 +66,12 @@ async function mountView(root: HTMLElement) {
     history: createMemoryHistory(),
     routes: [
       { path: "/", component: { render: () => null } },
-      { path: "/suites", component: { render: () => null } },
-      { path: "/skills/:id", component: { render: () => null } },
-      { path: "/replay-runs/:runId", component: { render: () => null } },
+      { path: "/graph/suites", component: { render: () => null } },
+      { path: "/graph/skill/:id", component: { render: () => null } },
+      { path: "/graph/run/:runId", component: { render: () => null } },
     ],
   });
-  await router.push("/suites");
+  await router.push("/graph/suites");
   const app = createApp({ render: () => h(SuitesView) });
   app.use(router);
   app.mount(root);
@@ -144,7 +144,7 @@ describe("SuitesView", () => {
     expect(summary).not.toBeNull();
     expect(summary?.textContent).toContain("通过 1");
     expect(summary?.textContent).toContain("预演 1");
-    const link = summary?.querySelector<HTMLAnchorElement>("a[href='/replay-runs/190']");
+    const link = summary?.querySelector<HTMLAnchorElement>("a[href='/graph/run/190']");
     expect(link?.textContent).toContain("run #190");
   });
 

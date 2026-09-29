@@ -162,7 +162,7 @@ onMounted(async () => {
     <div v-else-if="notFound" class="empty">
       <span class="empty-icon">∅</span>
       <h1 class="empty-title">404</h1>
-      <p class="empty-sub">Skill 不存在（可能已被 re-induce 重建，<RouterLink to="/skills">返回列表</RouterLink>）。</p>
+      <p class="empty-sub">Skill 不存在（可能已被 re-induce 重建，<RouterLink to="/graph">返回列表</RouterLink>）。</p>
     </div>
     <p v-else-if="error" class="error">加载失败：{{ error }}</p>
 
@@ -364,7 +364,7 @@ onMounted(async () => {
 
       <!-- 页脚：回放入口（Task 5，U1 缓解：详情页给"接下来做什么"的显式引导） -->
       <footer class="replay-cta">
-        <RouterLink :to="`/replay/${card.id}`" class="replay-btn btn btn-primary">自动测试此流程</RouterLink>
+        <RouterLink :to="`/graph/replay/${card.id}`" class="replay-btn btn btn-primary">自动测试此流程</RouterLink>
         <button
           class="btn"
           data-testid="export-playwright-btn"

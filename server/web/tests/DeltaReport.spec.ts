@@ -35,8 +35,10 @@ async function mountReport(root: HTMLElement, path: string) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
+      { path: "/graph/skill/:id", component: { render: () => null } },
+      { path: "/graph/run/:runId", component: { render: () => null } },
       { path: "/", component: { render: () => null } },
-      { path: "/reports/:deltaId", component: { render: () => null } },
+      { path: "/graph/reports/:deltaId", component: { render: () => null } },
     ],
   });
   await router.push(path);
@@ -68,7 +70,7 @@ describe("DeltaReport", () => {
 
     const root = document.createElement("div");
     document.body.appendChild(root);
-    await mountReport(root, "/reports/1");
+    await mountReport(root, "/graph/reports/1");
     await flush();
     await flush();
 
@@ -101,7 +103,7 @@ describe("DeltaReport", () => {
   it("renders query box (no list entry yet) on any state", async () => {
     const root = document.createElement("div");
     document.body.appendChild(root);
-    await mountReport(root, "/reports/1");
+    await mountReport(root, "/graph/reports/1");
     expect(root.querySelector(".query input")).not.toBeNull();
     expect(root.querySelector(".query button")).not.toBeNull();
   });
@@ -110,7 +112,7 @@ describe("DeltaReport", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("x", { status: 404 })));
     const root = document.createElement("div");
     document.body.appendChild(root);
-    await mountReport(root, "/reports/1");
+    await mountReport(root, "/graph/reports/1");
     await flush();
     expect(root.textContent).toContain("报告不存在");
   });
@@ -145,7 +147,7 @@ describe("DeltaReport", () => {
 
     const root = document.createElement("div");
     document.body.appendChild(root);
-    await mountReport(root, "/reports/1");
+    await mountReport(root, "/graph/reports/1");
     await flush();
     await flush();
 
@@ -177,7 +179,7 @@ describe("DeltaReport perf block (S23)", () => {
     }));
     const root = document.createElement("div");
     document.body.appendChild(root);
-    await mountReport(root, "/reports/1");
+    await mountReport(root, "/graph/reports/1");
     for (let i = 0; i < 6; i++) await flush();
 
     const block = root.querySelector("[data-testid='perf-block']");
@@ -204,7 +206,7 @@ describe("DeltaReport perf block (S23)", () => {
     }));
     const root = document.createElement("div");
     document.body.appendChild(root);
-    await mountReport(root, "/reports/1");
+    await mountReport(root, "/graph/reports/1");
     await flush();
     await flush();
     await flush();

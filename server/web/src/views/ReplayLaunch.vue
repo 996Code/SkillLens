@@ -112,7 +112,7 @@ onMounted(async () => {
     <div v-else-if="notFound" class="empty">
       <span class="empty-icon">∅</span>
       <h1 class="empty-title">404</h1>
-      <p class="empty-sub">Skill 不存在（<RouterLink to="/skills">返回列表</RouterLink>）。</p>
+      <p class="empty-sub">Skill 不存在（<RouterLink to="/graph">返回列表</RouterLink>）。</p>
     </div>
     <p v-else-if="error" class="error">加载失败：{{ error }}</p>
 

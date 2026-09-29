@@ -29,9 +29,10 @@ async function mountReplay(root: HTMLElement, path: string) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
+      { path: "/graph/run/:runId", component: { render: () => null } },
       { path: "/", component: { render: () => null } },
-      { path: "/skills/:id", component: { render: () => null } },
-      { path: "/replay/:skillId", component: { render: () => null } },
+      { path: "/graph/skill/:id", component: { render: () => null } },
+      { path: "/graph/replay/:skillId", component: { render: () => null } },
     ],
   });
   await router.push(path);
@@ -119,7 +120,7 @@ describe("ReplayLaunch 门控（C1 UI）", () => {
     vi.stubGlobal("fetch", fetchMock);
     const root = document.createElement("div");
     document.body.appendChild(root);
-    await mountReplay(root, "/replay/6");
+    await mountReplay(root, "/graph/replay/6");
     await flush();
     await flush();
 
@@ -147,7 +148,7 @@ describe("ReplayLaunch 门控（C1 UI）", () => {
     vi.stubGlobal("fetch", mockFetch());
     const root = document.createElement("div");
     document.body.appendChild(root);
-    await mountReplay(root, "/replay/6");
+    await mountReplay(root, "/graph/replay/6");
     await flush();
     await flush();
 
@@ -169,7 +170,7 @@ describe("ReplayLaunch 门控（C1 UI）", () => {
     vi.stubGlobal("fetch", fetchMock);
     const root = document.createElement("div");
     document.body.appendChild(root);
-    await mountReplay(root, "/replay/6");
+    await mountReplay(root, "/graph/replay/6");
     await flush();
     await flush();
 
@@ -202,7 +203,7 @@ describe("ReplayLaunch 结果渲染", () => {
       new Response(JSON.stringify(observeOk), { status: 201 })));
     const root = document.createElement("div");
     document.body.appendChild(root);
-    await mountReplay(root, "/replay/6");
+    await mountReplay(root, "/graph/replay/6");
     await flush();
     await flush();
     await submit(root);

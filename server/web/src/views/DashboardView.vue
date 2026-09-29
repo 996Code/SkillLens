@@ -174,7 +174,7 @@ onMounted(async () => {
                 <span v-if="r.flaky" class="badge badge-changes_requested" style="margin-left:4px">flaky</span>
               </td>
               <td>
-                <RouterLink :to="`/skills/${r.skill_id}`">{{ r.skill_name }}</RouterLink>
+                <RouterLink :to="`/graph/skill/${r.skill_id}`">{{ r.skill_name }}</RouterLink>
               </td>
               <td>{{ r.mode }}</td>
               <td class="mono">{{ r.duration_ms != null ? r.duration_ms + 'ms' : '—' }}</td>

@@ -47,8 +47,9 @@ async function mountView(root: HTMLElement, view: unknown, path: string) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: "/skills/:id", component: { render: () => null } },
-      { path: "/reports/:deltaId", component: { render: () => null } },
+      { path: "/graph/run/:runId", component: { render: () => null } },
+      { path: "/graph/skill/:id", component: { render: () => null } },
+      { path: "/graph/reports/:deltaId", component: { render: () => null } },
     ],
   });
   await router.push(path);
@@ -74,7 +75,7 @@ describe("S25 integration UI", () => {
     }));
     const root = document.createElement("div");
     document.body.appendChild(root);
-    await mountView(root, SkillDetail, "/skills/3");
+    await mountView(root, SkillDetail, "/graph/skill/3");
     for (let i = 0; i < 6; i++) await flush();
     expect(root.querySelector("[data-testid='export-playwright-btn']")
       ?.textContent).toContain("导出 Playwright 脚本");
@@ -90,7 +91,7 @@ describe("S25 integration UI", () => {
     }));
     const root = document.createElement("div");
     document.body.appendChild(root);
-    await mountView(root, DeltaReport, "/reports/1");
+    await mountView(root, DeltaReport, "/graph/reports/1");
     for (let i = 0; i < 6; i++) await flush();
     expect(root.querySelector("[data-testid='external-ref']")?.textContent)
       .toContain("PROJ-123");
@@ -105,7 +106,7 @@ describe("S25 integration UI", () => {
       "/api/v1/reports/1": report,
       "/api/v1/expected-deltas/5": { ...expectedDeltaWithRef, external_ref: null },
     }));
-    await mountView(root2, DeltaReport, "/reports/1");
+    await mountView(root2, DeltaReport, "/graph/reports/1");
     for (let i = 0; i < 6; i++) await flush();
     expect(root2.querySelector("[data-testid='external-ref']")).toBeNull();
   });

@@ -72,13 +72,13 @@ async function mountTimeline(root: HTMLElement) {
     history: createMemoryHistory(),
     routes: [
       { path: "/", component: { render: () => null } },
-      { path: "/timeline", component: { render: () => null } },
-      { path: "/replay-runs/:runId", component: { render: () => null } },
-      { path: "/skills/:id", component: { render: () => null } },
-      { path: "/audit", component: { render: () => null } },
+      { path: "/graph/timeline", component: { render: () => null } },
+      { path: "/graph/run/:runId", component: { render: () => null } },
+      { path: "/graph/skill/:id", component: { render: () => null } },
+      { path: "/graph/audit", component: { render: () => null } },
     ],
   });
-  await router.push("/timeline");
+  await router.push("/graph/timeline");
   const app = createApp({ render: () => h(TimelineView) });
   app.use(router);
   app.mount(root);
@@ -186,7 +186,7 @@ describe("TimelineView", () => {
     const detail = root.querySelector("[data-testid='rec-detail']");
     expect(detail).not.toBeNull();
     expect(detail?.textContent).toContain("学到的操作流程（1）");
-    const link = detail?.querySelector<HTMLAnchorElement>("a[href='/skills/5']");
+    const link = detail?.querySelector<HTMLAnchorElement>("a[href='/graph/skill/5']");
     expect(link?.textContent).toContain("SaveForm");
   });
 

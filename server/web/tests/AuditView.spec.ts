@@ -83,12 +83,14 @@ async function mountAudit(root: HTMLElement) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
+      { path: "/graph/run/:runId", component: { render: () => null } },
       { path: "/", component: { render: () => null } },
-      { path: "/audit", component: { render: () => null } },
-      { path: "/skills/:id", component: { render: () => null } },
+      { path: "/graph/audit", component: { render: () => null } },
+      { path: "/graph/skill/:id", component: { render: () => null } },
+      { path: "/graph/skill/:id", component: { render: () => null } },
     ],
   });
-  await router.push("/audit");
+  await router.push("/graph/audit");
   const app = createApp({ render: () => h(AuditView) });
   app.use(router);
   app.mount(root);
@@ -159,7 +161,7 @@ describe("AuditView", () => {
     expect(block?.textContent).toContain("后快照 forms 3");
     // 对齐 / Skill 链接 / 回放历史
     expect(block?.textContent).toContain("骨架步数");
-    const skillLink = block?.querySelector<HTMLAnchorElement>("a[href='/skills/5']");
+    const skillLink = block?.querySelector<HTMLAnchorElement>("a[href='/graph/skill/5']");
     expect(skillLink?.textContent).toContain("SaveForm");
     expect(block?.textContent).toContain("pass");
   });

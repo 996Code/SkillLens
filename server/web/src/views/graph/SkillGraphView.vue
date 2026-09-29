@@ -51,7 +51,7 @@ onMounted(async () => {
       <!-- 执行历史（下钻到执行图） -->
       <div v-if="card.last_run" class="block" data-testid="skill-run-history">
         <h2>最近执行</h2>
-        <RouterLink :to="`/replay-runs/${card.last_run.id}`" class="run-link">
+        <RouterLink :to="`/graph/run/${card.last_run.id}`" class="run-link">
           <span class="dot" :class="`dot-${card.last_run.status}`"></span>
           {{ card.last_run.status }} · {{ card.last_run.mode }} ·
           {{ card.last_run.ts.replace("T", " ").slice(0, 16) }}

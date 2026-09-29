@@ -38,11 +38,12 @@ async function mountDash(root: HTMLElement) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: "/dashboard", component: { render: () => null } },
-      { path: "/skills/:id", component: { render: () => null } },
+      { path: "/graph/run/:runId", component: { render: () => null } },
+      { path: "/graph", component: { render: () => null } },
+      { path: "/graph/skill/:id", component: { render: () => null } },
     ],
   });
-  await router.push("/dashboard");
+  await router.push("/graph");
   const app = createApp({ render: () => h(DashboardView) });
   app.use(router);
   app.mount(root);

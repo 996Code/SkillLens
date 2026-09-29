@@ -156,7 +156,7 @@ onMounted(async () => {
       <RouterLink
         v-for="s in filteredSkills"
         :key="s.id"
-        :to="`/skills/${s.id}`"
+        :to="`/graph/skill/${s.id}`"
         class="card skill-card"
       >
         <div class="card-head">

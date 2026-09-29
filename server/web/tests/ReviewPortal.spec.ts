@@ -75,11 +75,13 @@ async function mountPortal(root: HTMLElement) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
+      { path: "/graph/skill/:id", component: { render: () => null } },
+      { path: "/graph/run/:runId", component: { render: () => null } },
       { path: "/", component: { render: () => null } },
-      { path: "/reviews-portal", component: { render: () => null } },
+      { path: "/graph/reviews-portal", component: { render: () => null } },
     ],
   });
-  await router.push("/reviews-portal");
+  await router.push("/graph/reviews-portal");
   const app = createApp({ render: () => h(ReviewPortal) });
   app.use(router);
   app.mount(root);

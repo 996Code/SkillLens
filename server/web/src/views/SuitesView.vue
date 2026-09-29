@@ -168,7 +168,7 @@ onMounted(() => void load());
       </div>
       <ul class="suite-skills">
         <li v-for="sk in s.skills" :key="sk.id">
-          <RouterLink :to="`/skills/${sk.id}`">{{ sk.name }}</RouterLink>
+          <RouterLink :to="`/graph/skill/${sk.id}`">{{ sk.name }}</RouterLink>
         </li>
       </ul>
     </div>
@@ -197,7 +197,7 @@ onMounted(() => void load());
               <span class="dot" :class="`dot-${r.status}`"></span>{{ r.status }}
             </td>
             <td>{{ r.mode }}</td>
-            <td><RouterLink :to="`/replay-runs/${r.run_id}`">run #{{ r.run_id }}</RouterLink></td>
+            <td><RouterLink :to="`/graph/run/${r.run_id}`">run #{{ r.run_id }}</RouterLink></td>
           </tr>
         </tbody>
       </table>

@@ -11,10 +11,11 @@ function mountView(root: HTMLElement, view: unknown, path: string) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
+      { path: "/graph/run/:runId", component: { render: () => null } },
       { path: "/", component: { render: () => null } },
-      { path: "/skills", component: { render: () => null } },
-      { path: "/skills/:id", component: { render: () => null } },
-      { path: "/replay/:skillId", component: { render: () => null } },
+      { path: "/graph", component: { render: () => null } },
+      { path: "/graph/skill/:id", component: { render: () => null } },
+      { path: "/graph/replay/:skillId", component: { render: () => null } },
     ],
   });
   router.push(path);
@@ -97,7 +98,7 @@ describe("SkillsList", () => {
 
     const root = document.createElement("div");
     document.body.appendChild(root);
-    mountView(root, SkillsList, "/skills");
+    mountView(root, SkillsList, "/graph");
     await flush();
     await flush();
 
@@ -129,7 +130,7 @@ describe("SkillsList", () => {
     }));
     const root = document.createElement("div");
     document.body.appendChild(root);
-    mountView(root, SkillsList, "/skills");
+    mountView(root, SkillsList, "/graph");
     await flush();
     await flush();
     expect(root.textContent).toContain("暂无 Skill，先录制并归纳");
@@ -185,7 +186,7 @@ describe("SkillsList", () => {
     }));
     const root = document.createElement("div");
     document.body.appendChild(root);
-    mountView(root, SkillsList, "/skills");
+    mountView(root, SkillsList, "/graph");
     await flush();
     await flush();
 
@@ -206,7 +207,7 @@ describe("SkillsList", () => {
     }));
     const root = document.createElement("div");
     document.body.appendChild(root);
-    mountView(root, SkillsList, "/skills");
+    mountView(root, SkillsList, "/graph");
     await flush();
     await flush();
 
@@ -229,7 +230,7 @@ describe("SkillsList", () => {
     }));
     const root = document.createElement("div");
     document.body.appendChild(root);
-    mountView(root, SkillsList, "/skills");
+    mountView(root, SkillsList, "/graph");
     await flush();
     await flush();
 
@@ -248,7 +249,7 @@ describe("SkillsList", () => {
     }));
     const root = document.createElement("div");
     document.body.appendChild(root);
-    mountView(root, SkillsList, "/skills");
+    mountView(root, SkillsList, "/graph");
     await flush();
     await flush();
 
@@ -264,7 +265,7 @@ describe("SkillsList", () => {
       { status: 500, body: "boom" }));
     const root = document.createElement("div");
     document.body.appendChild(root);
-    mountView(root, SkillsList, "/skills");
+    mountView(root, SkillsList, "/graph");
     await flush();
     await flush();
 
@@ -305,7 +306,7 @@ describe("SkillDetail", () => {
       new Response(JSON.stringify(card), { status: 200 })));
     const root = document.createElement("div");
     document.body.appendChild(root);
-    mountView(root, SkillDetail, "/skills/3");
+    mountView(root, SkillDetail, "/graph/skill/3");
     await flush();
 
     expect(root.textContent).toContain("SaveForm");
@@ -331,7 +332,7 @@ describe("SkillDetail", () => {
     expect(root.textContent).toContain("2026-09-24 10:00:00");
     // 页脚回放入口（Task 5）：链接指向 /replay/3
     const cta = root.querySelector<HTMLAnchorElement>(".replay-btn");
-    expect(cta?.getAttribute("href")).toBe("/replay/3");
+    expect(cta?.getAttribute("href")).toBe("/graph/replay/3");
     expect(cta?.textContent).toContain("自动测试此流程");
   });
 
@@ -368,7 +369,7 @@ describe("SkillDetail", () => {
     }));
     let root = document.createElement("div");
     document.body.appendChild(root);
-    mountView(root, SkillDetail, "/skills/3");
+    mountView(root, SkillDetail, "/graph/skill/3");
     await flush();
     await flush();
     expect(root.querySelector("[data-testid='consistency']")?.textContent)
@@ -385,7 +386,7 @@ describe("SkillDetail", () => {
     }));
     root = document.createElement("div");
     document.body.appendChild(root);
-    mountView(root, SkillDetail, "/skills/3");
+    mountView(root, SkillDetail, "/graph/skill/3");
     await flush();
     await flush();
     expect(root.querySelector("[data-testid='consistency']")?.textContent)

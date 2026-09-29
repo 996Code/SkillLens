@@ -69,10 +69,13 @@ async def list_skills(db: Session = Depends(get_db)) -> list:
     # S15：列表默认排除 superseded（历史版本不进工作台列表）
     rows = db.query(Skill).filter(Skill.status != "superseded") \
         .order_by(Skill.id.desc()).all()
+    # S38：目标系统（参考会话首条 navigation host 派生，批量一次）
+    systems = skill_systems(db)
     return [{"id": r.id, "alignment_id": r.alignment_id, "name": r.name,
              "description": r.description, "status": r.status,
              "confidence": r.confidence, "evidence_count": r.evidence_count,
-             "notes": r.notes, "source": source_of(r)} for r in rows]
+             "notes": r.notes, "source": source_of(r),
+             "system": systems.get(r.id, "未知系统")} for r in rows]
 
 
 @router.post("/skills/{skill_id}/assertions")

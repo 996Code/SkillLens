@@ -244,7 +244,7 @@ onMounted(() => void load());
               <template v-else>
                 <p class="muted shot-hint">{{ replayShots.length }} 张步骤画面</p>
                 <div class="shot-links">
-                  <RouterLink :to="`/replay-runs/${it.id}`" class="btn btn-secondary">
+                  <RouterLink :to="`/graph/run/${it.id}`" class="btn btn-secondary">
                     下钻 run 详情
                   </RouterLink>
                 </div>
@@ -262,11 +262,11 @@ onMounted(() => void load());
               <p class="muted shot-hint">学到的操作流程（{{ (it.skills || []).length }}）</p>
               <ul class="skill-list">
                 <li v-for="s in it.skills || []" :key="s.id">
-                  <RouterLink :to="`/skills/${s.id}`">{{ s.name }}</RouterLink>
+                  <RouterLink :to="`/graph/skill/${s.id}`">{{ s.name }}</RouterLink>
                 </li>
               </ul>
               <div class="shot-links">
-                <RouterLink to="/skills" class="btn btn-secondary">
+                <RouterLink to="/graph" class="btn btn-secondary">
                   查看全部操作流程
                 </RouterLink>
               </div>

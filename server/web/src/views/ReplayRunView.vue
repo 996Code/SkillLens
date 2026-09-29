@@ -63,7 +63,7 @@ onMounted(async () => {
     <div v-else-if="notFound" class="empty">
       <span class="empty-icon">∅</span>
       <h1 class="empty-title">404</h1>
-      <p class="empty-sub">回放 run 不存在（<RouterLink to="/timeline">返回时间线</RouterLink>）。</p>
+      <p class="empty-sub">回放 run 不存在（<RouterLink to="/graph/timeline">返回时间线</RouterLink>）。</p>
     </div>
     <p v-else-if="error" class="error">加载失败：{{ error }}</p>
 
@@ -71,7 +71,7 @@ onMounted(async () => {
       <header>
         <h1>回放 run #{{ run.id }}</h1>
         <p class="run-line">
-          <RouterLink :to="`/skills/${run.skill_id}`">Skill #{{ run.skill_id }}</RouterLink>
+          <RouterLink :to="`/graph/skill/${run.skill_id}`">Skill #{{ run.skill_id }}</RouterLink>
           <span class="run-status" :class="`st-${run.status}`">{{ run.status }}</span>
           <span class="badge badge-kind">{{ run.mode }}</span>
           <span v-if="run.flaky" class="badge badge-changes_requested">flaky</span>

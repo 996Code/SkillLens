@@ -19,8 +19,10 @@ async function mountLogin(root: HTMLElement) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
+      { path: "/graph/skill/:id", component: { render: () => null } },
+      { path: "/graph/run/:runId", component: { render: () => null } },
       { path: "/login", component: LoginView },
-      { path: "/skills", component: { render: () => h("div") } },
+      { path: "/graph", component: { render: () => h("div") } },
     ],
   });
   await router.push("/login");
@@ -115,7 +117,7 @@ describe("S21 router guard", () => {
     const push = (path: string) => router.push(path);
 
     clearSession();
-    await push("/dashboard");
+    await push("/graph");
     expect(router.currentRoute.value.path).toBe("/login");
 
     localStorage.setItem("sl_token", "tok-3");

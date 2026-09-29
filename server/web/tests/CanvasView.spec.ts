@@ -88,11 +88,13 @@ async function mountCanvas(root: HTMLElement) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
+      { path: "/graph/skill/:id", component: { render: () => null } },
+      { path: "/graph/run/:runId", component: { render: () => null } },
       { path: "/", component: { render: () => null } },
-      { path: "/canvas", component: { render: () => null } },
+      { path: "/graph/canvas", component: { render: () => null } },
     ],
   });
-  await router.push("/canvas");
+  await router.push("/graph/canvas");
   const app = createApp({ render: () => h(CanvasView) });
   app.use(router);
   app.mount(root);

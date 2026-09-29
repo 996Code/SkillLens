@@ -242,7 +242,7 @@ onMounted(async () => {
         <p v-if="trace.skills.length === 0" class="muted">无</p>
         <ul v-else class="skill-list">
           <li v-for="s in trace.skills" :key="s.id">
-            <RouterLink :to="`/skills/${s.id}`">{{ s.name }}</RouterLink>
+            <RouterLink :to="`/graph/skill/${s.id}`">{{ s.name }}</RouterLink>
             <span class="badge" :class="s.status === 'learned' ? 'badge-learned' : 'badge-candidate'">{{ s.status }}</span>
             <span class="muted">置信度 {{ confPct(s.confidence) }}</span>
           </li>
