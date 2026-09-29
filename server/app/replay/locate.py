@@ -3,25 +3,37 @@ from playwright.async_api import Locator, Page
 
 async def _try_locate(page: Page, label: str,
                       prefer_controls: bool = False) -> tuple[Locator, str] | None:
+    # S42：iframe 架构应用（禅道综合界面等）业务内容渲染在子 frame——
+    # 逐 frame 尝试候选策略（主 frame 优先）
+    frames = [page.main_frame] + [f for f in page.frames if f is not page.main_frame]
+    for frame in frames:
+        hit = await _try_locate_in_frame(page, frame, label, prefer_controls)
+        if hit is not None:
+            return hit
+    return None
+
+
+async def _try_locate_in_frame(page: Page, frame, label: str,
+                               prefer_controls: bool) -> tuple[Locator, str] | None:
     candidates: list[tuple[Locator, str]] = [
-        (page.get_by_role("button", name=label), "role-button"),
-        (page.get_by_text(label, exact=True), "text"),
-        (page.get_by_placeholder(label), "placeholder"),
-        (page.get_by_label(label), "label"),
+        (frame.get_by_role("button", name=label), "role-button"),
+        (frame.get_by_text(label, exact=True), "text"),
+        (frame.get_by_placeholder(label), "placeholder"),
+        (frame.get_by_label(label), "label"),
         # 框架自动生成 id（antd rc_select_N 等）回退：采集侧 input-key 链可能
         # 抓到这类 id（元素无 placeholder/aria 时）——回放时按 id 兜底定位
-        (page.locator(f"#{label}"), "id"),
+        (frame.locator(f"#{label}"), "id"),
         # S35：无可访问名图标按钮的 name 属性兜底（采集侧 nameAttr 兜底链）
-        (page.locator(f'[name="{label}"]'), "name-attr"),
+        (frame.locator(f'[name="{label}"]'), "name-attr"),
         # S36：Frappe（ERPNext）模态输入框的 data-fieldname 兜底。
         # 控件优先：字段包装 div 同带 data-fieldname 且 DOM 序在前，
         # fill 会命中不可填元素——先试 input/textarea/select 再试任意元素
-        (page.locator(
+        (frame.locator(
             f'input[data-fieldname="{label}"], textarea[data-fieldname="{label}"], '
             f'select[data-fieldname="{label}"]'), "data-fieldname"),
-        (page.locator(f'[data-fieldname="{label}"]'), "data-fieldname-any"),
+        (frame.locator(f'[data-fieldname="{label}"]'), "data-fieldname-any"),
         # S35：input[type=submit] 的 value 兜底（采集侧 inputValue 链）
-        (page.locator(f'input[value="{label}"]'), "input-value"),
+        (frame.locator(f'input[value="{label}"]'), "input-value"),
     ]
     if prefer_controls:
         # S36：fill 场景控件优先——Frappe 把字段名渲染成可见帮助文本，
@@ -67,9 +79,15 @@ async def _try_locate(page: Page, label: str,
 async def _first_in_open_modal(page: Page, locator: Locator,
                                idx: list[int]) -> int | None:
     """多个可见匹配中，返回位于开放模态/对话框内的第一个下标（无则 None）。"""
-    has_modal = await page.locator(
-        ".modal.show, [role='dialog'][aria-modal='true'], [aria-modal='true']"
-    ).count()
+    # S42：模态可能在子 frame（iframe 架构应用）——逐 frame 查
+    has_modal = 0
+    for fr in page.frames:
+        try:
+            has_modal += await fr.locator(
+                ".modal.show, [role='dialog'][aria-modal='true'], [aria-modal='true']"
+            ).count()
+        except Exception:
+            continue
     if not has_modal:
         return None
     for i in idx:
@@ -91,13 +109,18 @@ async def locate(page: Page, label: str, *,
                  prefer_controls: bool = False) -> tuple[Locator, str]:
     """S36 多信号定位：快路径逐候选 label 走全策略矩阵（任何 UI 框架
     只要暴露任一信号即可命中，无需逐框架适配）；全部失败后结构兜底
-    （path 祖先链 + ordinal nth-of-type，唯一命中才用——宁缺毋滥）。"""
-    for lbl in [label, *(labels or [])]:
-        if not lbl:
-            continue
-        hit = await _try_locate(page, lbl, prefer_controls=prefer_controls)
-        if hit is not None:
-            return hit
+    （path 祖先链 + ordinal nth-of-type，唯一命中才用——宁缺毋滥）。
+    S42：iframe/SPA 内容异步加载（禅道综合界面 about:blank iframe 由
+    JS 注入）——首查未命中时短暂重试再判失败。"""
+    for attempt in range(3):
+        for lbl in [label, *(labels or [])]:
+            if not lbl:
+                continue
+            hit = await _try_locate(page, lbl, prefer_controls=prefer_controls)
+            if hit is not None:
+                return hit
+        if attempt < 2:
+            await page.wait_for_timeout(1000)
     if path:
         segs = [s for s in path.split(">") if s]
         if segs:
@@ -105,11 +128,12 @@ async def locate(page: Page, label: str, *,
             sel = " ".join(segs) if len(segs) == 1 else f"{' '.join(segs[:-1])} {last}"
             if ordinal and ordinal > 1:
                 sel += f":nth-of-type({ordinal})"
-            locator = page.locator(sel)
-            try:
-                count = await locator.count()
-                if count == 1 and await locator.first.is_visible():
-                    return locator.first, "structural"
-            except Exception:
-                pass
+            for fr in page.frames:
+                locator = fr.locator(sel)
+                try:
+                    count = await locator.count()
+                    if count == 1 and await locator.first.is_visible():
+                        return locator.first, "structural"
+                except Exception:
+                    continue
     raise LookupError(f"semantic locate failed: {label!r}")

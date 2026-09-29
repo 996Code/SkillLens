@@ -444,3 +444,20 @@ async def test_execute_plan_captures_transient_toast():
         await browser.close()
     assert result["executed"][0]["ok"] is True
     assert "保存成功" in result.get("observed_toasts", []), result.get("observed_toasts")
+
+
+async def test_locate_retries_for_late_content():
+    """S42：iframe/SPA 内容异步加载——locate 首查未命中时短暂重试
+    （禅道综合界面 about:blank iframe 内容由 JS 注入，回放定位需等）。"""
+    from app.replay.locate import locate
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("<html><body><div id='host'></div></body></html>")
+        # 1.2s 后元素才出现
+        await page.evaluate("""() => setTimeout(() => {
+            document.getElementById('host').innerHTML = '<input placeholder=\"请输入标题\" />';
+        }, 1200)""")
+        loc, strategy = await locate(page, "请输入标题", prefer_controls=True)
+        assert strategy == "placeholder"
+        await browser.close()

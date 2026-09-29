@@ -1,30 +1,30 @@
 [
   {
-    "skill_id": 17,
-    "name": "CreatePosition",
+    "skill_id": 36,
+    "name": "OpenProjectSet",
     "status": "pass",
     "mode": "execute",
     "attribution": null
   },
   {
-    "skill_id": 18,
-    "name": "PostSearchFlow",
+    "skill_id": 37,
+    "name": "ProductClickFlow",
     "status": "pass",
     "mode": "execute",
     "attribution": null
   },
   {
-    "skill_id": 19,
-    "name": "PostUpdateFlow",
+    "skill_id": 38,
+    "name": "TemplateSaveFlow",
     "status": "pass",
     "mode": "execute",
     "attribution": null
   },
   {
-    "skill_id": 20,
-    "name": "DeletePost",
-    "status": "pass",
+    "skill_id": 39,
+    "name": "SaveOperationFlow",
+    "status": "fail",
     "mode": "execute",
-    "attribution": null
+    "attribution": "回放失败因页面未找到“保存”按钮，语义定位失败；且接口返回状态200但字段result非success，可能因页面加载不完整或按钮文案变化，需检查DOM结构及接口响应。"
   }
 ]

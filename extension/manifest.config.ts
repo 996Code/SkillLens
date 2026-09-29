@@ -3,11 +3,17 @@ import { defineManifest } from "@crxjs/vite-plugin";
 export default defineManifest({
   manifest_version: 3,
   name: "SkillLens Sensor",
-  version: "0.1.0",
-  host_permissions: ["http://127.0.0.1:8710/*"],
-  permissions: ["alarms", "storage"],
+  version: "0.2.0",
+  // S42：<all_urls>——chrome.scripting.executeScript 注入子 frame 需要
+  // 对应 host 权限（与 content_scripts 的 <all_urls> 匹配范围一致）
+  host_permissions: ["http://127.0.0.1:8710/*", "<all_urls>"],
+  // S42：scripting+webNavigation——动态创建的 about:blank iframe（禅道综合
+  // 界面等）不会自动注入 content script，须 SW 程序化注入子 frame
+  permissions: ["alarms", "storage", "scripting", "webNavigation"],
   action: { default_popup: "popup.html" },
-  content_scripts: [{ matches: ["<all_urls>"], js: ["src/content/capture.ts"] }],
+  // S42：all_frames——禅道 22 综合界面等 iframe 架构应用把业务内容渲染在
+  // about:blank iframe 里，顶层注入采集不到任何事件
+  content_scripts: [{ matches: ["<all_urls>"], js: ["src/content/capture.ts"], all_frames: true }],
   background: { service_worker: "src/background/uploader.ts", type: "module" },
   // 注：CRXJS 对 web_accessible_resources 条目按原样复制（不做 TS→JS 转换），
   // 故该入口必须是纯 JS 文件（src/injected/net-hook.js）。

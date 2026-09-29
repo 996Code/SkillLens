@@ -107,15 +107,34 @@ async function loop(): Promise<void> {
   chrome.alarms.create("flush", { periodInMinutes: 0.1 });
 }
 
+// S42：动态创建的 about:blank iframe 不会自动注入 content script——
+// 收到顶层帧的 INJECT_IFRAMES 通知后，程序化注入该 tab 的全部子 frame。
+// 重复注入由 capture 模块的 __skilllens_cs 守卫幂等处理。
+async function injectFrames(tabId: number): Promise<void> {
+  try {
+    const frames = await chrome.webNavigation.getAllFrames({ tabId });
+    const frameIds = frames.filter((f) => f.frameId !== 0).map((f) => f.frameId);
+    const file = chrome.runtime.getManifest().content_scripts?.[0]?.js?.[0];
+    if (frameIds.length === 0 || !file) return;
+    await chrome.scripting.executeScript({ target: { tabId, frameIds }, files: [file] });
+    console.debug("[skilllens] injected into", frameIds.length, "sub frames");
+  } catch (err) {
+    console.warn("[skilllens] frame inject failed", err);
+  }
+}
+
 // MV3 规则：事件监听器必须在顶层同步注册。
 // 收到 CS 转发的事件后写入 SW 侧 IndexedDB（idb.ts 在 SW 上下文运行，DB 归扩展源），
 // 再立即触发 flush；alarms 定时作为兜底。
-chrome.runtime.onMessage.addListener((msg) => {
+chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg?.type === EVENT_MSG) {
     void (async () => {
       await putEvent(msg.event as RawEvent);
       await flush();
     })();
+  }
+  if (msg?.type === "INJECT_IFRAMES" && sender.tab?.id != null) {
+    void injectFrames(sender.tab.id);
   }
   // 未知消息类型不 return true，交由下方录制开关监听器异步响应
 });

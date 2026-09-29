@@ -1,0 +1,34 @@
+[
+  {
+    "flow": "ZentaoCreateProgram",
+    "skill_id": 36,
+    "sessions": [
+      "30b24f36",
+      "fce19d7c"
+    ]
+  },
+  {
+    "flow": "ZentaoCreateProduct",
+    "skill_id": 37,
+    "sessions": [
+      "c9b5aa04",
+      "b2431789"
+    ]
+  },
+  {
+    "flow": "ZentaoCreateBug",
+    "skill_id": 38,
+    "sessions": [
+      "feb5f0f7",
+      "af7f75df"
+    ]
+  },
+  {
+    "flow": "ZentaoCreateCase",
+    "skill_id": 39,
+    "sessions": [
+      "6bad68d5",
+      "8d737eee"
+    ]
+  }
+]

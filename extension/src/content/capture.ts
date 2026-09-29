@@ -8,6 +8,14 @@ import { collectSnapshot } from "./snapshot";
 
 // 录制门控：初始经 GET_STATE 向 SW 查询（覆盖"已开录的存量页面"场景），
 // 之后由 storage.onChanged 跟随 sl_recording 实时更新。录制关：不采集任何事件。
+// S42 幂等保护：SW 程序化注入（chrome.scripting）可能对已注入 frame 重复执行
+// 本模块——重复注册监听器会产生双份事件，必须挡住。
+const w = window as unknown as { __skilllens_cs?: boolean };
+if (w.__skilllens_cs) {
+  throw new Error("[skilllens] capture already injected");
+}
+w.__skilllens_cs = true;
+
 let recording = false;
 
 let seq = 0;
@@ -38,6 +46,26 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // 任一环失效（SW 重启未广播、storage 事件丢失等）则全程静默不采集。
 // 页面生命周期内 3s 轮询一次，开销可忽略。
 setInterval(() => void refreshState(), 3000);
+
+// S42：动态创建的 about:blank iframe（禅道综合界面等）不会自动注入
+// content script——顶层帧发现 iframe 时通知 SW 程序化注入子 frame。
+// 幂等由 capture 模块的 __skilllens_cs 守卫保证（重复注入无副作用）。
+if (window.top === window) {
+  let notifyTimer: ReturnType<typeof setTimeout> | null = null;
+  const notifyInject = (): void => {
+    if (notifyTimer) return;
+    notifyTimer = setTimeout(() => {
+      notifyTimer = null;
+      if (document.querySelector("iframe")) {
+        chrome.runtime.sendMessage({ type: "INJECT_IFRAMES" }).catch(() => {});
+      }
+    }, 1000);
+  };
+  notifyInject();
+  new MutationObserver(notifyInject).observe(document.documentElement, {
+    childList: true, subtree: true,
+  });
+}
 
 async function emit(kind: RawEvent["kind"], payload: Record<string, unknown>): Promise<void> {
   if (!recording) return;
@@ -179,8 +207,12 @@ document.addEventListener(
 
 // page-load 需等初始状态就绪后再判定，避免"已开录的存量页面"在 GET_STATE
 // 返回前误判为未录制而丢掉首条 navigation 事件。
+// S42 all_frames：仅顶层帧发 navigation——iframe（含 about:blank 综合界面）
+// 的 page-load 是重复/噪声，且会污染目标系统派生（首条 navigation URL）。
 void refreshState().then(() => {
-  if (recording) void emit("navigation", { type: "page-load", url: location.href, title: document.title });
+  if (recording && window.top === window) {
+    void emit("navigation", { type: "page-load", url: location.href, title: document.title });
+  }
 });
 
 // 注入 MAIN world 脚本
