@@ -79,15 +79,16 @@ async def _try_locate_in_frame(page: Page, frame, label: str,
             if not visible_idx:
                 continue
             usable = enabled_idx or visible_idx
-            # S42-9：容器仍在加载（load-indicator 等）时元素可见可点，
-            # 但组件会吞掉点击（禅道模态框实测：picker 点击无下拉）——
-            # 视为未就绪，交给外层重试等加载完成
+            # S42-9：容器真正在加载时元素可见可点但组件吞掉点击——视为
+            # 未就绪重试。注意只认"活动加载态"（is-loading/spinning）：
+            # 禅道表单的 load-indicator 是常驻 class（form load-indicator
+            # form-ajax），当加载态会永久拦截 locate
             loading = False
             for i in usable[:3]:
                 try:
                     loading = await locator.nth(i).evaluate(
-                        "el => !!(el.closest('.load-indicator, .is-loading, "
-                        "[class*=loading]'))")
+                        "el => !!(el.closest('.is-loading, .ant-spin-spinning, "
+                        ".loading'))")
                     if loading:
                         break
                 except Exception:

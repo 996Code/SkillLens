@@ -192,3 +192,40 @@ async def test_process_clean_session_all_kept(client):
     resp = await client.post(f"/api/v1/sessions/{sid}/process")
     assert resp.json() == {"windows": 1, "kept": 1}
     assert (await client.get(f"/api/v1/sessions/{sid}/filtered-windows")).json() == []
+
+
+def test_picker_click_in_interaction_chain_not_orphan():
+    """S42-10：picker 点击（无 API 无快照）后紧跟下拉选项点击——
+    是交互链（开下拉→选项），不是孤儿点击（禅道流转链实测：
+    解决方案 picker 步被 orphan_click 误杀 → LCS 丢步）。"""
+    from app.ingestion.noise_filter import classify_windows
+
+    t0 = 1000000
+    windows = [
+        {"anchor": {"ts": t0, "payload": {"type": "click", "target": {"label": "解决"}}},
+         "members": [], "snapshots": [{"phase": "after"}]},
+        # picker 点击：无成员无快照（after 快照落在下一窗）
+        {"anchor": {"ts": t0 + 3000, "payload": {"type": "click", "target": {"label": "解决方案"}}},
+         "members": [], "snapshots": []},
+        # 1.8s 后选项点击（交互链证据）
+        {"anchor": {"ts": t0 + 4800, "payload": {"type": "click", "target": {"label": "已解决"}}},
+         "members": [], "snapshots": [{"phase": "after"}]},
+    ]
+    decisions = classify_windows(windows)
+    assert decisions[1]["kept"] is True, decisions[1]
+
+
+def test_truly_orphan_click_still_filtered():
+    """真孤儿（点了之后 5s 无任何后续）仍过滤。"""
+    from app.ingestion.noise_filter import classify_windows
+
+    t0 = 1000000
+    windows = [
+        {"anchor": {"ts": t0, "payload": {"type": "click", "target": {"label": "孤点"}}},
+         "members": [], "snapshots": []},
+        # 5s 后才有下一个动作——不是交互链
+        {"anchor": {"ts": t0 + 5000, "payload": {"type": "click", "target": {"label": "下一"}}},
+         "members": [], "snapshots": []},
+    ]
+    decisions = classify_windows(windows)
+    assert decisions[0]["reason"] == "orphan_click"

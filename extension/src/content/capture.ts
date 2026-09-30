@@ -104,6 +104,27 @@ function emitSnapshotsAroundAnchor(): void {
 // 值变更的可靠信号：600ms 去抖后发一次终值；change 与近期 input 同元素
 // 同值时去重；点击/提交锚点前同步 flush（保证 input 先于锚点事件顺序）。
 const INPUT_DEBOUNCE_MS = 600;
+
+/** S42-10：非用户文本输入判定（借鉴 Browser-Use 可见性检测）——
+ * type=hidden/checkbox/radio + CSS 隐藏（display:none/visibility:hidden，
+ * 禅道 picker 承载 input 实测 type 非 hidden 但样式隐藏）。
+ * offsetParent 在 jsdom 恒 null（无布局）不可用。 */
+function isNonUserInput(target: HTMLInputElement): boolean {
+  if (target.type === "hidden" || target.type === "checkbox" || target.type === "radio") {
+    return true;
+  }
+  // S42-10：picker/select 组件的承载 input（zui 的 openedBuild[] 实测
+  // 隐藏方式非 display:none）——组件容器内的 input 一律是程序管理值
+  if (target.closest(".picker, .ant-select, [class*=picker], [class*=select]")) {
+    return true;
+  }
+  try {
+    const cs = getComputedStyle(target);
+    return cs.display === "none" || cs.visibility === "hidden";
+  } catch {
+    return false;
+  }
+}
 const INPUT_DEDUP_MS = 2000;
 const inputTimers = new Map<HTMLInputElement, ReturnType<typeof setTimeout>>();
 const lastInputEmit = new Map<HTMLInputElement, { ts: number; value: string }>();
@@ -137,10 +158,11 @@ document.addEventListener(
   (e) => {
     const target = e.target as HTMLInputElement;
     if (!target || !["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
-    // S42-9：picker/select 组件的隐藏承载 input（type=hidden）不是用户
-    // 输入——组件选值时触发 input 事件，误采会让回放直接 fill 隐藏域、
-    // 破坏组件内部状态（禅道 picker 实测：后续控件定位失败）
-    if (target instanceof HTMLInputElement && target.type === "hidden") return;
+    // S42-10：非用户文本输入一律不采（借鉴 Browser-Use 可见性检测）——
+    // ①picker 隐藏承载 input（type=hidden 或 CSS 隐藏：禅道 openedBuild[]
+    // 实测 type 非 hidden 但 offsetParent 为 null）②checkbox/radio 是开关
+    // （fill 抛错，状态变化由 click 覆盖）。回放 fill 隐藏域会破坏组件状态。
+    if (target instanceof HTMLInputElement && isNonUserInput(target)) return;
     const t = inputTimers.get(target);
     if (t) clearTimeout(t);
     inputTimers.set(target, setTimeout(() => {
@@ -156,6 +178,16 @@ document.addEventListener(
   (e) => {
     const target = e.target as HTMLInputElement;
     if (!target) return;
+    // S42-10：与 input 监听同款过滤（含 CSS 隐藏 input）——
+    // 禅道实测：resolution/resolvedBuild 经 change 通道泄漏
+    if (target instanceof HTMLInputElement && isNonUserInput(target)) {
+      const pending = inputTimers.get(target);
+      if (pending) {
+        clearTimeout(pending);
+        inputTimers.delete(target);
+      }
+      return;
+    }
     // 挂起的 input 去抖由 change 收口（blur 即终值时刻）
     const t = inputTimers.get(target);
     if (t) {

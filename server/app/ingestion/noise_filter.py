@@ -54,8 +54,20 @@ def classify_windows(windows: list[dict]) -> list[dict]:
     out: list[dict] = []
     for i, w in enumerate(windows):
         reason = _classify_one(w)
+        # S42-10：交互链豁免——点击后 INTERACTION_CHAIN_MS 内紧跟下一动作
+        # （picker 开下拉→选项点击等自绘控件交互），不是孤儿
+        if reason == "orphan_click":
+            nxt = windows[i + 1] if i + 1 < len(windows) else None
+            if nxt is not None:
+                gap = (nxt.get("anchor") or {}).get("ts", 0) - (w.get("anchor") or {}).get("ts", 0)
+                if 0 <= gap <= INTERACTION_CHAIN_MS:
+                    reason = ""
         out.append({"window_seq": i, "kept": reason == "", "reason": reason})
     return out
+
+
+# S42-10：交互链窗口（picker→选项等自绘控件两步交互）的间隔上限
+INTERACTION_CHAIN_MS = 3000
 
 
 def _classify_one(w: dict) -> str:

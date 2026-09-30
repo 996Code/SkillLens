@@ -553,13 +553,13 @@ async def test_locate_skips_loading_container():
         page = await browser.new_page()
         await page.set_content("""
         <html><body>
-          <div class="form load-indicator">
+          <div class="form is-loading">
             <button id="b1" style="width:50px;height:20px">确定</button>
           </div>
         </body></html>""")
         # 1.2s 后加载完成
         await page.evaluate("""() => setTimeout(() => {
-            document.querySelector('.load-indicator').classList.remove('load-indicator');
+            document.querySelector('.is-loading').classList.remove('is-loading');
         }, 1200)""")
         t0 = _time.monotonic()
         loc, strategy = await locate(page, "确定")

@@ -1,0 +1,14 @@
+[
+  {
+    "flow": "JeegDictTypeCreate",
+    "skill_id": 75
+  },
+  {
+    "flow": "JeegDictDataCreate",
+    "skill_id": null
+  },
+  {
+    "flow": "JeegDictSearch",
+    "skill_id": 76
+  }
+]

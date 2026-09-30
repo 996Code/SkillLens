@@ -16,6 +16,26 @@ export interface ElementDesc {
 
 const ACTIONABLE = ["button", "a", "input", "select", "textarea"];
 
+/** S42-10（借鉴 Browser-Use 的 CDP 事件监听检测）：content script 无 CDP，
+ * 用 computed cursor:pointer + tabindex 近似"实际可交互"信号——
+ * 自绘控件（zui picker 等绑 click 的 div）无语义标签但可点击。
+ * 注意 cursor 可继承：子元素继承 pointer 不算——只有"自己声明
+ * pointer 而父级不是"才是控件本体（否则会停在内部 span 上）。 */
+function looksInteractive(el: Element): boolean {
+  if (el.getAttribute("tabindex") && el.getAttribute("tabindex") !== "-1") return true;
+  try {
+    const own = getComputedStyle(el).cursor;
+    if (own === "pointer") {
+      const parent = el.parentElement;
+      const parentCursor = parent ? getComputedStyle(parent).cursor : "";
+      return parentCursor !== "pointer";
+    }
+  } catch {
+    /* detached 元素 */
+  }
+  return false;
+}
+
 /** S34：图标按钮泛化——点击命中的常是内部 <i>/<svg> 图标（Odoo 等
  * 框架的 Save/Edit 按钮无文本只有图标），上溯到最近可操作祖先取其
  * aria-label/text；3 层内无可操作祖先则保持原元素（避免过度上溯）。 */
@@ -23,7 +43,8 @@ function resolveActionable(el: Element): Element {
   let cur: Element | null = el;
   for (let i = 0; cur && i < 3; i++) {
     const tag = cur.tagName.toLowerCase();
-    if (ACTIONABLE.includes(tag) || cur.getAttribute("role") === "button") {
+    if (ACTIONABLE.includes(tag) || cur.getAttribute("role") === "button"
+        || looksInteractive(cur)) {
       return cur;
     }
     cur = cur.parentElement;
@@ -70,6 +91,8 @@ function textSignal(el: Element): string | undefined {
   if (!t) return undefined;
   // CSS 片段特征（禅道实测：上溯到容器时 textContent 是整段样式表）
   if (/^[:\w-]+\s*\{|^@media|^--[\w-]+:/.test(t)) return undefined;
+  // S42-10：纯数字短文本是控件计数徽章（picker "0"）——不是人读标签
+  if (/^\d{1,2}$/.test(t)) return undefined;
   return t;
 }
 

@@ -173,3 +173,15 @@ describe("describeElement 稳定信号优先（S42-9）", () => {
     expect(d.labels).not.toContain("pick-_pick107");
   });
 });
+
+// S42-10（借鉴 Browser-Use）：cursor:pointer 的自绘控件是可交互元素
+describe("describeElement 可交互检测（S42-10）", () => {
+  it("cursor:pointer 的 div（自绘控件）不再上溯", () => {
+    const el = make(`<div>
+      <div style="cursor:pointer"><span>选项</span></div>
+    </div>`).querySelector("span")!;
+    const d = describeElement(el);
+    expect(d.tag).toBe("div");
+    expect(d.labels).toContain("选项");
+  });
+});

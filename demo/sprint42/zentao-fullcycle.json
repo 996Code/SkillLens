@@ -1,0 +1,26 @@
+[
+  {
+    "flow": "ZentaoCreateProject",
+    "skill_id": 95
+  },
+  {
+    "flow": "ZentaoCreateExecution",
+    "skill_id": 96
+  },
+  {
+    "flow": "ZentaoCreateTask",
+    "skill_id": 97
+  },
+  {
+    "flow": "ZentaoCreateBug",
+    "skill_id": 98
+  },
+  {
+    "flow": "ZentaoResolveBug",
+    "skill_id": 99
+  },
+  {
+    "flow": "ZentaoCloseBug",
+    "skill_id": 100
+  }
+]
