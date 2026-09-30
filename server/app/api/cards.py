@@ -47,6 +47,24 @@ async def get_skill_flow(skill_id: int, db: Session = Depends(get_db)) -> dict:
     return build_skill_flow(skill)
 
 
+@router.get("/skills/{skill_id}/state-machine")
+async def get_skill_state_machine(skill_id: int,
+                                  db: Session = Depends(get_db)) -> dict:
+    """S43-2 状态机归纳：多轮录制状态信号 → 状态转移图（图基座第二步）。"""
+    from app.replay.flow_graph import build_state_machine
+    skill = db.get(Skill, skill_id)
+    if not skill:
+        raise HTTPException(status_code=404, detail="skill not found")
+    return build_state_machine(db, skill_id)
+
+
+@router.get("/learning-graph")
+async def get_learning_graph(db: Session = Depends(get_db)) -> dict:
+    """S43-2 学习图：归纳管道 trace 图化（session→window→semantic→align→skill）。"""
+    from app.replay.flow_graph import build_learning_graph
+    return build_learning_graph(db)
+
+
 @router.get("/skills/{skill_id}/card")
 async def get_skill_card(skill_id: int, db: Session = Depends(get_db)) -> dict:
     skill = db.get(Skill, skill_id)

@@ -48,3 +48,15 @@
 - 流水线图内点"批量测试"节点 → 展开流程子图（当前跳套件页）
 - 时间线行 → 直接进对应图
 - 学习图（审计 trace 图化）
+
+## S43-2 第二步落地（2026-09-30）
+
+- **状态机归纳**：GET /skills/{id}/state-machine（build_state_machine）——
+  骨架步 semantic_action.state_signals 按 field 分流聚转移边（计数），
+  初始态=无入边、终态=无出边；SkillGraphView 图下方新增区块。
+- **学习图**：GET /learning-graph（build_learning_graph）+ /graph/learning
+  页面（LearningGraphView）+ 左树"测试活动"组入口——session→window→
+  semantic→align→skill 五层 trace 图化（最近 30 会话）。
+- **子图展开**：GET /canvas/{id}/flow（build_canvas_flow）——replay_batch
+  节点展开 skill_source 子技能（sub_of 标注，params/config 双兼容）；
+  总览流水线卡片"批量测试"可点开子技能清单（图内下钻，不跳套件页）。

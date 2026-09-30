@@ -122,6 +122,7 @@ async function doLogout(): Promise<void> {
       <!-- 测试活动 -->
       <div class="gw-tree-group">测试活动</div>
       <RouterLink to="/graph/timeline" class="gw-tree-leaf">⌇ 时间线</RouterLink>
+      <RouterLink to="/graph/learning" class="gw-tree-leaf">↗ 学习图</RouterLink>
 
       <!-- 工具 -->
       <div class="gw-tree-group">工具</div>

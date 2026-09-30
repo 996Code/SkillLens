@@ -368,6 +368,31 @@ def _flaky_rerun() -> bool:
     return os.environ.get("REPLAY_FLAKY_RERUN", "1") == "1"
 
 
+async def _heal_with_llm_attribution(
+        db, plan: dict, v_errs: list[str] | None = None) -> tuple[dict, list[dict]]:
+    """S43-3 层 3：规则自愈不命中 → LLM 归因未知字段 → 再走确定性生成。
+
+    LLM 只做字段类型分类（输出须在类型枚举内才落库 source=llm）；
+    值生成/校验仍走确定性规则（宪法：判定无 LLM）。
+    归因范围：校验错误文本提到的字段（确定性关联）——自由文本字段
+    不因 LLM 误归因被破坏性换值（"备注"被当 phone 的实测教训）。
+    """
+    from app.replay.field_types import llm_attribute_type, resolve_type
+    for step in plan.get("steps") or []:
+        if step.get("kind") != "input":
+            continue
+        name = str(step.get("name") or step.get("label") or "")
+        if not name or resolve_type(db, name) is not None:
+            continue
+        if v_errs and not any(name in e for e in v_errs):
+            continue
+        try:
+            await llm_attribute_type(db, name)
+        except Exception:
+            pass
+    return _heal_plan_inputs(db, plan)
+
+
 async def _attempt(db: Session, browser, skill_id: int, plan: dict,
                    assertions: list[dict], shared_ctx: bool,
                    repair_map: dict[str, dict] | None = None,
@@ -556,6 +581,10 @@ async def _execute_skill(db: Session, browser, skill_id: int,
                   for e in (s.get("validation_errors") or [])]
         if v_errs:
             healed_plan, healed_fields = _heal_plan_inputs(db, plan)
+            if not healed_fields:
+                # S43-3 层 3：规则全不命中 → LLM 归因回填知识库再生成
+                healed_plan, healed_fields = await _heal_with_llm_attribution(
+                    db, plan, v_errs)
             if healed_fields:
                 retry = await _attempt(db, browser, skill_id, healed_plan,
                                        assertions, shared_ctx, repair_map,
@@ -643,7 +672,11 @@ async def _execute_skill(db: Session, browser, skill_id: int,
             pass
 
     # S24 块 U：自愈成功计数（≥N 自动晋升）+ 新提案关联源 run（U3 归因链）
-    if attempt["repair_used_ids"]:
+    # S43-1：只在 run 整体 pass 时计数——状态依赖失败（前置条件缺失）下
+    # LLM 会从空状态页面选出无关元素且 locate 验证通过（禅道实证：无
+    # 激活 Bug 时"解决"→"搜索"），失败运行反复计数把它晋升成污染技能。
+    # 修复后的步骤 ok 但断言未过 ≠ 自愈成功；run pass 才算数。
+    if attempt["repair_used_ids"] and status == "pass":
         record_usage(db, attempt["repair_used_ids"])
     if attempt["repair_created_ids"]:
         db.query(LocateProposal).filter(

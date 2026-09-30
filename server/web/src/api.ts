@@ -862,6 +862,28 @@ export function getSkillFlow(skillId: number | string): Promise<FlowGraphDTO> {
   return get<FlowGraphDTO>(`/api/v1/skills/${skillId}/flow`);
 }
 
+// ---------- S43-2：图基座第二步（状态机归纳/学习图/画布子图） ----------
+
+export interface StateMachineDTO {
+  nodes: FlowNodeDTO[];
+  edges: { from: string; to: string; count: number }[];
+  initial: string[];
+  final: string[];
+}
+
+export function getSkillStateMachine(
+  skillId: number | string): Promise<StateMachineDTO> {
+  return get<StateMachineDTO>(`/api/v1/skills/${skillId}/state-machine`);
+}
+
+export function getLearningGraph(): Promise<FlowGraphDTO> {
+  return get<FlowGraphDTO>("/api/v1/learning-graph");
+}
+
+export function getCanvasFlow(canvasId: number | string): Promise<FlowGraphDTO> {
+  return get<FlowGraphDTO>(`/api/v1/canvas/${canvasId}/flow`);
+}
+
 // ---------- S37-3：测试套件（操作流程组合 → 一键执行 → 汇总） ----------
 
 export interface SuiteSkillBrief {

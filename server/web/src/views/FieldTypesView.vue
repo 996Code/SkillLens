@@ -103,6 +103,7 @@ async function remove(id: number): Promise<void> {
 const sourceBadge: Record<string, string> = {
   manual: "badge-learned",
   learned: "badge-candidate",
+  llm: "badge-info",
 };
 </script>
 

@@ -131,6 +131,172 @@ def build_run_flow(run) -> dict:
             "run_status": run.status, "run_id": run.id}
 
 
+def build_state_machine(db, skill_id: int) -> dict:
+    """S43-2 状态机归纳：Skill 多轮录制的状态信号序列 → 状态转移图。
+
+    证据范围与断言同源：骨架各步 session_window_seqs 指向的
+    semantic_action.state_signals（field/value），按窗口序聚转移边并计数。
+    初始态=无入边状态；终态=无出边状态。节点 id=状态值（如 active）。
+    """
+    from sqlalchemy import select
+
+    from app.models import Alignment, SemanticAction, Skill
+    skill = db.get(Skill, skill_id)
+    if skill is None:
+        return {"nodes": [], "edges": [], "initial": [], "final": []}
+    alignment = db.get(Alignment, skill.alignment_id)
+
+    # 收集每轮会话的有序状态序列（field 相同的状态流；多 field 并行流）
+    streams: dict[str, dict[str, list[str]]] = {}  # sid -> field -> [values]
+    for step in alignment.skeleton or []:
+        for sid, window_seq in (step.get("session_window_seqs") or {}).items():
+            action = db.execute(
+                select(SemanticAction).where(
+                    SemanticAction.session_id == sid,
+                    SemanticAction.window_seq == window_seq,
+                )
+            ).scalar_one_or_none()
+            if action is None:
+                continue
+            by_field = streams.setdefault(sid, {})
+            for sig in action.state_signals or []:
+                field = str(sig.get("field") or "")
+                value = str(sig.get("value"))
+                if not field:
+                    continue
+                by_field.setdefault(field, []).append(value)
+
+    # 聚合：节点=去重 field=value（id 用 value，label 用 field=value）；
+    # 边=同 field 流内的顺序转移，跨轮去重计数
+    node_label: dict[str, str] = {}
+    edge_count: dict[tuple[str, str], int] = {}
+    for sid, by_field in streams.items():
+        for field, values in by_field.items():
+            seq = []
+            for v in values:
+                if v not in node_label:
+                    node_label[v] = f"{field}={v}"
+                if v not in seq:
+                    seq.append(v)
+            for a, b in zip(seq, seq[1:]):
+                edge_count[(a, b)] = edge_count.get((a, b), 0) + 1
+
+    has_in = {b for (_, b) in edge_count}
+    has_out = {a for (a, _) in edge_count}
+    nodes = [{"id": v, "type": "state", "label": node_label[v], "status": "ok"}
+             for v in node_label]
+    edges = [{"from": a, "to": b, "count": n} for (a, b), n in edge_count.items()]
+    return {"nodes": nodes, "edges": edges,
+            "initial": sorted(v for v in node_label if v not in has_in),
+            "final": sorted(v for v in node_label if v not in has_out)}
+
+
+def build_learning_graph(db, limit_sessions: int = 30) -> dict:
+    """S43-2 学习图（审计 trace 图化）：归纳管道五层。
+
+    session → window（各会话窗数）→ semantic（锚点动作）→ align（对齐组）
+    → skill（归纳产物）。节点带计数摘要；边按所属链路连接。
+    """
+    from sqlalchemy import func, select
+
+    from app.models import (Alignment, RecordingSession, SemanticAction, Skill,
+                            TransactionWindow)
+    nodes: list[dict] = []
+    edges: list[dict] = []
+
+    sessions = db.execute(
+        select(RecordingSession).order_by(RecordingSession.started_at.desc())
+        .limit(limit_sessions)).scalars().all()
+    sid_set = {s.id for s in sessions}
+    if not sid_set:
+        return {"nodes": [], "edges": []}
+
+    win_counts = dict(db.execute(
+        select(TransactionWindow.session_id, func.count())
+        .where(TransactionWindow.session_id.in_(sid_set))
+        .group_by(TransactionWindow.session_id)).all())
+    sems = db.execute(
+        select(SemanticAction).where(SemanticAction.session_id.in_(sid_set))
+        .order_by(SemanticAction.session_id, SemanticAction.window_seq)).scalars().all()
+    sem_by_sid: dict[str, list[SemanticAction]] = {}
+    for a in sems:
+        sem_by_sid.setdefault(a.session_id, []).append(a)
+
+    aligns = db.query(Alignment).all()
+    align_sids = {sid: al for al in aligns for sid in (al.session_ids or [])}
+    skills = db.query(Skill).filter(Skill.status != "superseded").all()
+    skill_by_align: dict[int, list[Skill]] = {}
+    for s in skills:
+        skill_by_align.setdefault(s.alignment_id, []).append(s)
+
+    def nid(kind: str, key: str) -> str:
+        return f"{kind}:{key}"
+
+    for s in sessions:
+        sn = nid("s", s.id[:8])
+        nodes.append({"id": sn, "type": "session",
+                      "label": f"会话 {s.id[:8]}", "status": "ok",
+                      "io": {"note": (s.note or "")[:60], "events": None}})
+        wn = nid("w", s.id[:8])
+        nodes.append({"id": wn, "type": "window",
+                      "label": f"窗口 ×{win_counts.get(s.id, 0)}", "status": "ok"})
+        edges.append({"from": sn, "to": wn})
+        for a in sem_by_sid.get(s.id, []):
+            an = nid(f"sem:{s.id[:8]}", str(a.window_seq))
+            label = ((a.target or {}).get("label")
+                     or (a.anchor_type or "action"))
+            nodes.append({"id": an, "type": "semantic",
+                          "label": str(label)[:40], "status": "ok"})
+            edges.append({"from": wn, "to": an})
+        al = align_sids.get(s.id)
+        if al is not None:
+            aln = nid("al", str(al.id))
+            if not any(n["id"] == aln for n in nodes):
+                nodes.append({"id": aln, "type": "align",
+                              "label": f"对齐 #{al.id}", "status": "ok",
+                              "io": {"sessions": len(al.session_ids or [])}})
+            edges.append({"from": nid("w", s.id[:8]), "to": aln})
+            for sk in skill_by_align.get(al.id, []):
+                skn = nid("sk", str(sk.id))
+                if not any(n["id"] == skn for n in nodes):
+                    nodes.append({"id": skn, "type": "skill",
+                                  "label": f"#{sk.id} {sk.name}", "status": "ok"})
+                edges.append({"from": aln, "to": skn})
+
+    return {"nodes": nodes, "edges": edges}
+
+
+def build_canvas_flow(dag: dict) -> dict:
+    """S43-2 画布/流水线图：replay_batch 节点展开 skill_source 的子技能。
+
+    子图节点（sub_of=batch）为 skill 引用节点，边连回 batch——图内下钻
+    取代"跳套件页"。skill_source 的 config.skill_ids 是子技能清单。
+    """
+    nodes: list[dict] = []
+    edges: list[dict] = [dict(e) for e in (dag.get("edges") or [])]
+    skill_ids: list[int] = []
+    for nd in dag.get("nodes") or []:
+        node = dict(nd)
+        nodes.append(node)
+        if node.get("type") == "skill_source":
+            # 套件生成画布用 params.skill_ids（_suite_dag）；编辑器保存用 config
+            cfg = node.get("params") or node.get("config") or {}
+            try:
+                skill_ids.extend(int(x) for x in cfg.get("skill_ids") or [])
+            except (TypeError, ValueError):
+                continue
+    for bid, nd in enumerate([n for n in nodes if n.get("type") == "replay_batch"]):
+        batch_id = nd.get("id") or f"batch{bid}"
+        nd.setdefault("id", batch_id)
+        for i, sid in enumerate(skill_ids, start=1):
+            sub_id = f"{batch_id}_skill{i}"
+            nodes.append({"id": sub_id, "type": "skill", "sub_of": batch_id,
+                          "label": f"技能 #{sid}", "status": "ok",
+                          "io": {"skill_id": sid}})
+            edges.append({"from": sub_id, "to": batch_id})
+    return {"nodes": nodes, "edges": edges}
+
+
 def build_skill_flow(skill) -> dict:
     """S39 操作流程图：Skill 骨架 → 节点+边（流程图基座）。
 

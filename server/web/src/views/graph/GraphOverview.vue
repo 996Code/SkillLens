@@ -7,6 +7,8 @@ import type { SkillListItem, SuiteItem } from "../../api";
 
 const suites = ref<SuiteItem[]>([]);
 const skills = ref<SkillListItem[]>([]);
+// S43-2：流水线卡片"批量测试"节点的子图展开态
+const expanded = ref<Record<number, boolean>>({});
 const loading = ref(true);
 const error = ref("");
 
@@ -69,11 +71,15 @@ onMounted(async () => {
                 </text>
                 <line x1="80" y1="30" x2="110" y2="30" stroke="var(--color-gray-4)" stroke-width="1.5"
                       marker-end="url(#arrow)"/>
-                <rect x="115" y="15" width="70" height="30" rx="6"
-                      fill="var(--color-warning-soft)" stroke="var(--color-warning)" stroke-width="1.5"/>
-                <text x="150" y="35" text-anchor="middle" font-size="10" fill="var(--color-warning)">
-                  批量测试
-                </text>
+                <!-- S43-2：点"批量测试"展开流程子图（图内下钻，不跳套件页） -->
+                <g class="pipe-batch" :data-testid="`pipe-batch-${s.id}`"
+                   @click="expanded[s.id] = !expanded[s.id]">
+                  <rect x="115" y="15" width="70" height="30" rx="6"
+                        fill="var(--color-warning-soft)" stroke="var(--color-warning)" stroke-width="1.5"/>
+                  <text x="150" y="35" text-anchor="middle" font-size="10" fill="var(--color-warning)">
+                    批量测试{{ expanded[s.id] ? " ▾" : " ▸" }}
+                  </text>
+                </g>
                 <line x1="185" y1="30" x2="215" y2="30" stroke="var(--color-gray-4)" stroke-width="1.5"
                       marker-end="url(#arrow)"/>
                 <rect x="220" y="15" width="70" height="30" rx="6"
@@ -87,6 +93,15 @@ onMounted(async () => {
                   </marker>
                 </defs>
               </svg>
+            </div>
+            <!-- 展开的流程子图（子技能清单） -->
+            <div v-if="expanded[s.id]" class="pipe-subflow" :data-testid="`pipe-subflow-${s.id}`">
+              <RouterLink v-for="sk in s.skills" :key="sk.id"
+                          :to="`/graph/skill/${sk.id}`" class="pipe-sub-leaf">
+                <span class="dot" :class="`dot-${sk.status === 'learned' ? 'pass' : 'fail'}`"></span>
+                #{{ sk.id }} {{ sk.name }}
+                <span class="chip">{{ sk.system }}</span>
+              </RouterLink>
             </div>
             <div class="pipe-meta">
               <span v-for="sk in s.skills.slice(0, 3)" :key="sk.id" class="chip">
@@ -171,6 +186,33 @@ onMounted(async () => {
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
+}
+/* S43-2：批量测试节点可点展开子图 */
+.pipe-batch {
+  cursor: pointer;
+}
+.pipe-batch:hover rect {
+  stroke-width: 2.5;
+}
+.pipe-subflow {
+  margin: var(--space-1) 0 var(--space-2);
+  padding: var(--space-2);
+  border: 1px dashed var(--color-warning);
+  border-radius: var(--radius-md, 6px);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pipe-sub-leaf {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  text-decoration: none;
+  color: var(--color-text);
+}
+.pipe-sub-leaf:hover {
+  text-decoration: underline;
 }
 .sys-group {
   margin-bottom: var(--space-4);

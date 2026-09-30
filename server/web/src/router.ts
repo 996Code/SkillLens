@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import GraphWorkspace from "./views/graph/GraphWorkspace.vue";
 import GraphOverview from "./views/graph/GraphOverview.vue";
 import SkillGraphView from "./views/graph/SkillGraphView.vue";
+import LearningGraphView from "./views/graph/LearningGraphView.vue";
 import SuitesView from "./views/SuitesView.vue";
 import TimelineView from "./views/TimelineView.vue";
 import ReplayRunView from "./views/ReplayRunView.vue";
@@ -27,6 +28,7 @@ const router = createRouter({
       children: [
         { path: "", name: "graph", component: GraphOverview },
         { path: "skill/:skillId", name: "graph-skill", component: SkillGraphView },
+        { path: "learning", name: "graph-learning", component: LearningGraphView },
         { path: "suites", name: "suites", component: SuitesView },
         { path: "timeline", name: "timeline", component: TimelineView },
         { path: "run/:runId", name: "graph-run", component: ReplayRunView },

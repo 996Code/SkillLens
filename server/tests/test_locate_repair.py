@@ -142,6 +142,64 @@ async def test_locate_repair_full_cycle(client, monkeypatch):
         db.close()
 
 
+async def test_proposal_not_counted_on_failed_run(client, monkeypatch):
+    """S43-1：失败回放不自愈计数——状态依赖失败（前置条件缺失）下 LLM 会
+    从空状态页面选出无关元素（禅道实证：无激活 Bug 时"解决"定位失败，
+    LLM 提议"搜索"，locate 验证还通过），失败运行反复计数把它晋升成
+    污染技能（#111 被 #113 误取代）。修复后的步骤 ok 但整体 run 失败
+    （断言未过）→ 不计数不晋升；整体 run pass 才计数。"""
+    from app.db import SessionLocal
+    from app.models import LocateProposal
+    skill = await _prepare_skill(client, monkeypatch)
+    monkeypatch.setenv("LOCATE_AUTO_PROMOTE_N", "1")
+
+    # 第一次回放：改名 → 提案生成且 verified
+    monkeypatch.setenv("LLM_FAKE_RESPONSE", "提交表单")
+    await _replay(skill, monkeypatch, FORM_HTML_V2)
+
+    # 第二次回放：保存接口报错（断言失败 → run fail），但提案步本身 ok
+    async def handle_save_500(route):
+        await route.fulfill(status=500, body='{"code":500}')
+    import app.replay.runner as rm
+    from app.db import SessionLocal as SL
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.route("**/a/1/save", handle_save_500)
+        await page.route("http://mock.local/", lambda route: route.fulfill(
+            status=200, content_type="text/html; charset=utf-8", body=FORM_HTML_V2))
+        await page.goto("http://mock.local/")
+        monkeypatch.setattr(rm, "_launch", lambda: _FakePW(page, browser))
+        db = SL()
+        try:
+            run2 = await rm.run_replay(db, skill["id"], {"请输入": "注入值"}, True)
+            db.refresh(run2)
+        finally:
+            db.close()
+        await browser.close()
+    assert run2.status == "fail"                       # 接口 500 → 失败
+    db = SessionLocal()
+    try:
+        row = db.query(LocateProposal).filter_by(
+            skill_id=skill["id"], step_label="保存").first()
+        assert row.status == "verified"                # 未晋升
+        assert row.verify_count == 0                   # 失败运行不计数
+    finally:
+        db.close()
+
+    # 第三次回放：一切正常 → pass → 计数 → 晋升（N=1）
+    run3 = await _replay(skill, monkeypatch, FORM_HTML_V2)
+    assert run3.status == "pass"
+    db = SessionLocal()
+    try:
+        row = db.query(LocateProposal).filter_by(
+            skill_id=skill["id"], step_label="保存").first()
+        assert row.status == "promoted"
+        assert row.verify_count == 1
+    finally:
+        db.close()
+
+
 async def test_unverified_proposal_not_used(client, monkeypatch):
     """负例：LLM 提案不存在的标签 → 停留 proposed，回放不使用（仍失败）。"""
     from app.db import SessionLocal

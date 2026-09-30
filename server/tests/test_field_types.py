@@ -110,3 +110,84 @@ def test_password_rule():
         assert pwd and len(pwd) >= 8
     finally:
         db.close()
+
+
+# ---------- S43-3：LLM 归因（层 3）——规则外字段经 LLM 分类回填知识库 ----------
+
+def _db_clean():
+    """client 夹具已建好测试库 schema——只清表不 create_all
+    （create_all 与夹具的 drop/create 交错会报表已存在）。"""
+    db = SessionLocal()
+    db.query(FieldTypeHint).delete()
+    db.commit()
+    return db
+
+
+async def test_llm_attribute_type_unknown_field(client, monkeypatch):
+    """未知字段（规则不命中）→ LLM 归因 → 落库 source=llm →
+    后续 resolve_type/生成走确定性规则（LLM 只分类，判定仍确定性）。"""
+    db = _db_clean()
+    try:
+        # 规则不命中（真未知字段）
+        assert ft.resolve_type(db, "微信号码") is None
+    finally:
+        db.close()
+
+    monkeypatch.setenv("LLM_FAKE_RESPONSE", "phone")
+    db = _db_clean()
+    try:
+        row = await ft.llm_attribute_type(db, "微信号码")
+        assert row is not None
+        assert row.field_type == "phone"
+        assert row.source == "llm"
+        # 落库后确定性通道接管：值生成可用
+        val = ft.generate_value(db, "微信号码")
+        assert val and val.startswith("1")
+        assert ft.is_valid_value(db, "微信号码", "123") is False
+    finally:
+        db.close()
+
+
+async def test_llm_attribute_type_rejects_unknown_enum(client, monkeypatch):
+    """LLM 输出不在类型枚举内 → 不落库（宁缺毋滥，垃圾归因不进知识库）。"""
+    monkeypatch.setenv("LLM_FAKE_RESPONSE", "这是个超链接吧")
+    db = _db_clean()
+    try:
+        row = await ft.llm_attribute_type(db, "神秘字段")
+        assert row is None
+        n = db.query(FieldTypeHint).filter_by(label_pattern="神秘字段").count()
+        assert n == 0
+    finally:
+        db.close()
+
+
+async def test_llm_attribute_type_existing_no_overwrite(client, monkeypatch):
+    """已有 builtin/learned 匹配的字段不再问 LLM（省调用且不覆盖已有知识）。"""
+    monkeypatch.setenv("LLM_FAKE_RESPONSE", "email")
+    db = _db_clean()
+    try:
+        row = await ft.llm_attribute_type(db, "手机号")
+        assert row is None  # 内置规则已命中 → 跳过 LLM
+    finally:
+        db.close()
+
+
+async def test_heal_with_llm_attribution(client, monkeypatch):
+    """S43-3 集成：规则不命中的非法值字段 → _heal_with_llm_attribution
+    经 LLM 归因回填 → 确定性生成合法值（runner 自愈路径的层 3 接线）。"""
+    from app.replay.runner import _heal_with_llm_attribution
+    monkeypatch.setenv("LLM_FAKE_RESPONSE", "phone")
+    db = _db_clean()
+    try:
+        plan = {"steps": [
+            {"kind": "input", "name": "应急联络号", "value": "abc"},
+            {"kind": "input", "name": "备注", "value": "正常文本"},
+        ]}
+        # 校验错误只提到 应急联络号（确定性关联——备注不被误归因破坏）
+        v_errs = ["应急联络号格式不正确"]
+        healed_plan, fields = await _heal_with_llm_attribution(db, plan, v_errs)
+        assert [f["name"] for f in fields] == ["应急联络号"]
+        assert healed_plan["steps"][0]["value"].startswith("1")
+        assert healed_plan["steps"][1]["value"] == "正常文本"
+    finally:
+        db.close()

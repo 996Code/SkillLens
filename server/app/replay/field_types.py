@@ -4,7 +4,10 @@
 本引擎按字段 label/名称匹配字段类型（DB 知识库优先、内置规则兜底），
 生成合法值供自愈重试；成功后反哺知识库。
 
-宪法约束：类型匹配与值生成全确定性（关键词包含 + 正则），无 LLM。
+宪法约束：类型匹配与值生成全确定性（关键词包含 + 正则）。
+S43-3 层 3：规则不命中的字段可经 LLM 归因（只做分类，输出必须落在
+已知类型枚举内才落库 source=llm）——值生成/校验仍走确定性规则，
+LLM 不参与判定。
 """
 import random
 import re
@@ -162,6 +165,42 @@ def record_success(db: Session, label: str, value: str,
     row.field_type = rule["field_type"]
     row.example_value = str(value)[:200]
     row.success_count = (row.success_count or 0) + 1
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+# 类型枚举与内置规则的映射（LLM 归因只允许落这些类型——
+# 落库后值生成/校验仍走确定性规则，垃圾输出不进知识库）
+_LLM_ENUM = sorted(_RULES_BY_TYPE.keys())
+
+
+async def llm_attribute_type(db: Session, label: str) -> FieldTypeHint | None:
+    """S43-3 层 3：规则外字段的 LLM 归因。
+
+    前置：resolve_type 不命中（builtin/learned 已覆盖的不再问，省调用
+    且不覆盖已有知识）。LLM 输出须严格等于类型枚举之一，否则不落库
+    （宁缺毋滥）。落库 source=llm、success_count=0（待自愈成功反哺
+    计数后晋升可信度）。
+    """
+    if not label or resolve_type(db, label) is not None:
+        return None
+    from app.llm.gateway import acomplete
+    prompt = (
+        f"判断表单字段的类型。字段名：{label}\n"
+        f"候选类型（只能从中选一个）：{', '.join(_LLM_ENUM)}\n"
+        "如果都不合适输出 none。只输出类型名本身，不要任何解释。"
+    )
+    try:
+        result = await acomplete(db, "field_type_attr", prompt)
+    except Exception:
+        return None
+    text = (result.text or "").strip().strip('"').splitlines()[0].strip().lower()
+    if text not in _LLM_ENUM:
+        return None
+    row = FieldTypeHint(label_pattern=str(label)[:200], field_type=text,
+                        example_value="", source="llm", success_count=0)
+    db.add(row)
     db.commit()
     db.refresh(row)
     return row

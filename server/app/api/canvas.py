@@ -61,6 +61,18 @@ async def get_canvas(canvas_id: int, db: Session = Depends(get_db)) -> dict:
             "created_at": row.created_at.isoformat() if row.created_at else None}
 
 
+@router.get("/canvas/{canvas_id}/flow")
+async def get_canvas_flow(canvas_id: int, db: Session = Depends(get_db)) -> dict:
+    """S43-2 画布图（流程图基座第二步）：replay_batch 节点展开 skill_source
+    子技能子图——点"批量测试"图内下钻，不再跳套件页。"""
+    from app.replay.flow_graph import build_canvas_flow
+    row = db.get(CanvasDag, canvas_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="canvas not found")
+    flow = build_canvas_flow(row.dag or {})
+    return {"canvas_id": row.id, "name": row.name, **flow}
+
+
 @router.post("/canvas/{canvas_id}/run")
 async def run_canvas(canvas_id: int, db: Session = Depends(get_db)) -> dict:
     row = db.get(CanvasDag, canvas_id)

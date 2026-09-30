@@ -12,6 +12,7 @@ import {
   getSkillCard,
   getSkillConsistency,
   getSkillFlow,
+  getSkillStateMachine,
   getVisualBaseline,
   rejectLocateProposal,
   resetVisualBaseline,
@@ -22,6 +23,7 @@ import type {
   LocateProposalItem,
   SkillCard,
   SkillConsistency,
+  StateMachineDTO,
   VisualBaselineResponse,
 } from "../../api";
 import FlowGraph from "../../components/FlowGraph.vue";
@@ -29,6 +31,8 @@ import FlowGraph from "../../components/FlowGraph.vue";
 const route = useRoute();
 const card = ref<SkillCard | null>(null);
 const flow = ref<FlowGraphDTO | null>(null);
+// S43-2：状态机归纳（多轮录制状态信号 → 转移图）
+const stateMachine = ref<StateMachineDTO | null>(null);
 const loading = ref(true);
 const error = ref("");
 
@@ -59,6 +63,11 @@ async function loadSideData(id: string): Promise<void> {
   getSkillConsistency(id)
     .then((c) => {
       if (typeof c?.consistent === "boolean") consistency.value = c;
+    })
+    .catch(() => {});
+  getSkillStateMachine(id)
+    .then((sm) => {
+      if ((sm?.nodes ?? []).length) stateMachine.value = sm;
     })
     .catch(() => {});
   try {
@@ -115,6 +124,7 @@ async function load(): Promise<void> {
   flow.value = null;
   consistency.value = null;
   proposals.value = [];
+  stateMachine.value = null;
   visual.value = null;
   visualBaselineUrl.value = "";
   visualLatestUrl.value = "";
@@ -193,6 +203,19 @@ onMounted(() => void load());
           页面 → 操作 → 断言 的节点链；点击节点查看签名与断言详情。
         </p>
         <FlowGraph :nodes="flow.nodes" :edges="flow.edges" />
+      </div>
+
+      <!-- S43-2 状态机归纳（多轮录制状态信号 → 转移图） -->
+      <div v-if="stateMachine" class="block" data-testid="state-machine-block">
+        <h2>状态机归纳</h2>
+        <p class="muted hint">
+          多轮录制的业务状态序列归纳：初始态
+          <span v-for="s in stateMachine.initial" :key="s" class="chip chip-init">{{ s }}</span>
+          → 转移（边计数）→ 终态
+          <span v-for="s in stateMachine.final" :key="s" class="chip chip-final">{{ s }}</span>
+        </p>
+        <FlowGraph :nodes="stateMachine.nodes"
+          :edges="stateMachine.edges.map((e) => ({ from: e.from, to: e.to }))" />
       </div>
 
       <!-- 断言表 -->
