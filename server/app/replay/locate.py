@@ -17,6 +17,14 @@ async def _try_locate_in_frame(page: Page, frame, label: str,
                                prefer_controls: bool) -> tuple[Locator, str] | None:
     candidates: list[tuple[Locator, str]] = [
         (frame.get_by_role("button", name=label), "role-button"),
+        # S42-8：自定义控件（zui picker 等）——label 文本命中的是 <label>
+        # 元素（点击 label 不开下拉），正确语义是"含该 label 的表单组
+        # 内的控件"（picker/select/input）。
+        # S42-9：:has(label:text-is()) 组合实测不生效（count 0）——
+        # 用 Playwright filter(has_text) 代替
+        (frame.locator(".form-group, .ant-form-item", has_text=label)
+         .locator(".picker, .ant-select, .ant-picker, input, select, textarea").first,
+         "form-group-control"),
         (frame.get_by_text(label, exact=True), "text"),
         (frame.get_by_placeholder(label), "placeholder"),
         (frame.get_by_label(label), "label"),
@@ -25,6 +33,9 @@ async def _try_locate_in_frame(page: Page, frame, label: str,
         (frame.locator(f"#{label}"), "id"),
         # S35：无可访问名图标按钮的 name 属性兜底（采集侧 nameAttr 兜底链）
         (frame.locator(f'[name="{label}"]'), "name-attr"),
+        # S42-8：图标按钮只有 title 提示（禅道 dtable 操作列 <a title="解决">
+        # 无文本无 name）——采集侧 labels 含 title，回放须有对应策略
+        (frame.locator(f'[title="{label}"]'), "title-attr"),
         # S36：Frappe（ERPNext）模态输入框的 data-fieldname 兜底。
         # 控件优先：字段包装 div 同带 data-fieldname 且 DOM 序在前，
         # fill 会命中不可填元素——先试 input/textarea/select 再试任意元素
@@ -68,6 +79,21 @@ async def _try_locate_in_frame(page: Page, frame, label: str,
             if not visible_idx:
                 continue
             usable = enabled_idx or visible_idx
+            # S42-9：容器仍在加载（load-indicator 等）时元素可见可点，
+            # 但组件会吞掉点击（禅道模态框实测：picker 点击无下拉）——
+            # 视为未就绪，交给外层重试等加载完成
+            loading = False
+            for i in usable[:3]:
+                try:
+                    loading = await locator.nth(i).evaluate(
+                        "el => !!(el.closest('.load-indicator, .is-loading, "
+                        "[class*=loading]'))")
+                    if loading:
+                        break
+                except Exception:
+                    continue
+            if loading:
+                continue
             if len(usable) > 1:
                 in_modal = await _first_in_open_modal(page, locator, usable)
                 if in_modal is not None:
@@ -111,15 +137,17 @@ async def locate(page: Page, label: str, *,
     只要暴露任一信号即可命中，无需逐框架适配）；全部失败后结构兜底
     （path 祖先链 + ordinal nth-of-type，唯一命中才用——宁缺毋滥）。
     S42：iframe/SPA 内容异步加载（禅道综合界面 about:blank iframe 由
-    JS 注入）——首查未命中时短暂重试再判失败。"""
-    for attempt in range(3):
+    JS 注入）——首查未命中时短暂重试再判失败。
+    S42-9：重试窗口须覆盖模态框 AJAX 加载（禅道 resolve 模态 ~3-5s，
+    3×1s 实测不够）——5×1s。"""
+    for attempt in range(5):
         for lbl in [label, *(labels or [])]:
             if not lbl:
                 continue
             hit = await _try_locate(page, lbl, prefer_controls=prefer_controls)
             if hit is not None:
                 return hit
-        if attempt < 2:
+        if attempt < 4:
             await page.wait_for_timeout(1000)
     if path:
         segs = [s for s in path.split(">") if s]

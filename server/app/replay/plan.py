@@ -95,8 +95,11 @@ def compile_skeleton_plan(events: list[dict], skeleton: list[dict], ref_session_
         # S26：骨架步 healed label（自愈晋升回写）优先于录制时的 anchor label
         target = payload.get("target") or {}
         label = step.get("label") or target.get("label") or ""
-        if label:
-            skel_steps.append({"kind": "click", "label": label, "_wq": wq,
+        # S42-9：空 label 步骤无法定位（录制时点击了无语义元素——
+        # picker 背景/模态框本身等噪声），丢弃不进计划
+        if not label:
+            continue
+        skel_steps.append({"kind": "click", "label": label, "_wq": wq,
                                # S36 多信号：labels/tag/ordinal/path 透传给回放定位
                                "labels": target.get("labels") or [],
                                "tag": target.get("tag"),

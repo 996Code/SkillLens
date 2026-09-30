@@ -137,3 +137,39 @@ describe("describeElement 脱敏", () => {
     expect(describeElement(el).labels).toContain("创建第三方");
   });
 });
+
+// S42-8：自定义控件语义锚点 + CSS 噪声过滤
+describe("describeElement 控件锚点（S42-8）", () => {
+  it("zui picker 无自身语义时取表单组标签（解决方案）", () => {
+    // 真实结构：label 是 picker-box 的兄弟，同属 .form-group
+    const el = make(`<div class="form-group required">
+      <div class="form-label">解决方案</div>
+      <div class="form-group-wrapper picker-box">
+        <div class="pick picker picker-select"><span class="picker-select-placeholder"></span></div>
+      </div>
+    </div>`).querySelector(".picker")!;
+    const d = describeElement(el);
+    expect(d.labels).toContain("解决方案");
+  });
+
+  it("CSS 文本不进 labels（上溯容器 textContent 是样式表）", () => {
+    const el = make(`<div><style>:root { --zt-apps-bar-height: 36px; }</style><div>:root\n{\n    --zt-a</div></div>`).querySelector("div > div:last-child")!;
+    const d = describeElement(el);
+    expect(d.labels).toEqual([]);
+  });
+});
+
+// S42-9：zui picker 自动 id 过滤 + 稳定信号优先
+describe("describeElement 稳定信号优先（S42-9）", () => {
+  it("picker 的 labels[0] 是表单组标签（不是自动 id）", () => {
+    const el = make(`<div class="form-group required">
+      <label class="form-label">解决版本</label>
+      <div class="form-group-wrapper picker-box">
+        <div id="pick-_pick107" class="pick picker picker-select"></div>
+      </div>
+    </div>`).querySelector(".picker")!;
+    const d = describeElement(el);
+    expect(d.label).toBe("解决版本");
+    expect(d.labels).not.toContain("pick-_pick107");
+  });
+});

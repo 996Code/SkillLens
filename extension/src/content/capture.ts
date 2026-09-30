@@ -137,6 +137,10 @@ document.addEventListener(
   (e) => {
     const target = e.target as HTMLInputElement;
     if (!target || !["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+    // S42-9：picker/select 组件的隐藏承载 input（type=hidden）不是用户
+    // 输入——组件选值时触发 input 事件，误采会让回放直接 fill 隐藏域、
+    // 破坏组件内部状态（禅道 picker 实测：后续控件定位失败）
+    if (target instanceof HTMLInputElement && target.type === "hidden") return;
     const t = inputTimers.get(target);
     if (t) clearTimeout(t);
     inputTimers.set(target, setTimeout(() => {

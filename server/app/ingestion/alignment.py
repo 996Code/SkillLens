@@ -149,7 +149,11 @@ def _align_one(keyed: list[tuple[str, list[tuple[str, set[str]]]]]) -> list[dict
         (k, [(sid0, i, apis)]) for i, (k, apis) in enumerate(items0)
     ]
     for sid, items in keyed[1:]:
-        pairs = _lcs_pairs([e[0] for e in entries], [k for k, _ in items])
+        # S42-9：LCS 只按锚点键比对（click:解决方案）——API 部分是窗口
+        # 证据非步身份：两轮录制同一操作，一轮窗口恰好挂了 GET（模态
+        # 加载）、一轮没有（缓存），全签名比对必丢步（禅道流转链实测）
+        pairs = _lcs_pairs([e[0].split("|")[0] for e in entries],
+                           [k.split("|")[0] for k, _ in items])
         entries = [
             (entries[ci][0], entries[ci][1] + [(sid, ii, items[ii][1])])
             for ci, ii in pairs

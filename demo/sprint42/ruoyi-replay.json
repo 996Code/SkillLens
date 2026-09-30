@@ -1,9 +1,23 @@
 [
   {
-    "skill_id": 40,
-    "name": "TenantUserCreateFlow",
-    "status": "pass",
+    "skill_id": 58,
+    "name": "ProjectInitializationWorkflow",
+    "status": "fail",
     "mode": "execute",
-    "attribution": null
+    "attribution": "回放失败因第一步点击“第一期构建”时，语义定位失败，元素未找到，导致后续输入和保存步骤未执行，进而API断言未触发。"
+  },
+  {
+    "skill_id": 59,
+    "name": "ResolveIssueWorkflow",
+    "status": "fail",
+    "mode": "execute",
+    "attribution": "回放失败因第一步点击“解决方案”语义定位失败，后续步骤未执行。页面结构或文本变化导致定位器失效，且API断言未验证，需更新选择器或等待元素加载。"
+  },
+  {
+    "skill_id": 60,
+    "name": "CloseAndReopenLoop",
+    "status": "error",
+    "mode": "execute",
+    "attribution": "回放失败因页面元素“关闭”无法语义定位，后续操作未执行；且接口请求未发出，导致断言无响应。可能因页面结构变化或元素属性不匹配，需更新选择器。"
   }
 ]

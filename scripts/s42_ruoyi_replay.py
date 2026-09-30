@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "server"))
 import httpx
 
 SERVER = "http://127.0.0.1:8710"
-SKILL_IDS = [40]  # JeegCreateUser（录制时手机号无效——验证字段类型自愈）
+SKILL_IDS = [58, 59, 60]  # 状态机链：建 Bug → 解决 → 关闭
 
 
 def mint_token() -> str:

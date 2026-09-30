@@ -45,9 +45,14 @@ function collectLabels(el: Element): string[] {
     el.getAttribute("placeholder"),
     el.getAttribute("title"),
     inputValue(el),
-    (el.textContent ?? "").trim().slice(0, 100) || undefined,
+    textSignal(el),
     el.getAttribute("data-fieldname"),
     el.getAttribute("name"),
+    // S42-9 根治：稳定信号（表单组字段标签）排在自动 id 之前——
+    // 自绘控件（zui picker）的自动 id（pick-_pick101）跨会话不稳定，
+    // 排前面会让骨架签名漂移（LCS 丢步）且回放先试必败的 id。
+    // 字段标签（"解决方案"）跨会话稳定，是 picker 的首选语义。
+    formGroupLabel(el),
     el.id && !isFrameworkId(el.id) ? el.id : undefined,
   ];
   const out: string[] = [];
@@ -56,6 +61,32 @@ function collectLabels(el: Element): string[] {
     if (v && !out.includes(v)) out.push(v);
   }
   return out;
+}
+
+/** 文本信号：CSS 内容（<style> 或样式文本）不是人读标签，过滤。 */
+function textSignal(el: Element): string | undefined {
+  if (el.tagName === "STYLE") return undefined;
+  const t = (el.textContent ?? "").trim().slice(0, 100);
+  if (!t) return undefined;
+  // CSS 片段特征（禅道实测：上溯到容器时 textContent 是整段样式表）
+  if (/^[:\w-]+\s*\{|^@media|^--[\w-]+:/.test(t)) return undefined;
+  return t;
+}
+
+/** 最近表单组的字段标签（zui/ant/element 表单布局通用）。
+ * 注意用精确 class token（.form-group）——子串匹配会先命中
+ * picker 的 form-group-wrapper（label 是 wrapper 的兄弟节点）。 */
+function formGroupLabel(el: Element): string | undefined {
+  const fg = el.closest(".form-group, .ant-form-item, [class*=form-item], [class*=field]");
+  if (!fg) return undefined;
+  const label = fg.querySelector("[class*=label]:not([class*=label-]), label, [class*=title]");
+  if (!label) return undefined;
+  // S42-9：label 内的操作链接（"所有"/"清空"）不是字段名——剔除后取纯文本
+  const clone = label.cloneNode(true) as Element;
+  clone.querySelectorAll("a, button, [class*=link], [class*=action]").forEach(
+    (n) => n.remove());
+  const t = (clone.textContent ?? "").trim().slice(0, 50);
+  return t || undefined;
 }
 
 export function describeElement(el: Element): ElementDesc {
@@ -86,7 +117,7 @@ function ordinalAmongSiblings(el: Element): number {
 }
 
 // 框架自动生成 id 跨会话不稳定（antd 每次重新编号），不能当定位信号
-const FRAMEWORK_ID_RE = /^(rc_|ant-|ant_|__|mui-|:r\d|radix-|:v-)/;
+const FRAMEWORK_ID_RE = /^(rc_|ant-|ant_|__|mui-|:r\d|radix-|:v-|el-id-|pick-_pick)/;
 
 function isFrameworkId(id: string): boolean {
   return FRAMEWORK_ID_RE.test(id) || /^\d+$/.test(id);

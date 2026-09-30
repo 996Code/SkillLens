@@ -501,3 +501,70 @@ async def test_execute_plan_no_validation_errors_when_clean():
         result = await execute_plan(page, plan)
         assert "validation_errors" not in result["executed"][0]
         await browser.close()
+
+
+async def test_locate_title_attr_fallback():
+    """S42-8：图标按钮只有 title 提示（禅道 dtable 操作列 <a title="解决">
+    无文本）——采集侧 labels 含 title，回放须有 [title=] 定位策略。"""
+    from app.replay.locate import locate
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body>
+          <a title="解决" href="#" style="display:inline-block;width:30px;height:30px"><i class="icon"></i><span class="text"></span></a>
+        </body></html>""")
+        loc, strategy = await locate(page, "解决")
+        assert await loc.get_attribute("title") == "解决"
+        assert strategy == "title-attr"
+        await browser.close()
+
+
+async def test_locate_form_group_control_strategy():
+    """S42-8：自定义控件（zui picker）——label 文本命中的是 <label> 元素，
+    点击 label 不开下拉；正确语义是"含该 label 的表单组内的控件"。"""
+    from app.replay.locate import locate
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body>
+          <div class="form-group required">
+            <label class="form-label">解决方案</label>
+            <div class="form-group-wrapper picker-box">
+              <div class="pick picker picker-select" style="width:100px;height:30px"></div>
+            </div>
+          </div>
+        </body></html>""")
+        loc, strategy = await locate(page, "解决方案")
+        cls = await loc.get_attribute("class")
+        assert "picker" in (cls or "")
+        assert strategy == "form-group-control"
+        await browser.close()
+
+
+async def test_locate_skips_loading_container():
+    """S42-9：容器仍在加载（load-indicator）时元素可见可点，但组件会
+    吞掉点击（禅道模态框实测）——locate 须等加载完成才返回。"""
+    import time as _time
+    from app.replay.locate import locate
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body>
+          <div class="form load-indicator">
+            <button id="b1" style="width:50px;height:20px">确定</button>
+          </div>
+        </body></html>""")
+        # 1.2s 后加载完成
+        await page.evaluate("""() => setTimeout(() => {
+            document.querySelector('.load-indicator').classList.remove('load-indicator');
+        }, 1200)""")
+        t0 = _time.monotonic()
+        loc, strategy = await locate(page, "确定")
+        elapsed = _time.monotonic() - t0
+        assert strategy == "role-button"
+        # 必须等了加载（>1s）才返回——立即返回的点击会被吞
+        assert elapsed > 1.0, f"locate 未等待加载完成（{elapsed:.2f}s）"
+        await browser.close()
