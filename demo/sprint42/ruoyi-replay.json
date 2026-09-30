@@ -1,44 +1,44 @@
 [
   {
-    "skill_id": 95,
-    "name": "SaveFormFlow",
-    "status": "fail",
+    "skill_id": 107,
+    "name": "SaveOperation",
+    "status": "pass",
     "mode": "execute",
-    "attribution": "回放失败因断言未通过：接口返回状态码200，但字段“result”的值非预期“success”，可能因项目创建接口业务逻辑错误或参数校验失败所致。"
+    "attribution": null
   },
   {
-    "skill_id": 96,
-    "name": "SaveAndReloadFlow",
-    "status": "fail",
+    "skill_id": 108,
+    "name": "SaveOperation",
+    "status": "pass",
     "mode": "execute",
-    "attribution": "页面加载或响应缓慢，导致“保存”按钮在5秒内未完成点击操作，且后续API请求未发出。建议延长超时时间或优化页面性能。"
+    "attribution": null
   },
   {
-    "skill_id": 97,
-    "name": "QuickSaveWorkflow",
-    "status": "fail",
+    "skill_id": 109,
+    "name": "SaveOperation",
+    "status": "pass",
     "mode": "execute",
-    "attribution": "点击“保存”按钮超时，因按钮未成功触发点击或页面未响应，导致后续API断言失败。可能原因：按钮被遮挡、页面加载缓慢或元素定位不准确。"
+    "attribution": null
   },
   {
-    "skill_id": 98,
-    "name": "VersionAffectedWorkflow",
-    "status": "fail",
+    "skill_id": 110,
+    "name": "VersionImpactBuildSave",
+    "status": "pass",
     "mode": "execute",
-    "attribution": "回放失败因第一步点击“影响版本所有”时定位超时，页面元素未加载或选择器不匹配，导致后续步骤及断言全部中断。"
+    "attribution": null
   },
   {
-    "skill_id": 99,
-    "name": "ResolveIssueWorkflow",
-    "status": "fail",
+    "skill_id": 111,
+    "name": "ResolutionFlow",
+    "status": "pass",
     "mode": "execute",
-    "attribution": "回放失败因断言未通过：接口返回200但字段result非success，可能因接口逻辑异常、数据未正确提交或权限校验失败，需检查接口返回内容及前置操作。"
+    "attribution": null
   },
   {
-    "skill_id": 100,
-    "name": "CloseAndReopenWorkflow",
-    "status": "error",
+    "skill_id": 112,
+    "name": "CloseAndReloadLoop",
+    "status": "pass",
     "mode": "execute",
-    "attribution": "回放失败因页面元素“关闭”语义定位失败，且后续步骤未执行，导致API断言无法验证，可能因页面结构变化或元素属性缺失。"
+    "attribution": null
   }
 ]

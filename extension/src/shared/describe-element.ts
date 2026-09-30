@@ -105,9 +105,14 @@ function formGroupLabel(el: Element): string | undefined {
   const label = fg.querySelector("[class*=label]:not([class*=label-]), label, [class*=title]");
   if (!label) return undefined;
   // S42-9：label 内的操作链接（"所有"/"清空"）不是字段名——剔除后取纯文本
+  // S42-12：嵌套控件同样剔除——禅道 form-label 内嵌 checkbox 快捷项
+  // （<label>所有</label>）与 input 值会把字段名污染成"影响版本所有"，
+  // 该值随选中状态漂移，是跨会话不稳定信号（回放 has_text 必失配）
   const clone = label.cloneNode(true) as Element;
-  clone.querySelectorAll("a, button, [class*=link], [class*=action]").forEach(
-    (n) => n.remove());
+  clone.querySelectorAll(
+    "a, button, label, input, select, textarea, " +
+    "[class*=link], [class*=action], [class*=checkbox], [class*=radio], [class*=picker], [class*=control]",
+  ).forEach((n) => n.remove());
   const t = (clone.textContent ?? "").trim().slice(0, 50);
   return t || undefined;
 }

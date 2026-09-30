@@ -105,17 +105,11 @@ function emitSnapshotsAroundAnchor(): void {
 // 同值时去重；点击/提交锚点前同步 flush（保证 input 先于锚点事件顺序）。
 const INPUT_DEBOUNCE_MS = 600;
 
-/** S42-10：非用户文本输入判定（借鉴 Browser-Use 可见性检测）——
- * type=hidden/checkbox/radio + CSS 隐藏（display:none/visibility:hidden，
- * 禅道 picker 承载 input 实测 type 非 hidden 但样式隐藏）。
+/** S42-10：隐藏/开关型输入判定（借鉴 Browser-Use 可见性检测）——
+ * type=hidden/checkbox/radio + CSS 隐藏（display:none/visibility:hidden）。
  * offsetParent 在 jsdom 恒 null（无布局）不可用。 */
-function isNonUserInput(target: HTMLInputElement): boolean {
+function isHiddenOrSwitchInput(target: HTMLInputElement): boolean {
   if (target.type === "hidden" || target.type === "checkbox" || target.type === "radio") {
-    return true;
-  }
-  // S42-10：picker/select 组件的承载 input（zui 的 openedBuild[] 实测
-  // 隐藏方式非 display:none）——组件容器内的 input 一律是程序管理值
-  if (target.closest(".picker, .ant-select, [class*=picker], [class*=select]")) {
     return true;
   }
   try {
@@ -124,6 +118,25 @@ function isNonUserInput(target: HTMLInputElement): boolean {
   } catch {
     return false;
   }
+}
+
+/** S42-12：picker 组件容器内的承载控件（zui pick-value select 等）——
+ * 其值由组件 UI 交互（点击菜单项）程序化同步，input/change 事件是
+ * 框架派发的噪声（值已由前置 click 步覆盖，重复 input 步会让回放
+ * fill 隐藏 select 必抛错）。 */
+function isPickerHostControl(target: Element): boolean {
+  return !!target.closest(".picker, .ant-select, [class*=picker], [class*=select]");
+}
+
+/** S42-12：change 通道专用——picker/select 组件容器内的 input 一律视为
+ * 程序管理值（禅道实测 resolution/resolvedBuild 经 change 通道泄漏）。
+ * input 通道不套用此过滤：input 事件只在真实键入时触发（程序赋值
+ * el.value 不触发），zui 日期控件的可键入 input 在 .pick.date-picker
+ * 容器内，套用会把"计划完成"等用户直填字段整步丢掉（录制学不到
+ * 日期步骤 → 回放必被服务端必填校验拦截）。 */
+function isProgrammaticInput(target: HTMLInputElement): boolean {
+  if (isHiddenOrSwitchInput(target)) return true;
+  return isPickerHostControl(target);
 }
 const INPUT_DEDUP_MS = 2000;
 const inputTimers = new Map<HTMLInputElement, ReturnType<typeof setTimeout>>();
@@ -158,11 +171,11 @@ document.addEventListener(
   (e) => {
     const target = e.target as HTMLInputElement;
     if (!target || !["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
-    // S42-10：非用户文本输入一律不采（借鉴 Browser-Use 可见性检测）——
-    // ①picker 隐藏承载 input（type=hidden 或 CSS 隐藏：禅道 openedBuild[]
-    // 实测 type 非 hidden 但 offsetParent 为 null）②checkbox/radio 是开关
-    // （fill 抛错，状态变化由 click 覆盖）。回放 fill 隐藏域会破坏组件状态。
-    if (target instanceof HTMLInputElement && isNonUserInput(target)) return;
+    // S42-12：input 通道只滤隐藏/开关型——input 事件仅真实键入触发，
+    // picker 容器内的可见输入（zui 日期控件）是用户直填字段须采集；
+    // 但 picker 承载 select（pick-value）是组件程序化同步，须滤
+    if (target instanceof HTMLInputElement && isHiddenOrSwitchInput(target)) return;
+    if (target.tagName === "SELECT" && isPickerHostControl(target)) return;
     const t = inputTimers.get(target);
     if (t) clearTimeout(t);
     inputTimers.set(target, setTimeout(() => {
@@ -178,16 +191,14 @@ document.addEventListener(
   (e) => {
     const target = e.target as HTMLInputElement;
     if (!target) return;
-    // S42-10：与 input 监听同款过滤（含 CSS 隐藏 input）——
-    // 禅道实测：resolution/resolvedBuild 经 change 通道泄漏
-    if (target instanceof HTMLInputElement && isNonUserInput(target)) {
-      const pending = inputTimers.get(target);
-      if (pending) {
-        clearTimeout(pending);
-        inputTimers.delete(target);
-      }
+    // S42-12：change 通道保持严过滤（含 picker 容器）——
+    // 禅道实测：resolution/resolvedBuild 经 change 通道泄漏。
+    // 注意不取消挂起的 input 去抖：fill+Enter（zui 日期控件）会先发
+    // input 再由框架派发 change，取消会把真实键入整步丢掉
+    if (target instanceof HTMLInputElement && isProgrammaticInput(target)) {
       return;
     }
+    if (target.tagName === "SELECT" && isPickerHostControl(target)) return;
     // 挂起的 input 去抖由 change 收口（blur 即终值时刻）
     const t = inputTimers.get(target);
     if (t) {
@@ -258,7 +269,9 @@ s.async = false;
 document.documentElement.appendChild(s);
 
 // 接收网络事件
+// S42-12：附带 pageUrl（发出页面）——录制期间其他标签页的后台轮询会带
+// 活跃 session_id 混入事件流，服务端按 pageUrl 与锚点页面跨源过滤
 window.addEventListener("message", (e) => {
   if (e.source !== window || e.data?.source !== "skilllens-net") return;
-  void emit("network", e.data.detail);
+  void emit("network", { ...e.data.detail, pageUrl: location.href });
 });

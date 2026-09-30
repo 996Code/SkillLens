@@ -28,6 +28,47 @@ def test_evaluate_state_signal():
     assert result[0]["passed"] is True
 
 
+def test_state_signal_write_response_not_masked_by_page_load():
+    """S42-12：写响应后同模板的页面加载（GET）不得污染终态判定——
+    禅道实测：保存 POST 返回 result=success，随后 zin 页面加载（GET）
+    响应体无 result 字段，"取最后一次匹配"把成功判定吃成失败。"""
+    assertions = [{"kind": "state_signal",
+                   "payload": {"api_template": "/index.php", "field": "result",
+                               "expect_value": "success"}}]
+    observed = [
+        {"url": "http://h/index.php?m=project&f=create&zin=1", "status": 200,
+         "method": "POST", "body": '{"result":"success","message":"保存成功"}'},
+        {"url": "http://h/index.php?m=project&f=create&copyProjectID=47", "status": 200,
+         "method": "GET", "body": '[{"name":"configJS","data":"<script>..."}]'},
+    ]
+    result = evaluate_assertions(assertions, observed)
+    assert result[0]["passed"] is True, result[0]
+
+
+def test_state_signal_write_failure_still_fails():
+    """写响应本身失败（result=fail）时不得被后续 GET 掩盖成通过。"""
+    assertions = [{"kind": "state_signal",
+                   "payload": {"api_template": "/index.php", "field": "result",
+                               "expect_value": "success"}}]
+    observed = [
+        {"url": "http://h/index.php?m=project&f=create&zin=1", "status": 200,
+         "method": "POST", "body": '{"result":"fail","message":{"end":["不能为空"]}}'},
+        {"url": "http://h/index.php?m=project&f=browse", "status": 200,
+         "method": "GET", "body": '<html></html>'},
+    ]
+    result = evaluate_assertions(assertions, observed)
+    assert result[0]["passed"] is False
+
+
+def test_state_signal_no_method_falls_back_to_last():
+    """旧格式 observed 无 method 字段——回退到原"最后一次匹配"语义。"""
+    assertions = [{"kind": "state_signal",
+                   "payload": {"api_template": "/a/save", "field": "code", "expect_value": 200}}]
+    observed = [{"url": "http://h/a/save", "status": 200, "body": '{"code":200}'}]
+    result = evaluate_assertions(assertions, observed)
+    assert result[0]["passed"] is True
+
+
 def _ui_text_payload():
     return {"label": "备注", "before": "旧值", "after": "新值"}
 
@@ -65,6 +106,19 @@ def test_evaluate_ui_text_label_missing_fails():
                                "labels": [], "tables": []})
     assert r[0]["passed"] is False, r
     assert r[0]["skipped"] == "回放快照中字段缺失"
+
+
+def test_evaluate_ui_text_label_missing_with_write_skipped():
+    """S42-12：字段缺失但写响应已发生（表单被提交消费/页面导航离开）——
+    字段消失是流程完成的预期结果（禅道 Bug 创建 picker 值由 click 步
+    执行、提交后表单整体消失），记录不判定。"""
+    a = [{"kind": "ui_text", "payload": _ui_text_payload()}]
+    r = evaluate_assertions(
+        a, [{"url": "http://h/x/save", "status": 200, "method": "POST", "body": ""}],
+        after_snapshot={"forms": [{"label": "搜索", "value": ""}],
+                        "labels": [], "tables": []})
+    assert r[0]["passed"] is True, r
+    assert "提交" in r[0]["skipped"]
 
 
 def test_evaluate_toast_signal_from_snapshot():

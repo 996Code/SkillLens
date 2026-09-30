@@ -16,14 +16,21 @@ async def _try_locate(page: Page, label: str,
 async def _try_locate_in_frame(page: Page, frame, label: str,
                                prefer_controls: bool) -> tuple[Locator, str] | None:
     candidates: list[tuple[Locator, str]] = [
-        (frame.get_by_role("button", name=label), "role-button"),
+        # S42-12：精确名优先——get_by_role(name=) 默认子串匹配，禅道 Bug
+        # 表单的"保存模板"会抢在真提交按钮"保存"之前命中（点击只触发
+        # 模板面板不开提交）。子串匹配降级为最后兜底。
+        (frame.get_by_role("button", name=label, exact=True), "role-button"),
         # S42-8：自定义控件（zui picker 等）——label 文本命中的是 <label>
         # 元素（点击 label 不开下拉），正确语义是"含该 label 的表单组
         # 内的控件"（picker/select/input）。
         # S42-9：:has(label:text-is()) 组合实测不生效（count 0）——
         # 用 Playwright filter(has_text) 代替
+        # S42-12：排除 label 内嵌套的控件（禅道 form-label 内的 checkbox
+        # 快捷项 input#allBuilds 文档序在前，.first 会命中它而非 picker）
         (frame.locator(".form-group, .ant-form-item", has_text=label)
-         .locator(".picker, .ant-select, .ant-picker, input, select, textarea").first,
+         .locator(".picker, .ant-select, .ant-picker, "
+                  "input:not(label input), select:not(label select), "
+                  "textarea:not(label textarea)").first,
          "form-group-control"),
         (frame.get_by_text(label, exact=True), "text"),
         (frame.get_by_placeholder(label), "placeholder"),
@@ -45,6 +52,8 @@ async def _try_locate_in_frame(page: Page, frame, label: str,
         (frame.locator(f'[data-fieldname="{label}"]'), "data-fieldname-any"),
         # S35：input[type=submit] 的 value 兜底（采集侧 inputValue 链）
         (frame.locator(f'input[value="{label}"]'), "input-value"),
+        # S42-12：子串名匹配最后兜底（精确名/全策略未命中才用）
+        (frame.get_by_role("button", name=label), "role-button-substr"),
     ]
     if prefer_controls:
         # S36：fill 场景控件优先——Frappe 把字段名渲染成可见帮助文本，

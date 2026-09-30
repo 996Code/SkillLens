@@ -174,6 +174,43 @@ describe("describeElement 稳定信号优先（S42-9）", () => {
   });
 });
 
+// S42-12：字段标签内的嵌套控件（checkbox 快捷项）不是字段名——剔除
+describe("describeElement 字段标签纯化（S42-12）", () => {
+  it("label 内嵌 checkbox 的 <label>所有</label> 不混入字段名", () => {
+    // 真实禅道结构：form-label 内含"所有"checkbox 快捷开关（嵌套 label）
+    const el = make(`<div class="form-group required">
+      <label class="form-label required" title="影响版本" for="openedBuild">
+        <span class="text">影响版本</span>
+        <div class="checkbox-primary">
+          <input type="checkbox" id="allBuilds" name="allBuilds">
+          <label for="allBuilds">所有</label>
+        </div>
+      </label>
+      <div class="input-group">
+        <div class="form-group-wrapper picker-box">
+          <div class="pick picker picker-select picker-select-multi form-control">
+            <select class="pick-value" name="openedBuild[]"></select>
+          </div>
+        </div>
+      </div>
+    </div>`).querySelector(".picker")!;
+    const d = describeElement(el);
+    expect(d.labels).toContain("影响版本");
+    expect(d.labels).not.toContain("影响版本所有");
+  });
+
+  it("label 内嵌 input/select 的值不混入字段名", () => {
+    const el = make(`<div class="form-group">
+      <label class="form-label"><span class="text">所属模块</span>
+        <input type="text" value="模块A"></label>
+      <div class="picker"></div>
+    </div>`).querySelector(".picker")!;
+    const d = describeElement(el);
+    expect(d.labels).toContain("所属模块");
+    expect(d.labels).not.toContain("所属模块模块A");
+  });
+});
+
 // S42-10（借鉴 Browser-Use）：cursor:pointer 的自绘控件是可交互元素
 describe("describeElement 可交互检测（S42-10）", () => {
   it("cursor:pointer 的 div（自绘控件）不再上溯", () => {

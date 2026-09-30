@@ -55,7 +55,13 @@ def evaluate_assertions(assertions: list[dict], observed: list[dict],
                     and (s.get("name") or s.get("label")) == p.get("label")
                     and s.get("ok")
                     for s in (executed_steps or []))
-                if filled:
+                # S42-12：写响应已发生（表单被提交消费/页面导航离开）——
+                # 字段消失是流程完成的预期结果非回归（禅道 Bug 创建的
+                # picker 值变更 0→1 由 click 步执行，提交后表单整体消失）
+                wrote = any(
+                    (o.get("method") or "").upper() in ("POST", "PUT", "PATCH", "DELETE")
+                    for o in observed)
+                if filled or wrote:
                     out.append({"payload": p, "observed_status": None, "passed": True,
                                 "skipped": "字段已填并随提交关闭（对话框表单消费），记录不判定"})
                 else:
@@ -111,7 +117,15 @@ def evaluate_assertions(assertions: list[dict], observed: list[dict],
             # S42-7：取最后一次匹配响应判定（终态语义）——同模板的多次调用
             # 含框架噪声（JeecgBoot 表单初始化空值查重返回 code:500
             # "数据为空,不作处理"），all() 语义必被污染
-            value = _extract_field(matched[-1].get("body", ""), p["field"]) if matched else None
+            # S42-12：写操作结果信号优先取最后一次"写响应"（POST/PUT/
+            # PATCH/DELETE）——写成功后同模板的页面加载（GET）响应体
+            # 无业务字段，会把 success 判定吃成失败（禅道实测）。
+            # 无 method 的旧格式回退到最后一次匹配。
+            writes = [o for o in matched
+                      if (o.get("method") or "").upper() in
+                      ("POST", "PUT", "PATCH", "DELETE")]
+            terminal = (writes or matched)[-1] if matched else None
+            value = _extract_field(terminal.get("body", ""), p["field"]) if terminal else None
             passed = bool(matched) and value == p["expect_value"]
             out.append({"payload": p, "observed_status": matched[0]["status"] if matched else None,
                         "passed": passed})

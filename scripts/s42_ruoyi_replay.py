@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "server"))
 import httpx
 
 SERVER = "http://127.0.0.1:8710"
-SKILL_IDS = [95, 96, 97, 98, 99, 100]  # 禅道全生命周期（最终采集）
+SKILL_IDS = [107, 108, 109, 110, 111, 112]  # 禅道全生命周期（按序回放：110 建 Bug→111 解决→112 关闭）
 
 
 def mint_token() -> str:

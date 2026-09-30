@@ -158,6 +158,7 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
             latency_ms = (int((time.monotonic() - start) * 1000)
                           if start is not None else None)
             observed.append({"url": response.url, "status": response.status,
+                             "method": response.request.method,
                              "body": body[:MAX_BODY], "latency_ms": latency_ms})
         asyncio.get_running_loop().create_task(collect())
 
@@ -165,9 +166,14 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
     page.on("response", on_response)
     executed: list[dict] = []
     failed = False
+    early_submitted = False
     for i, step in enumerate(plan.get("steps", []), start=1):
         if failed:
             executed.append({**step, "ok": False, "error": "not attempted"})
+            continue
+        if early_submitted:
+            executed.append({**step, "ok": True,
+                             "skipped": "表单已由日期控件 Enter 提前提交，步骤跳过（结果由断言判定）"})
             continue
         try:
             if step["kind"] == "click":
@@ -199,16 +205,42 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                     prefer_controls=True)
                 # 水合竞态防护：SPA 可能在 fill 后回写旧值（njmind 实测，
                 # 值被改回则保存的脏检查跳过、不发请求），确认值真的写入
+                # S42-12：命中原生 <select>（zui picker 的 pick-value 承载
+                # select）时 fill 必抛错——走 select_option
                 filled = False
-                for _ in range(3):
-                    await locator.fill(step["value"], timeout=timeout_ms)
-                    for _ in range(4):
-                        await page.wait_for_timeout(250)
-                        if await locator.input_value() == step["value"]:
-                            filled = True
+                tag_name = await locator.evaluate("el => el.tagName")
+                if tag_name == "SELECT":
+                    await locator.select_option(step["value"], timeout=timeout_ms)
+                    filled = await locator.input_value() == step["value"]
+                else:
+                    for _ in range(3):
+                        await locator.fill(step["value"], timeout=timeout_ms)
+                        # S42-12：日期控件 fill 不触发框架同步（zui 隐藏
+                        # 承载域由 Enter 提交，禅道实测 fill 后直接保存报
+                        # "计划完成不能为空"；Tab 失焦对范围日期不生效）。
+                        # Enter 可能连带提交整个表单（下拉未开时）——表单
+                        # 已提前提交则剩余步骤跳过，判定交给断言（说真话：
+                        # 业务结果已发生，POST 响应可判）
+                        in_date_picker = await locator.evaluate(
+                            "el => !!(el.closest('.pick, [class*=date-picker], .ant-picker'))")
+                        if in_date_picker:
+                            await locator.press("Enter", timeout=timeout_ms)
+                            await page.wait_for_timeout(800)
+                            try:
+                                connected = await locator.evaluate("el => el.isConnected")
+                            except Exception:
+                                connected = False
+                            if not connected:
+                                early_submitted = True
+                                filled = True  # 表单已提交，值已被消费
+                                break
+                        for _ in range(4):
+                            await page.wait_for_timeout(250)
+                            if await locator.input_value() == step["value"]:
+                                filled = True
+                                break
+                        if filled:
                             break
-                    if filled:
-                        break
                 if not filled:
                     raise RuntimeError(f"输入 {step['name']} 被页面回写覆盖")
                 entry = {**step, "strategy": strategy,
@@ -253,11 +285,15 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
 
     # 收尾：断言关心的模板全部命中即止，否则等满 settle_timeout_ms。
     # 固定短窗口会漏掉保存后的链式请求（njmind 实测 saveTableConfig 晚于 1.5s）。
+    # S42-12：只认"步骤执行后新到达"的响应——模板可能已被步骤前的
+    # 页面加载命中（禅道 /index.php 页面加载先于保存 POST），旧语义
+    # 立即 break，保存写响应还在途就进断言判定（result 字段缺失假失败）
+    base = len(observed)
     if awaited_templates:
         deadline = time.monotonic() + settle_timeout_ms / 1000
         while time.monotonic() < deadline:
             hit = [t for t in awaited_templates
-                   if any(path_matches(o["url"], t) for o in observed)]
+                   if any(path_matches(o["url"], t) for o in observed[base:])]
             if len(hit) == len(awaited_templates):
                 break
             await _poll_toasts()

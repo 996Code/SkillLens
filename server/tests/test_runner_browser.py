@@ -503,6 +503,92 @@ async def test_execute_plan_no_validation_errors_when_clean():
         await browser.close()
 
 
+async def test_execute_plan_input_select_uses_select_option():
+    """S42-12：input 步命中原生 <select>（无 picker 包装的普通下拉）——
+    fill 对 select 必抛错，须走 select_option。"""
+    from app.replay.runner import execute_plan
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body>
+          <form>
+            <label>影响版本</label>
+            <select name="openedBuild[]">
+              <option value="1">第一期构建</option>
+              <option value="2">第二期构建</option>
+            </select>
+          </form>
+        </body></html>""")
+        plan = {"url": "about:blank", "steps": [
+            {"kind": "input", "name": "openedBuild[]", "value": "2",
+             "labels": ["openedBuild[]", "影响版本"], "tag": "select"}]}
+        result = await execute_plan(page, plan)
+        assert result["executed"][0]["ok"] is True
+        assert await page.locator("select").input_value() == "2"
+        await browser.close()
+
+
+async def test_execute_plan_input_date_picker_presses_enter():
+    """S42-12：zui 日期控件 fill 不触发框架同步（隐藏承载域由 Enter 提交，
+    禅道实测 fill 后直接保存报"计划完成不能为空"）——picker 容器内的输入
+    fill 后补 Enter。Enter 可能连带提交整个表单（下拉未开时）——表单
+    提前提交后剩余步骤跳过（ok+skipped 注记），结果由断言判定。"""
+    from app.replay.runner import execute_plan
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body>
+          <input type="hidden" name="end" id="end">
+          <form id="f">
+          <div class="pick date-picker">
+            <input type="text" placeholder="计划完成" id="dt">
+          </div>
+          <button type="submit" id="btn">保存</button>
+          <script>
+            document.getElementById('dt').addEventListener('keydown', (e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('end').value = e.target.value;
+                // 模拟 zui 表单 Enter 直提：提交后表单 DOM 整体替换
+                document.getElementById('f').remove();
+              }
+            });
+          </script>
+        </form></body></html>""")
+        plan = {"url": "about:blank", "steps": [
+            {"kind": "input", "name": "计划完成", "value": "2027-12-31",
+             "labels": ["计划完成"], "tag": "input"},
+            {"kind": "click", "label": "保存", "labels": ["保存"], "tag": "button"}]}
+        result = await execute_plan(page, plan)
+        assert result["executed"][0]["ok"] is True
+        assert await page.locator("#end").input_value() == "2027-12-31"
+        # 表单已提前提交：保存步跳过（ok=True + skipped 注记），不判失败
+        assert result["executed"][1]["ok"] is True
+        assert "提前提交" in result["executed"][1].get("skipped", "")
+        await browser.close()
+
+
+async def test_locate_role_button_exact_name_priority():
+    """S42-12：get_by_role(name=) 默认子串匹配——禅道 Bug 表单的
+    "保存模板"会抢在真提交按钮"保存"之前命中（点击只开模板面板）。
+    精确名策略必须优先于子串匹配。"""
+    from app.replay.locate import locate
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body><form>
+          <button type="button" id="tpl">保存模板</button>
+          <button type="submit" id="real">保存</button>
+        </form></body></html>""")
+        loc, strategy = await locate(page, "保存")
+        assert await loc.get_attribute("id") == "real"
+        assert strategy == "role-button"
+        await browser.close()
+
+
 async def test_locate_title_attr_fallback():
     """S42-8：图标按钮只有 title 提示（禅道 dtable 操作列 <a title="解决">
     无文本）——采集侧 labels 含 title，回放须有 [title=] 定位策略。"""
@@ -540,6 +626,42 @@ async def test_locate_form_group_control_strategy():
         cls = await loc.get_attribute("class")
         assert "picker" in (cls or "")
         assert strategy == "form-group-control"
+        await browser.close()
+
+
+async def test_locate_form_group_control_skips_label_nested_controls():
+    """S42-12：禅道 form-label 内嵌 checkbox 快捷项（<label>所有</label> +
+    input#allBuilds）——form-group-control 的控件选择器不得命中 label 内的
+    嵌套控件（点击隐藏 checkbox 必超时），须命中 picker 容器本体。"""
+    from app.replay.locate import locate
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body>
+          <div class="form-group required">
+            <label class="form-label required" for="openedBuild">
+              <span class="text">影响版本</span>
+              <div class="checkbox-primary">
+                <input type="checkbox" id="allBuilds" name="allBuilds">
+                <label for="allBuilds">所有</label>
+              </div>
+            </label>
+            <div class="input-group">
+              <div class="form-group-wrapper picker-box">
+                <div class="pick picker picker-select picker-select-multi form-control"
+                     style="width:100px;height:30px">
+                  <select class="pick-value" name="openedBuild[]" style="display:none"></select>
+                </div>
+              </div>
+            </div>
+          </div>
+        </body></html>""")
+        loc, strategy = await locate(page, "影响版本")
+        assert strategy == "form-group-control"
+        cls = await loc.get_attribute("class")
+        assert "picker" in (cls or "")
+        assert await loc.get_attribute("id") != "allBuilds"
         await browser.close()
 
 

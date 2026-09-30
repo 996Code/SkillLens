@@ -109,7 +109,7 @@ async def _seed_noisy_session(client) -> str:
     窗 0：纯读（GET 无信号）→ read_only
     窗 1：正常写窗（POST + code 信号）→ kept
     窗 2：孤儿点击 → orphan_click
-    窗 3：空 label → empty_label
+    （S42-10：空 label 点击不开窗，原窗 3 的 POST 归为背景流量不再成窗）
     """
     sid = (await client.post("/api/v1/sessions", json={})).json()["session_id"]
     events = [
@@ -126,10 +126,10 @@ async def _seed_noisy_session(client) -> str:
         {"seq": 4, "ts": 5600, "kind": "network",
          "payload": {"method": "POST", "url": "/orders/1/save", "status": 200,
                      "reqBody": "{}", "resBody": '{"code":200,"status":"SUCCESS"}'}},
-        # 窗 2：孤儿点击（其后无事件归属它——下一锚点 6 开新窗）
+        # 窗 2：孤儿点击（其后空 label 点击不开窗，POST 距锚点 6.6s 超时窗关）
         {"seq": 5, "ts": 9000, "kind": "action",
          "payload": {"type": "click", "target": {"label": "取消", "tag": "button"}}},
-        # 窗 3：空 label + 写方法 → empty_label（规则①优先）
+        # 空 label 点击（S42-10 不开窗）+ 其后 POST 归背景流量
         {"seq": 6, "ts": 15000, "kind": "action",
          "payload": {"type": "click", "target": {"label": "", "tag": "div"}}},
         {"seq": 7, "ts": 15600, "kind": "network",
@@ -144,7 +144,7 @@ async def test_process_filters_noise_windows(client):
     sid = await _seed_noisy_session(client)
     resp = await client.post(f"/api/v1/sessions/{sid}/process")
     assert resp.status_code == 200
-    assert resp.json() == {"windows": 4, "kept": 1}
+    assert resp.json() == {"windows": 3, "kept": 1}
 
     # kept=False 的窗不生成 semantic_action：只剩窗 1（保存）
     rows = (await client.get(f"/api/v1/sessions/{sid}/semantic-actions")).json()
@@ -155,8 +155,7 @@ async def test_process_filters_noise_windows(client):
     # 过滤决策落库（C3 审计）
     fw = (await client.get(f"/api/v1/sessions/{sid}/filtered-windows")).json()
     assert fw == [{"window_seq": 0, "reason": "read_only"},
-                  {"window_seq": 2, "reason": "orphan_click"},
-                  {"window_seq": 3, "reason": "empty_label"}]
+                  {"window_seq": 2, "reason": "orphan_click"}]
 
 
 async def test_process_filter_idempotent(client):
@@ -165,7 +164,7 @@ async def test_process_filter_idempotent(client):
     await client.post(f"/api/v1/sessions/{sid}/process")
     await client.post(f"/api/v1/sessions/{sid}/process")
     fw = (await client.get(f"/api/v1/sessions/{sid}/filtered-windows")).json()
-    assert len(fw) == 3
+    assert len(fw) == 2
     rows = (await client.get(f"/api/v1/sessions/{sid}/semantic-actions")).json()
     assert len(rows) == 1
 
@@ -229,3 +228,25 @@ def test_truly_orphan_click_still_filtered():
     ]
     decisions = classify_windows(windows)
     assert decisions[0]["reason"] == "orphan_click"
+
+
+def test_empty_label_click_not_anchor():
+    """S42-10：空 label 点击不作为窗口锚点——它们必被噪声过滤丢弃，
+    却会破坏 submit-after-click 去重的相邻性（禅道实测：保存 click 与
+    submit 之间夹 1ms 空点击 → 重复保存步进骨架 → 回放二次点击超时）。"""
+    from app.ingestion.windows import build_windows
+
+    t0 = 1000000
+    events = [
+        {"seq": 1, "ts": t0, "kind": "action",
+         "payload": {"type": "click", "target": {"label": "保存"}}},
+        # 1ms 后的空 label 噪声点击
+        {"seq": 2, "ts": t0 + 1, "kind": "action",
+         "payload": {"type": "click", "target": {"label": ""}}},
+        # submit 紧随——应与保存 click 去重（同 label）
+        {"seq": 3, "ts": t0 + 5, "kind": "action",
+         "payload": {"type": "submit", "target": {"label": "保存"}}},
+    ]
+    windows = build_windows(events)
+    anchors = [(w["anchor"].get("payload") or {}).get("type", "?") for w in windows]
+    assert anchors == ["click"], f"空 label 点击不应开窗：{anchors}"

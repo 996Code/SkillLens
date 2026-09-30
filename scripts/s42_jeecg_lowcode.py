@@ -99,23 +99,27 @@ async def flow_dict_type_create(page, data: str) -> None:
     await page.locator("button:has-text('新增')").first.click()
     await page.wait_for_timeout(3000)
     ts = int(time.time()) % 100000
-    await page.locator("input[placeholder='请输入字典名称']").fill(f"闭环字典{data}")
+    # 模态内输入（列表搜索表单与模态字段同 placeholder——必须限定模态容器）
+    await page.locator(".ant-modal input[placeholder='请输入字典名称']").fill(f"闭环字典{data}")
     await page.wait_for_timeout(2000)
-    await page.locator("input[placeholder='请输入字典编码']").fill(f"sl_{data}_{ts}")
+    # 字典编码须 ASCII（Jeecg 编码校验拒绝中文 → 确认不提交）
+    await page.locator(".ant-modal input[placeholder='请输入字典编码']").fill(f"sl{ts}")
     await page.wait_for_timeout(2000)
-    await page.locator("button:has-text('确 认'), button:has-text('确 定')").first.click()
+    await page.locator(".ant-modal button").filter(has_text="确").first.click()
     await page.wait_for_timeout(3000)
 
 
 async def flow_dict_data_create(page, data: str) -> None:
-    """字典数据新增：字典列表 → 行"字典数据" → 新增 → 标题/键值 → 确定。"""
+    """字典数据新增：字典列表 → 行"字典配置"（抽屉）→ 新 增 → 标题/键值 → 确定。"""
     await page.goto(DICT_URL)
     await page.wait_for_timeout(5000)
-    # 首行操作列的"字典数据"链接
-    await page.locator(".ant-table-tbody a, .ant-table-tbody button").filter(
-        has_text="字典数据").first.click()
+    # 首行操作列的"字典配置"按钮（Jeecg 3.9.5 行操作为 编辑/字典配置/删除，
+    # 点击在当前页开字典数据抽屉）
+    await page.locator(".ant-table-tbody button").filter(
+        has_text="字典配置").first.click()
     await page.wait_for_timeout(5000)
-    await page.locator("button:has-text('新增')").first.click()
+    # 抽屉内"新 增"（Jeecg 按钮文本带空格）
+    await page.locator("[class*=drawer] button").filter(has_text="新").first.click()
     await page.wait_for_timeout(3000)
     await page.locator("input[placeholder='请输入字典标题']").fill(f"闭环项{data}")
     await page.wait_for_timeout(2000)
@@ -128,7 +132,7 @@ async def flow_dict_data_create(page, data: str) -> None:
 async def flow_dict_search(page, keyword: str) -> None:
     await page.goto(DICT_URL)
     await page.wait_for_timeout(4000)
-    await page.locator("input[placeholder='请输入字典名称']").fill(keyword)
+    await page.locator("input[placeholder='请输入字典名称']").first.fill(keyword)
     await page.wait_for_timeout(2500)
     await page.locator("button:has-text('查询')").first.click()
     await page.wait_for_timeout(3000)
