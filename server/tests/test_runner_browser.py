@@ -461,3 +461,43 @@ async def test_locate_retries_for_late_content():
         loc, strategy = await locate(page, "请输入标题", prefer_controls=True)
         assert strategy == "placeholder"
         await browser.close()
+
+
+async def test_execute_plan_collects_validation_errors():
+    """S42-7：点击提交被 JS 校验拦截——确定性捕获校验错误文本
+    （点击 ok 但无提交，是"假成功"盲区的关键证据）。"""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body>
+          <form>
+            <input id="phone" required />
+            <div class="ant-form-item-explain-error" style="display:none">请输入手机号码</div>
+            <button id="submit" type="button">确 认</button>
+          </form>
+          <script>
+            document.getElementById('submit').addEventListener('click', () => {
+              document.querySelector('.ant-form-item-explain-error').style.display = 'block';
+            });
+          </script>
+        </body></html>""")
+        plan = {"url": "about:blank", "steps": [
+            {"kind": "click", "label": "确 认"}]}
+        result = await execute_plan(page, plan)
+        step = result["executed"][0]
+        assert step["ok"] is True
+        assert "请输入手机号码" in (step.get("validation_errors") or [])
+        await browser.close()
+
+
+async def test_execute_plan_no_validation_errors_when_clean():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body><button id="b">保存</button></body></html>""")
+        plan = {"url": "about:blank", "steps": [{"kind": "click", "label": "保存"}]}
+        result = await execute_plan(page, plan)
+        assert "validation_errors" not in result["executed"][0]
+        await browser.close()

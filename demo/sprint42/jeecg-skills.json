@@ -1,0 +1,26 @@
+[
+  {
+    "flow": "JeegCreateUser",
+    "skill_id": 40,
+    "sessions": [
+      "874a43f9",
+      "4a20cf83"
+    ]
+  },
+  {
+    "flow": "JeegSearchUser",
+    "skill_id": 41,
+    "sessions": [
+      "58e44b51",
+      "451f2f7d"
+    ]
+  },
+  {
+    "flow": "JeegEditUser",
+    "skill_id": null,
+    "sessions": [
+      "6506b40a",
+      "700ed9b5"
+    ]
+  }
+]

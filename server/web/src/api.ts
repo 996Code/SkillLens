@@ -947,3 +947,63 @@ export function listSuiteRuns(id: number): Promise<SuiteRunSummary[]> {
 }
 
 export { ApiError };
+
+// ---------- S42-7：字段类型知识库（表单校验自愈资产，Web 可维护） ----------
+
+export interface FieldTypeHintItem {
+  id: number;
+  label_pattern: string;
+  field_type: string;
+  example_value: string;
+  source: string; // manual | learned
+  source_skill_id: number | null;
+  success_count: number;
+  created_at: string;
+}
+
+export interface FieldTypeList {
+  items: FieldTypeHintItem[];
+  builtin_types: string[];
+}
+
+export function listFieldTypes(): Promise<FieldTypeList> {
+  return get<FieldTypeList>("/api/v1/field-types");
+}
+
+export async function createFieldType(
+  labelPattern: string, fieldType: string, exampleValue: string,
+): Promise<FieldTypeHintItem> {
+  const resp = await authedFetch("/api/v1/field-types", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ label_pattern: labelPattern, field_type: fieldType,
+                           example_value: exampleValue }),
+  });
+  if (!resp.ok) {
+    throw new ApiError(resp.status, `POST field-types -> ${resp.status}`);
+  }
+  return resp.json() as Promise<FieldTypeHintItem>;
+}
+
+export async function updateFieldType(
+  id: number, labelPattern: string, fieldType: string, exampleValue: string,
+): Promise<FieldTypeHintItem> {
+  const resp = await authedFetch(`/api/v1/field-types/${id}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ label_pattern: labelPattern, field_type: fieldType,
+                           example_value: exampleValue }),
+  });
+  if (!resp.ok) {
+    throw new ApiError(resp.status, `PUT field-types -> ${resp.status}`);
+  }
+  return resp.json() as Promise<FieldTypeHintItem>;
+}
+
+export async function deleteFieldType(id: number): Promise<{ ok: boolean }> {
+  const resp = await authedFetch(`/api/v1/field-types/${id}`, { method: "DELETE" });
+  if (!resp.ok) {
+    throw new ApiError(resp.status, `DELETE field-types -> ${resp.status}`);
+  }
+  return resp.json() as Promise<{ ok: boolean }>;
+}

@@ -15,6 +15,7 @@ from app.replay.assert_eval import evaluate_assertions, path_matches
 from app.replay.locate import locate
 from app.replay.page_snapshot import collect_page_snapshot
 from app.replay.plan import compile_skeleton_plan, requires_confirmation
+from app.replay.field_types import generate_value, is_valid_value, record_success
 from app.replay.repair import generate_proposals, load_repair_map, record_usage
 from app.sanitize import sanitize_error
 from app.replay.flow_graph import derive_states
@@ -100,6 +101,38 @@ async def _shot_step(page, shot_dir, idx: int, entry: dict) -> None:
         pass
 
 
+# S42-7：表单校验错误探测——主流框架的校验提示元素约定 + HTML5 原生。
+# 点击提交后校验不过（无 API 请求、表单不关）是回放常见失败态，
+# 确定性捕获错误文本供归因与字段类型自愈。
+_VALIDATION_SEL = (
+    ".ant-form-item-explain-error, .el-form-item__error, .invalid-feedback, "
+    ".field-error, .help-block.error, .error-message, [role='alert'].error"
+)
+_PROBE_JS = """() => {
+    const out = [];
+    document.querySelectorAll(%SEL%).forEach(el => {
+        const t = (el.textContent || '').trim();
+        if (t) out.push(t.slice(0, 100));
+    });
+    document.querySelectorAll('form :invalid').forEach(el => {
+        if (el.validationMessage) out.push(el.validationMessage.slice(0, 100));
+    });
+    return [...new Set(out)].slice(0, 10);
+}""".replace("%SEL%", repr(_VALIDATION_SEL))
+
+
+async def collect_validation_errors(page) -> list[str]:
+    """点击后短暂探测页面校验错误文本（跨 frame，fail-open）。"""
+    texts: list[str] = []
+    for fr in page.frames:
+        try:
+            errs = await fr.evaluate(_PROBE_JS)
+            texts.extend(errs or [])
+        except Exception:
+            continue
+    return texts[:10]
+
+
 async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                        awaited_templates: list[str] | None = None,
                        settle_timeout_ms: int = 10000,
@@ -146,6 +179,16 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                 entry = {**step, "strategy": strategy,
                          **({"repair_proposal_id": rep_id} if rep_id else {}),
                          "ok": True}
+                # S42-7：点击后探测表单校验错误（提交被 JS 校验拦截的
+                # 确定性证据；300ms 等下一帧渲染——不能过长，会吃掉
+                # toast 轮询窗口，fail-open）
+                try:
+                    await page.wait_for_timeout(300)
+                    v_errs = await collect_validation_errors(page)
+                    if v_errs:
+                        entry["validation_errors"] = v_errs
+                except Exception:
+                    pass
                 executed.append(entry)
                 await _shot_step(page, shot_dir, i, entry)
             elif step["kind"] == "input":
@@ -250,6 +293,40 @@ async def _close_ctx_quietly(ctx) -> None:
         pass
 
 
+def _heal_plan_inputs(db, plan: dict) -> tuple[dict, list[dict]]:
+    """S42-7：按字段类型知识库修复 plan 的 input 步值。
+
+    只改"类型可判定且当前值不合法"的字段（宁缺毋滥——未知类型不动，
+    合法值不动）；返回 (新 plan, 修复字段清单)，无修复返回 (原 plan, [])。
+    """
+    healed: list[dict] = []
+    steps = []
+    # 同类型共享生成值：密码/确认密码必须一致（各自随机必"密码不一致"）
+    gen_by_type: dict[str, str] = {}
+    from app.replay.field_types import resolve_type
+    for step in plan.get("steps") or []:
+        if step.get("kind") == "input":
+            name = str(step.get("name") or step.get("label") or "")
+            value = str(step.get("value") or "")
+            if name and not is_valid_value(db, name, value):
+                rule = resolve_type(db, name)
+                if rule is not None:
+                    ftype = rule["field_type"]
+                    if ftype in gen_by_type:
+                        new_val = gen_by_type[ftype]
+                    else:
+                        new_val = generate_value(db, name)
+                    if new_val is not None:
+                        gen_by_type[ftype] = new_val
+                        healed.append({"name": name, "old": value, "value": new_val})
+                        steps.append({**step, "value": new_val})
+                        continue
+        steps.append(step)
+    if not healed:
+        return plan, []
+    return {**plan, "steps": steps}, healed
+
+
 def _flaky_rerun() -> bool:
     # S24 块 U：REPLAY_FLAKY_RERUN=0 关闭 fail 自动重试；调用时读 env（可测试）
     return os.environ.get("REPLAY_FLAKY_RERUN", "1") == "1"
@@ -322,6 +399,13 @@ async def _attempt(db: Session, browser, skill_id: int, plan: dict,
         elif all(r["passed"] for r in results):
             status = "pass"
         else:
+            status = "fail"
+        # S42-7 说真话：点击后被表单校验拦截（提交未发生）不得判 pass——
+        # 断言可能不覆盖提交（录制时提交就没成功过），但校验错误是
+        # 确定性证据：业务动作没有发生
+        if status == "pass" and any(
+                s.get("validation_errors") for s in result["executed"]
+                if s.get("kind") == "click"):
             status = "fail"
 
         # S22 块 T：视觉回归（确定性，无 LLM）——截图须在 ctx 关闭前完成。
@@ -427,6 +511,28 @@ async def _execute_skill(db: Session, browser, skill_id: int,
     attempt = await _attempt(db, browser, skill_id, plan, assertions, shared_ctx,
                              repair_map, has_overrides=has_overrides)
     flaky = False
+    field_healed = False
+    healed_fields: list[dict] = []
+    # S42-7 字段类型自愈：JS 校验拦截（点击 ok 但表单校验不过、无提交请求）
+    # → 按字段类型知识库生成合法值换值重试；成功反哺知识库
+    if attempt["status"] == "fail":
+        v_errs = [e for s in (attempt["result"] or {}).get("executed") or []
+                  for e in (s.get("validation_errors") or [])]
+        if v_errs:
+            healed_plan, healed_fields = _heal_plan_inputs(db, plan)
+            if healed_fields:
+                retry = await _attempt(db, browser, skill_id, healed_plan,
+                                       assertions, shared_ctx, repair_map,
+                                       has_overrides=has_overrides)
+                if retry["status"] == "pass":
+                    field_healed = True
+                    retry["first_attempt"] = {"status": attempt["status"],
+                                              "executed": attempt["result"]["executed"],
+                                              "assertion_results": attempt["results"],
+                                              "validation_errors": v_errs}
+                    attempt = retry
+                    for f in healed_fields:
+                        record_success(db, f["name"], f["value"], skill_id)
     if (attempt["status"] == "fail" and _flaky_rerun()):
         # flaky 语义=真实非确定性；重试沿用同一 repair_map——本次新生成的提案
         # 留给下一轮回放（自愈是跨回放的，不与 flaky 混淆）
@@ -474,6 +580,9 @@ async def _execute_skill(db: Session, browser, skill_id: int,
                                              "files": shot_files}}
     if "first_attempt" in attempt:
         plan = {**plan, "first_attempt": attempt["first_attempt"]}
+    if field_healed:
+        plan = {**plan, "field_healed": True,
+                "healed_fields": healed_fields}
     run = ReplayRun(skill_id=skill_id, mode="execute", status=status, plan=plan,
                     executed=result["executed"], assertion_results=results,
                     duration_ms=attempt["duration_ms"], flaky=flaky)

@@ -108,8 +108,11 @@ def evaluate_assertions(assertions: list[dict], observed: list[dict],
                             "passed": True,
                             "skipped": "行上下文读取（回放行≠录制行），记录不判定"})
                 continue
-            values = [_extract_field(o.get("body", ""), p["field"]) for o in matched]
-            passed = bool(matched) and all(v == p["expect_value"] for v in values)
+            # S42-7：取最后一次匹配响应判定（终态语义）——同模板的多次调用
+            # 含框架噪声（JeecgBoot 表单初始化空值查重返回 code:500
+            # "数据为空,不作处理"），all() 语义必被污染
+            value = _extract_field(matched[-1].get("body", ""), p["field"]) if matched else None
+            passed = bool(matched) and value == p["expect_value"]
             out.append({"payload": p, "observed_status": matched[0]["status"] if matched else None,
                         "passed": passed})
         else:  # field_change：回放时无 before/after 语义，跳过

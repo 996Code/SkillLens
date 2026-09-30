@@ -15,6 +15,7 @@ from app.api import (
     cards,
     change,
     discoveries,
+    field_types,
     dev_plans,
     events,
     export,
@@ -102,6 +103,7 @@ app.include_router(baseline.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(cards.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(reports.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(audit.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(field_types.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(discoveries.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(impact.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(canvas.router, prefix=API_PREFIX, dependencies=_GUARDED)

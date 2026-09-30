@@ -125,7 +125,11 @@ def compile_skeleton_plan(events: list[dict], skeleton: list[dict], ref_session_
         payload = e.get("payload") or {}
         if e.get("kind") == "action" and payload.get("type") == "input":
             name = payload.get("name") or ""
-            if name in seen and name not in emitted_vars:
+            # S42-7：录制到的 input 全部进步骤（不只变量）——常量字段
+            # （如两轮相同的密码）也须回填，否则表单校验必拦（JeecgBoot
+            # 实测：密码步缺失 → "请输入登录密码" → 提交被拦无 API 请求）。
+            # 值优先级：overrides（换参）> 录制原值。
+            if name and name not in emitted_vars:
                 var = var_by_name.get(name)
                 original = _original_of(var) if var else event_inputs.get(name, "")
                 tgt = payload.get("target") or {}

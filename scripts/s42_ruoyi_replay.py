@@ -11,6 +11,7 @@
 import asyncio
 import json
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "server"))
@@ -18,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "server"))
 import httpx
 
 SERVER = "http://127.0.0.1:8710"
-SKILL_IDS = [17, 18, 19, 20]  # Create/Search/Update/Delete Post
+SKILL_IDS = [40]  # JeegCreateUser（录制时手机号无效——验证字段类型自愈）
 
 
 def mint_token() -> str:
@@ -41,8 +42,19 @@ async def main() -> None:
         for skill_id in SKILL_IDS:
             card = (await c.get(f"{SERVER}/api/v1/skills/{skill_id}/card")).json()
             vars_ = [v["name"] for v in card.get("input_variables", [])]
-            # 换参：新数据（与录制值不同）
-            overrides = {v: f"回放{skill_id}-{v[:6]}" for v in vars_}
+            # 换参：按字段类型生成合法新值（与录制值不同）——
+            # 非法值（如中文手机号）会被表单校验/查重拦截
+            ts = int(time.time()) % 100000
+            def _gen(v: str) -> str:
+                low = v.lower()
+                if "phone" in low or "手机" in v:
+                    return f"138{ts:08d}"
+                if "username" in low or "账号" in v or "user" in low:
+                    return f"sl{skill_id}u{ts}"
+                if "email" in low or "邮箱" in v:
+                    return f"sl{ts}@test.com"
+                return f"回放{skill_id}-{ts}-{v[:6]}"
+            overrides = {v: _gen(v) for v in vars_}
             print(f"#{skill_id} {card['name']} vars={vars_} -> ", end="", flush=True)
             r = await c.post(f"{SERVER}/api/v1/skills/{skill_id}/replay",
                              json={"overrides": overrides, "confirm_side_effect": True})

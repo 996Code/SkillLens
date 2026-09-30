@@ -454,3 +454,22 @@ class VisualBaseline(Base):
     height: Mapped[int] = mapped_column(default=0)
     source_run_id: Mapped[int] = mapped_column()
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class FieldTypeHint(Base):
+    """S42-7 字段类型知识库（表单自愈资产）：字段语义 → 类型 → 合法值生成。
+
+    回放遇 JS 校验拦截（点击提交但表单校验不过）时：按 label 匹配类型 →
+    生成合法值 → 换值重试；成功后自动沉淀/计数（自我反哺）。内置规则为
+    种子（source=builtin），Web 页面可增删改（source=manual），
+    自愈成功自动写入（source=learned）——三者同库同权，按 success_count 排序。
+    """
+    __tablename__ = "field_type_hint"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    label_pattern: Mapped[str] = mapped_column(String(100), index=True)
+    field_type: Mapped[str] = mapped_column(String(30))
+    example_value: Mapped[str] = mapped_column(String(200), default="")
+    source: Mapped[str] = mapped_column(String(20), default="learned")
+    source_skill_id: Mapped[int | None] = mapped_column(nullable=True)
+    success_count: Mapped[int] = mapped_column(default=0)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
