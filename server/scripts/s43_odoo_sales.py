@@ -117,31 +117,50 @@ async def flow_create_quote(page, mark: str) -> None:
 
 async def flow_confirm_quote(page, _mark: str) -> None:
     """最新报价单 → Confirm（确认成销售订单）。状态依赖：须存在草稿报价单。"""
+    if latest_draft_quote_id() == 0:
+        ensure_seed_quote()
     await page.goto(QUOTATIONS, wait_until="domcontentloaded")
     await page.wait_for_timeout(5000)
-    row = page.locator("tr.o_data_row, .o_data_row").first
-    await row.click()
-    await page.wait_for_timeout(2500)
+    row = page.locator(".o_data_row").first
+    await row.locator("td").nth(1).click()
+    await page.wait_for_selector(".o_form_view", timeout=15000)
     btn = page.locator("button", has_text="Confirm")
     if await btn.count() == 0:
         btn = page.locator("button[name='action_confirm']")
     await btn.first.click()
-    await page.wait_for_timeout(3000)
+    await page.wait_for_timeout(4000)
 
 
 async def flow_create_invoice(page, _mark: str) -> None:
     """最新销售订单 → Create Invoice。状态依赖：须存在已确认订单。"""
+    out = odoo_rpc("import xmlrpc.client, os\nurl, db = 'http://127.0.0.1:8069', 'skilllens-demo'\npw = os.environ.get('ODOO_PW', '')\ncommon = xmlrpc.client.ServerProxy(url + '/xmlrpc/2/common')\nuid = common.authenticate(db, 'admin@local.test', pw, {})\nmodels = xmlrpc.client.ServerProxy(url + '/xmlrpc/2/object')\nids = models.execute_kw(db, uid, pw, 'sale.order', 'search', [[('state', '=', 'sale')]], {'limit': 1, 'order': 'id desc'})\nif not ids:\n    drafts = models.execute_kw(db, uid, pw, 'sale.order', 'search', [[('state', 'in', ['draft', 'sent'])]], {'limit': 1, 'order': 'id desc'})\n    if drafts:\n        models.execute_kw(db, uid, pw, 'sale.order', 'action_confirm', [drafts])\n        ids = drafts\nprint(ids[0] if ids else 0)\n")
+    if out in ("", "0"):
+        print("  ! 无已确认订单可开票")
+        return
     orders = f"{ODOO}/web#action=sale.action_orders"
     await page.goto(orders, wait_until="domcontentloaded")
     await page.wait_for_timeout(5000)
-    row = page.locator("tr.o_data_row, .o_data_row").first
-    await row.click()
-    await page.wait_for_timeout(2500)
+    row = page.locator(".o_data_row").first
+    await row.locator("td").nth(1).click()
+    await page.wait_for_selector(".o_form_view", timeout=15000)
     btn = page.locator("button", has_text="Create Invoice")
     if await btn.count() == 0:
         btn = page.locator("button[name='action_view_invoice']")
     await btn.first.click()
-    await page.wait_for_timeout(3000)
+    await page.wait_for_timeout(4000)
+    # Create Invoice 会弹开票向导 modal——ESC/Draft 按钮路径二选一收尾，
+    # 否则向导残留挡住下一轮录制
+    try:
+        modal = page.locator(".modal-content, .o_technical_modal")
+        if await modal.count():
+            draft_btn = modal.locator("button", has_text="Draft").first
+            if await draft_btn.count():
+                await draft_btn.click()
+            else:
+                await page.keyboard.press("Escape")
+            await page.wait_for_timeout(2500)
+    except Exception:
+        pass
 
 
 FLOWS = [
@@ -205,11 +224,35 @@ async def process_and_learn(token: str, sids: list[str]):
         return skill["id"]
 
 
+
+def odoo_rpc(py_code: str) -> str:
+    """容器内跑 XML-RPC 片段（凭据经 ODOO_PW env 注入）。"""
+    import os
+    import subprocess
+    r = subprocess.run(
+        ["docker", "exec", "-e", "ODOO_PW=" + os.environ.get("ODOO_PW", ""),
+         "odoo-odoo-1", "python3", "-c", py_code],
+        capture_output=True, text=True, timeout=180)
+    return (r.stdout or r.stderr).strip().splitlines()[-1] if (r.stdout or r.stderr).strip() else ""
+
+
+def ensure_seed_quote() -> None:
+    """空库时 Odoo 列表进入 sample 模式（行 pe=none + opacity 0.33，
+    任何点击通道不可交互——S43-4 排障结论）。种一条真实报价单恢复。"""
+    out = odoo_rpc("import xmlrpc.client, os\nurl, db = 'http://127.0.0.1:8069', 'skilllens-demo'\npw = os.environ.get('ODOO_PW', '')\ncommon = xmlrpc.client.ServerProxy(url + '/xmlrpc/2/common')\nuid = common.authenticate(db, 'admin@local.test', pw, {})\nmodels = xmlrpc.client.ServerProxy(url + '/xmlrpc/2/object')\nn = models.execute_kw(db, uid, pw, 'sale.order', 'search_count', [[]])\nif n == 0:\n    cust = models.execute_kw(db, uid, pw, 'res.partner', 'create', [{'name': 'SL Customer'}])\n    prod = models.execute_kw(db, uid, pw, 'product.product', 'create', [{'name': 'SL Product', 'list_price': 100.0}])\n    oid = models.execute_kw(db, uid, pw, 'sale.order', 'create', [{'partner_id': cust, 'order_line': [(0, 0, {'product_id': prod, 'product_uom_qty': 2})]}])\n    print('seeded', oid)\nelse:\n    print('orders', n)\n")
+    print("  seed:", out)
+
+
+def latest_draft_quote_id() -> int:
+    out = odoo_rpc("import xmlrpc.client, os\nurl, db = 'http://127.0.0.1:8069', 'skilllens-demo'\npw = os.environ.get('ODOO_PW', '')\ncommon = xmlrpc.client.ServerProxy(url + '/xmlrpc/2/common')\nuid = common.authenticate(db, 'admin@local.test', pw, {})\nmodels = xmlrpc.client.ServerProxy(url + '/xmlrpc/2/object')\nids = models.execute_kw(db, uid, pw, 'sale.order', 'search', [[('state', 'in', ['draft', 'sent'])]], {'limit': 1, 'order': 'id desc'})\nprint(ids[0] if ids else 0)\n")
+    return int(out or 0)
+
 async def main() -> None:
     print("=== S43-4：Odoo 销售链闭环（报价单→确认→创建发票）===")
     token = mint_token()
     ts = int(time.time()) % 100000
     results = {}
+    ensure_seed_quote()
     async with async_playwright() as p:
         browser = await p.chromium.connect_over_cdp(CDP)
         ctx = browser.contexts[0]
