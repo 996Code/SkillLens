@@ -138,35 +138,58 @@ async def flow_create_order(page, mark: str) -> None:
 
 
 async def flow_validate_order(page, _mark: str) -> None:
-    """最新草稿订单 → 确认（Validate）。状态依赖：须 draft 订单。"""
-    await page.goto(f"{DOLI}/commande/list.php?search_status=0",
-                    wait_until="domcontentloaded")
+    """最新草稿订单 → 确认（Validate）。Dolibarr 流程：进订单详情页
+    →点"确认"按钮→确认页 Yes。状态依赖：须 draft（PROV）订单。"""
+    await page.goto(f"{DOLI}/commande/list.php", wait_until="domcontentloaded")
     await page.wait_for_timeout(3000)
-    # 行操作：确认图标（title 含 确认/Validate）
-    btn = page.locator("a[title*='确认'], a[title*='Validate'], a[href*='validate']").first
+    # 点第一个订单引用链接进详情
+    row_link = page.locator("table tbody tr a[href*='commande/card.php']").first
+    await row_link.click()
+    await page.wait_for_timeout(3000)
+    # 详情页确认按钮（图标 title 或文本）
+    btn = page.locator("a[title*='确认'], a[title*='Validate'], a[href*='validate'], button:has-text('确认')").first
     await btn.click()
-    await page.wait_for_timeout(2500)
-    # 确认弹页的 Yes/确认
-    confirm = page.locator("input[value='Yes'], button:has-text('确认'), input[type=submit]").first
+    await page.wait_for_timeout(3000)
+    confirm = page.locator("input[value='Yes'], button:has-text('确认'), .button:has-text('是')").first
     try:
         if await confirm.count():
             await confirm.click()
-            await page.wait_for_timeout(3000)
+            await page.wait_for_timeout(3500)
     except Exception:
         pass
 
 
 async def flow_create_invoice(page, _mark: str) -> None:
-    """最新已确认订单 → 生成发票（从订单页 Create Invoice）。"""
+    """最新订单 → 生成发票。状态依赖：Validate 流程产物（无则先 UI 确认
+    一张：进详情点确认）。订单页"生成发票"按钮 href 含 facture。"""
     await page.goto(f"{DOLI}/commande/list.php", wait_until="domcontentloaded")
     await page.wait_for_timeout(3000)
-    # 点第一行进订单详情
     row_link = page.locator("table tbody tr a[href*='commande/card.php']").first
     await row_link.click()
-    await page.wait_for_timeout(2500)
-    btn = page.locator("a[title*='发票'], a[title*='Invoice'], a[href*='facture']").first
-    await btn.click()
     await page.wait_for_timeout(3000)
+    # 若是草稿单先确认（状态依赖自足）
+    try:
+        val = page.locator("a[title*='确认'], a[title*='Validate'], a[href*='validate']").first
+        if await val.count():
+            await val.click()
+            await page.wait_for_timeout(2500)
+            yes = page.locator("input[value='Yes'], .button:has-text('是')").first
+            if await yes.count():
+                await yes.click()
+                await page.wait_for_timeout(3000)
+    except Exception:
+        pass
+    btn = page.locator("a[title*='发票'], a[title*='Invoice'], a[href*='facture'], a[href*='createinvoice']").first
+    await btn.click()
+    await page.wait_for_timeout(4000)
+    # 生成发票向导（选发票草稿→确认）
+    try:
+        wizard_yes = page.locator("input[value='Yes'], .button:has-text('确'), input[type=submit]").first
+        if await wizard_yes.count():
+            await wizard_yes.click()
+            await page.wait_for_timeout(3000)
+    except Exception:
+        pass
 
 
 FLOWS = [
