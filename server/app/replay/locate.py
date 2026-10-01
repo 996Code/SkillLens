@@ -6,6 +6,12 @@ async def _try_locate(page: Page, label: str,
     # S42：iframe 架构应用（禅道综合界面等）业务内容渲染在子 frame——
     # 逐 frame 尝试候选策略（主 frame 优先）
     frames = [page.main_frame] + [f for f in page.frames if f is not page.main_frame]
+    # S43-4 第一轮：强语义（精确名/title/name）全 frame 优先
+    for frame in frames:
+        hit = await _try_locate_in_frame(page, frame, label, prefer_controls,
+                                         strong_only=True)
+        if hit is not None:
+            return hit
     for frame in frames:
         hit = await _try_locate_in_frame(page, frame, label, prefer_controls)
         if hit is not None:
@@ -14,7 +20,30 @@ async def _try_locate(page: Page, label: str,
 
 
 async def _try_locate_in_frame(page: Page, frame, label: str,
-                               prefer_controls: bool) -> tuple[Locator, str] | None:
+                               prefer_controls: bool,
+                               strong_only: bool = False) -> tuple[Locator, str] | None:
+    # S43-4：两级遍历——强语义（精确按钮名/title/name）在所有 frame 上
+    # 先跑一轮，弱策略（text）第二轮才跑。禅道实测：iframe 业务页的
+    # 图标操作（a[title=执行]）与顶层菜单纯文本"执行"同名——按
+    # frame×策略全序遍历时主 frame 的 text 抢在 iframe 的 title 前命中，
+    # 点错元素导航走错页
+    if strong_only:
+        # S43-4 第一轮只做一件事：全 frame 找可见的 [title=] 命中——
+        # title 是图标操作的唯一标识（禅道 dtable 行操作），任何 frame
+        # 的 text 命中都不该抢在它前面。其余强语义（role-button 精确
+        # 名等）留在第二轮原序（避免绕过 enabled/loading 判定）
+        locator = frame.locator(f'[title="{label}"]')
+        try:
+            count = await locator.count()
+        except Exception:
+            return None
+        for i in range(min(count, 10)):
+            try:
+                if await locator.nth(i).is_visible():
+                    return locator.nth(i), "title-attr"
+            except Exception:
+                continue
+        return None
     candidates: list[tuple[Locator, str]] = [
         # S42-12：精确名优先——get_by_role(name=) 默认子串匹配，禅道 Bug
         # 表单的"保存模板"会抢在真提交按钮"保存"之前命中（点击只触发
@@ -47,6 +76,9 @@ async def _try_locate_in_frame(page: Page, frame, label: str,
         # S43-4：label 恰是相邻 select 的 name（采集侧 select2HostSelect 信号）
         (frame.locator(f'select[name="{label}"] ~ .select2-container').first,
          "select2-by-name"),
+        # S43-4：title 提前——禅道 dtable 图标行操作（a[title=执行] 无文本）
+        # 的唯一标识是 title；text 策略会误中侧边菜单同名项导航走错页
+        (frame.locator(f'[title="{label}"]'), "title-attr"),
         (frame.get_by_text(label, exact=True), "text"),
         (frame.get_by_placeholder(label), "placeholder"),
         (frame.get_by_label(label), "label"),
@@ -55,9 +87,6 @@ async def _try_locate_in_frame(page: Page, frame, label: str,
         (frame.locator(f"#{label}"), "id"),
         # S35：无可访问名图标按钮的 name 属性兜底（采集侧 nameAttr 兜底链）
         (frame.locator(f'[name="{label}"]'), "name-attr"),
-        # S42-8：图标按钮只有 title 提示（禅道 dtable 操作列 <a title="解决">
-        # 无文本无 name）——采集侧 labels 含 title，回放须有对应策略
-        (frame.locator(f'[title="{label}"]'), "title-attr"),
         # S36：Frappe（ERPNext）模态输入框的 data-fieldname 兜底。
         # 控件优先：字段包装 div 同带 data-fieldname 且 DOM 序在前，
         # fill 会命中不可填元素——先试 input/textarea/select 再试任意元素
