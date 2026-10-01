@@ -74,6 +74,9 @@ function collectLabels(el: Element): string[] {
     // 排前面会让骨架签名漂移（LCS 丢步）且回放先试必败的 id。
     // 字段标签（"解决方案"）跨会话稳定，是 picker 的首选语义。
     formGroupLabel(el),
+    // S43-4：select2 渲染层取相邻原生 select 的 name（Snipe-IT 等
+    // bootstrap 系——渲染层 placeholder 回放不可定位）
+    select2HostSelect(el),
     el.id && !isFrameworkId(el.id) ? el.id : undefined,
   ];
   const out: string[] = [];
@@ -94,6 +97,25 @@ function textSignal(el: Element): string | undefined {
   // S42-10：纯数字短文本是控件计数徽章（picker "0"）——不是人读标签
   if (/^\d{1,2}$/.test(t)) return undefined;
   return t;
+}
+
+/** S43-4：select2 渲染层的相邻原生 select（结构铁律：select2 容器
+ * 紧邻被隐藏的原生 select）。渲染层自身无语义（placeholder 如
+ * "Select Status" 回放不可定位），相邻 select 的 name 是稳定锚点。 */
+function select2HostSelect(el: Element): string | undefined {
+  const container = el.classList?.contains("select2-container")
+    ? el
+    : el.closest(".select2-container");
+  if (!container) return undefined;
+  let cur: Element | null = container;
+  for (let i = 0; i < 3 && cur; i++) {
+    const prev = cur.previousElementSibling;
+    if (prev?.tagName === "SELECT" && prev.getAttribute("name")) {
+      return prev.getAttribute("name") ?? undefined;
+    }
+    cur = prev;
+  }
+  return undefined;
 }
 
 /** 最近表单组的字段标签（zui/ant/element 表单布局通用）。

@@ -222,3 +222,27 @@ describe("describeElement 可交互检测（S42-10）", () => {
     expect(d.labels).toContain("选项");
   });
 });
+
+// S43-4：select2 自绘下拉（Snipe-IT 等 bootstrap 系）——渲染层无语义，
+// 相邻原生 select 的 name 是稳定锚点
+describe("describeElement select2 锚点（S43-4）", () => {
+  it("select2 渲染层上溯取相邻 hidden select 的 name", () => {
+    // select2 结构铁律：渲染容器紧邻原生 select（select2 把它藏起来）
+    const el = make(`<div>
+      <select name="status_id" class="select2-hidden-accessible"></select>
+      <span class="select2-container"><span class="select2-selection__rendered">Select Status</span></span>
+    </div>`).querySelector(".select2-container")!;
+    const d = describeElement(el);
+    expect(d.labels).toContain("status_id");
+  });
+
+  it("渲染层自身有稳定文本时仍进 labels（兼容）", () => {
+    const el = make(`<div>
+      <select name="model_id" class="select2-hidden-accessible"></select>
+      <span class="select2-container"><span class="select2-selection__rendered">ThinkPad X1</span></span>
+    </div>`).querySelector(".select2-container")!;
+    const d = describeElement(el);
+    expect(d.labels).toContain("model_id");
+    expect(d.labels).toContain("ThinkPad X1");
+  });
+});

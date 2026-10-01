@@ -27,11 +27,26 @@ async def _try_locate_in_frame(page: Page, frame, label: str,
         # 用 Playwright filter(has_text) 代替
         # S42-12：排除 label 内嵌套的控件（禅道 form-label 内的 checkbox
         # 快捷项 input#allBuilds 文档序在前，.first 会命中它而非 picker）
+        # S43-4：逗号选择器按文档序取 first——hidden select（select2-
+        # hidden-accessible）会抢在容器前。分两候选：先自绘控件容器，
+        # 再原生控件（容器是用户真实点击目标）
         (frame.locator(".form-group, .ant-form-item", has_text=label)
-         .locator(".picker, .ant-select, .ant-picker, "
-                  "input:not(label input), select:not(label select), "
-                  "textarea:not(label textarea)").first,
+         .locator(".select2-container, .picker, .ant-select, .ant-picker").first,
          "form-group-control"),
+        (frame.locator(".form-group, .ant-form-item", has_text=label)
+         .locator("input:not(label input), select:not(label select), "
+                  "textarea:not(label textarea)").first,
+         "form-group-native"),
+        # S43-4：select2 下拉（Snipe-IT 等 bootstrap 系）——label 是渲染层
+        # 文本（"Select Status"）或采集的相邻 select name。语义：含该 label
+        # 的表单组内点 select2 容器（打开后由脚本链选值不可行——回放到此
+        # 步骤只负责开下拉，值选择由 form-group 控件步或 API 断言覆盖）
+        (frame.locator(".form-group, .ant-form-item, [class*=form-group]", has_text=label)
+         .locator(".select2-container").first,
+         "select2"),
+        # S43-4：label 恰是相邻 select 的 name（采集侧 select2HostSelect 信号）
+        (frame.locator(f'select[name="{label}"] ~ .select2-container').first,
+         "select2-by-name"),
         (frame.get_by_text(label, exact=True), "text"),
         (frame.get_by_placeholder(label), "placeholder"),
         (frame.get_by_label(label), "label"),

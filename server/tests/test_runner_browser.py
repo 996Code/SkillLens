@@ -690,3 +690,30 @@ async def test_locate_skips_loading_container():
         # 必须等了加载（>1s）才返回——立即返回的点击会被吞
         assert elapsed > 1.0, f"locate 未等待加载完成（{elapsed:.2f}s）"
         await browser.close()
+
+
+async def test_locate_select2_strategies():
+    """S43-4：select2 下拉定位——渲染文本（Select Status）开下拉；
+    相邻 select name（status_id）信号直取容器。"""
+    from app.replay.locate import locate
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body><form>
+          <div class="form-group">
+            <label>Status</label>
+            <select name="status_id" class="select2-hidden-accessible"></select>
+            <span class="select2-container" style="width:120px;height:28px">
+              <span class="select2-selection__rendered">Select Status</span></span>
+          </div>
+        </form></body></html>""")
+        loc, strategy = await locate(page, "Select Status")
+        cls = await loc.get_attribute("class")
+        assert "select2-container" in (cls or "")
+        assert strategy in ("select2", "form-group-control")
+        loc2, strategy2 = await locate(page, "status_id")
+        cls2 = await loc2.get_attribute("class")
+        assert "select2-container" in (cls2 or "")
+        assert strategy2 in ("select2-by-name", "form-group-control")
+        await browser.close()
