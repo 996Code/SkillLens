@@ -77,3 +77,51 @@ test("有 name 时 data-fieldname 不抢先", () => {
   el.setAttribute("data-fieldname", "phone_field");
   expect(inputKey(el)).toBe("phone");
 });
+
+// S43-4：select2 弹层搜索输入——无 name/id/placeholder，宿主 hidden
+// select 的 name 是唯一稳定信号（回放按 name 开下拉后输入）
+describe("inputKey select2 弹层输入兜底", () => {
+  it("select2 搜索输入取宿主 select 的 name", () => {
+    const div = document.createElement("div");
+    div.innerHTML = `
+      <select name="model_id" class="select2-hidden-accessible"></select>
+      <span class="select2-container">
+        <span class="select2-dropdown">
+          <span class="select2-search select2-search--dropdown">
+            <input class="select2-search__field" type="search" autocomplete="off">
+          </span>
+        </span>
+      </span>`;
+    document.body.appendChild(div);
+    const search = div.querySelector(".select2-search__field") as HTMLInputElement;
+    search.value = "ThinkPad";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(inputKey(search)).toBe("model_id");
+    document.body.removeChild(div);
+  });
+
+  it("非 select2 输入不受影响", () => {
+    const el = document.createElement("input");
+    el.name = "title";
+    expect(inputKey(el)).toBe("title");
+  });
+});
+
+  it("body 挂载弹层（Snipe-IT 老版 select2）经 open 容器反查宿主", () => {
+    const div = document.createElement("div");
+    div.innerHTML = `
+      <form>
+        <select name="model_id" class="select2-hidden-accessible"></select>
+        <span class="select2-container select2-container--open"></span>
+      </form>
+      <body-mount>
+        <span class="select2-container select2-container--open">
+          <input class="select2-search__field" type="search">
+        </span>
+      </body-mount>`;
+    document.body.appendChild(div);
+    const search = div.querySelector(".select2-search__field") as HTMLInputElement;
+    // 搜索字段所在容器前邻不是 select（body 挂载）→ 走 open 容器兜底
+    expect(inputKey(search)).toBe("model_id");
+    document.body.removeChild(div);
+  });

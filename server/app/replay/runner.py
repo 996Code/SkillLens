@@ -209,7 +209,40 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                 # select）时 fill 必抛错——走 select_option
                 filled = False
                 tag_name = await locator.evaluate("el => el.tagName")
-                if tag_name == "SELECT":
+                # S43-4：select2 下拉（name=宿主 select 名）——fill 无效，
+                # 须开容器→搜索→点结果（Snipe-IT 等 bootstrap 系）
+                is_select2 = await locator.evaluate(
+                    "el => !!(el.closest('.select2-container')"
+                    " || el.querySelector('.select2-container')"
+                    " || (el.classList && el.classList.contains('select2-container'))"
+                    " || (el.tagName === 'SELECT' && el.nextElementSibling"
+                    "     && el.nextElementSibling.classList.contains('select2-container')))")
+                if is_select2:
+                    if tag_name == "SELECT":
+                        container = locator.locator(
+                            "xpath=..").locator(".select2-container").first
+                    else:
+                        container = locator
+                    # 前置 click 步（"Select Status"）可能已开弹层——
+                    # 已开则不重复点（重开会闪断选项渲染）
+                    already_open = await page.locator(
+                        ".select2-container--open .select2-results__option").count()
+                    if not already_open:
+                        await container.click(timeout=timeout_ms, force=True)
+                        await page.wait_for_timeout(800)
+                    # 本地数据下拉（statuslabels 等）无搜索框——直接点
+                    # 匹配选项；AJAX 下拉（models/users）先搜索再点
+                    search = page.locator("input.select2-search__field:visible").first
+                    if await search.count():
+                        await search.fill(step["value"], timeout=timeout_ms)
+                        await page.wait_for_timeout(900)
+                    opt = page.locator(
+                        ".select2-results__option",
+                        has_text=step["value"]).first
+                    await opt.click(timeout=timeout_ms)
+                    await page.wait_for_timeout(600)
+                    filled = True
+                elif tag_name == "SELECT":
                     await locator.select_option(step["value"], timeout=timeout_ms)
                     filled = await locator.input_value() == step["value"]
                 else:
@@ -463,11 +496,20 @@ async def _attempt(db: Session, browser, skill_id: int, plan: dict,
             status = "fail"
         # S42-7 说真话：点击后被表单校验拦截（提交未发生）不得判 pass——
         # 断言可能不覆盖提交（录制时提交就没成功过），但校验错误是
-        # 确定性证据：业务动作没有发生
-        if status == "pass" and any(
-                s.get("validation_errors") for s in result["executed"]
-                if s.get("kind") == "click"):
-            status = "fail"
+        # 确定性证据：业务动作没有发生。
+        # S43-4 时序豁免：校验错误之后的步骤若已成功（select2 打开瞬间
+        # 的"请选择"提示被后续 input 步修复并成功提交），历史错误不再
+        # 拦截——只拦"错误是最后状态"的运行
+        if status == "pass":
+            last_err_idx = -1
+            last_ok_idx = -1
+            for i, s in enumerate(result["executed"]):
+                if s.get("ok"):
+                    last_ok_idx = i
+                elif s.get("validation_errors"):
+                    last_err_idx = i
+            if last_err_idx > last_ok_idx:
+                status = "fail"
 
         # S22 块 T：视觉回归（确定性，无 LLM）——截图须在 ctx 关闭前完成。
         # 无基线且 PASS → 建基线（run 落库后补表行）；有基线 → 比对追加断言。

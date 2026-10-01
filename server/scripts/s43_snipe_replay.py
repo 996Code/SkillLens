@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "server"))
 import httpx
 
 SERVER = "http://127.0.0.1:8710"
-SKILL_IDS = [145, 146, 147]
+SKILL_IDS = [154, 155, 156]
 
 
 def mint_token() -> str:

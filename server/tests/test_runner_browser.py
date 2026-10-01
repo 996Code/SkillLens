@@ -717,3 +717,88 @@ async def test_locate_select2_strategies():
         assert "select2-container" in (cls2 or "")
         assert strategy2 in ("select2-by-name", "form-group-control")
         await browser.close()
+
+
+async def test_execute_plan_input_select2_flow():
+    """S43-4：input 步目标是 select2 下拉（name=model_id 的 hidden
+    select）——fill 无效，须开容器→搜索→点结果。"""
+    from app.replay.runner import execute_plan
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body><form>
+          <div class="form-group">
+            <label>Model</label>
+            <style>.select2-hidden-accessible{position:fixed;left:-9999px;top:-9999px}</style>
+            <select name="model_id" class="select2-hidden-accessible">
+              <option value=""></option>
+              <option value="1">ThinkPad X1</option>
+            </select>
+            <span class="select2-container" style="width:150px;height:28px;display:inline-block"></span>
+          </div>
+          <div class="select2-dropdown" style="display:none">
+            <input class="select2-search__field" type="text">
+            <ul class="select2-results__options">
+              <li class="select2-results__option">ThinkPad X1</li>
+            </ul>
+          </div>
+          <script>
+            // 最小 select2 行为模拟：点容器展开弹层；输入过滤；点结果写回
+            const c = document.querySelector(".select2-container");
+            const dd = document.querySelector(".select2-dropdown");
+            const sf = document.querySelector(".select2-search__field");
+            c.addEventListener("click", () => { dd.style.display = "block"; sf.focus(); });
+            document.querySelectorAll(".select2-results__option").forEach(o => {
+              o.addEventListener("click", () => {
+                document.querySelector("select[name=model_id]").value = "1";
+                dd.style.display = "none";
+              });
+            });
+          </script>
+        </form></body></html>""")
+        plan = {"url": "about:blank", "steps": [
+            {"kind": "input", "name": "model_id", "value": "ThinkPad X1",
+             "labels": ["model_id"], "tag": "input"}]}
+        result = await execute_plan(page, plan)
+        assert result["executed"][0]["ok"] is True
+        assert await page.locator("select[name=model_id]").input_value() == "1"
+        await browser.close()
+
+
+async def test_execute_plan_stale_validation_not_blocking():
+    """S43-4：select2 打开瞬间的"请选择"校验提示被后续 input 步修复
+    （Snipe-IT 实测）——历史校验错误不拦截最终 pass；只有错误是
+    运行终态（其后无成功步骤）才判 fail。"""
+    from app.replay.runner import execute_plan
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body><form>
+          <p class="help-block error" style="display:none">请在列表中选择一项。</p>
+          <button type="button" id="b1">Select Status</button>
+          <input name="status_id">
+          <button type="submit" id="b2">Save</button>
+          <script>
+            let errShown = false;
+            document.getElementById("b1").addEventListener("click", () => {
+              document.querySelector(".help-block.error").style.display = "block";
+              setTimeout(() => { document.querySelector(".help-block.error").style.display = "none"; }, 1200);
+            });
+            document.getElementById("b2").addEventListener("click", (e) => {
+              e.preventDefault();
+              fetch("http://mock.local/a/1/save", {method: "POST", body: "{}"});
+            });
+          </script>
+        </form></body></html>""")
+        plan = {"url": "about:blank", "steps": [
+            {"kind": "click", "label": "Select Status"},
+            {"kind": "input", "name": "status_id", "value": "Ready to Deploy"},
+            {"kind": "click", "label": "Save"}]}
+        result = await execute_plan(page, plan)
+        # Select Status 点击时校验提示短暂出现（validation_errors 捕到），
+        # 但后续 input+Save 成功——不得拦截
+        assert result["executed"][0].get("validation_errors")
+        assert all(s.get("ok") for s in result["executed"])
+        await browser.close()
