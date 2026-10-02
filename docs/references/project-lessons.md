@@ -144,5 +144,99 @@
 
 ---
 
+## 六、七系统闭环实战（S43-4，2026-10-01/02）
+
+> 方法论总纲（用户强制，已入 AGENTS.md）：**遇坑先查目标系统官方 harness**
+> （容器内一手源码 > Playwright/Healenium 源码 > 搜索文章），结论注明出处。
+
+### 18. 写类按钮"提交成功"是假象：toast 文案不可靠，等写请求落地
+- **现象**（ERPNext）：回放点 Save 步骤全 ✓，实体却没建出（服务端校验拒了）。
+- **根因**：点击成功 ≠ 提交成功；toast/步骤 ok 都不能证明写发生。
+- **修复**（源自 Frappe cypress/support/commands.js 的 intercept+wait 模式）：
+  写类按钮点击前记水位，轮询 6s 等新 POST；无新 POST 判"提交被拦"。两步提交
+  （Submit→Yes）时 Submit 豁免（plan 全量已知，下一步是确认词）。
+- **预防**：任何"提交后验证"以写请求为证据，不以 UI 反馈为证据。
+
+### 19. 模态动画中元素点不上：stability 永不满足 → check(force=True)
+- **现象**（ERPNext 列表勾选）：checkbox click 反复超时；等 spinner 消失也无效。
+- **根因**：modal 搜索 spinner 是循环动画，Playwright actionability 的 stability
+  检查永不满足（元素帧持续变化）；但元素本身可见可点。
+- **修复**（源自 Frappe cypress select_listview_row_checkbox——官方就是
+  check(force=True)）：force 跳过 actionability 但仍走 CDP 可信输入，框架事件
+  层（jQuery 委托）正常收到。
+- **预防**：动画元素超时先想 force；**合成 el.click() 不行**（isTrusted=false
+  被框架忽略/只翻 DOM 不进框架选中集合，重渲即还原——ERPNext 实测三层降级
+  force-check→native-click→force-click 才稳）。
+
+### 20. 空库/空列表不可交互是产品逻辑，不是事件层问题
+- **现象**（Odoo）：空库列表行 opacity 0.33+pe:none，Playwright/browser-use/JS
+  合成事件全部点不动。
+- **根因**：Odoo 空库进入 view sample 模式（演示数据半透明禁交互）——产品行为。
+- **修复**（源自 Odoo 自己的 tour 套件：先种数据）：XML-RPC 种一条真实单据后
+  列表完全恢复。
+- **预防**：目标系统"完全点不动"时先查是否 demo/sample 态，种真实数据。
+
+### 21. 模块激活/初始化必须走 UI toggle，DB 直插不完整
+- **现象**（Dolibarr）：DB 手插 llx_const 激活 commande 模块，表单/菜单仍缺失。
+- **根因**：模块 toggle 跑完整 init（菜单/权限注册），DB 直插只写配置行。
+- **修复**：admin/modules.php?id=25 关掉再开；用户权限补插 llx_user_rights。
+- **预防**：所有"改配置生效"类操作优先复刻官方入口（UI/CLI），不直写业务表。
+
+### 22. select2 AJAX 下拉：原生 select 是空壳，必须走 UI 全链
+- **现象**（Snipe-IT）：select_option/设值+change/jQuery val 全部无效。
+- **根因**：select2 AJAX 渲染层容器与 hidden select 无 DOM/aria 关联，options
+  恒空，程序设值不触发 select2 内部状态。
+- **修复**：采集侧 select2HostSelect（相邻 hidden select 的 name 进 labels）；
+  回放侧 select2 专属策略（点 .select2-container→填 .select2-search__field→
+  点 .select2-results__option）。弹层挂 body 锚定法：打开时原容器带 --open 类
+  且前邻即 hidden select。
+- **预防**：自绘控件（select2/picker）一律走"开容器→搜→点结果"UI 链，永不
+  直填 hidden input（破坏组件状态）。
+
+### 23. 跨 frame 定位：图标操作与顶层菜单纯文本同名会抢先命中
+- **现象**（禅道）：iframe 业务页 a[title=执行] 与顶层菜单"执行"同名，主 frame
+  text 策略先命中菜单项，点错元素。
+- **根因**：locate 全策略链按 frame 顺序+策略优先级遍历，无 [title=] 优先。
+- **修复**：两级遍历——第一轮全 frame 只找可见 [title=]（图标操作语义最强），
+  第二轮原全策略链。
+- **预防**：iframe 系统（禅道类）图标按钮优先属性锚（title/aria-label）。
+
+### 24. 无属性输入框的变量化：表单组 label 终极回退
+- **现象**（JeecG 设计器）：抽屉 input 无 name/id/placeholder，inputKey 三回退
+  全空，学习后无法换参。
+- **修复**：inputKey 回退链末尾加 formGroupLabelKey（.cgf-item/.ant-form-item/
+  .form-group 内 label 文本，如"*表名"）——变量化从 0 到 2，Create 换参全 PASS。
+- **预防**：低代码设计器类页面输入框常无属性，采集层必须有表单组语义锚。
+
+### 25. 初始密码/安全策略弹窗锁死页面：超时=有交互没识别到
+- **现象**（若依）：初始密码登录成功后页面锁死，任何定位超时。
+- **根因**：强制"安全提示"弹窗（您的密码还是初始密码）没点确定，overlay 挡全页。
+- **修复**：_confirm_logout_box 类通用处理（.el-message-box__btns button 全局
+  类 filter 确定，轮询）。
+- **预防**（用户 Debug 铁律）："只要是超时，那肯定是有交互你没识别到"——先截图
+  查弹窗/提示/开态，不空等加超时。
+
+### 26. 中文行文本做行锚：无空格 split 失败，按 ASCII 词边界切
+- **现象**（若依/JeecG）：宿主行文本"SL-演示订单 20261001…"做行过滤，split()[0]
+  拿到整串必败。
+- **修复**：`re.findall(r"[A-Za-z0-9_]{4,}", row_text)` 取首 token；且行文本
+  需含 ASCII alnum 特征门（排除"未选中任何数据"空表文案误入）。
+- **预防**：中文混排行取锚词用词界 regex，不用 split。
+
+### 27. el-select 空下拉是裸 span 容器，不是 input 属性
+- **现象**（若依）：element-plus el-select 空态渲染为 .el-select__placeholder
+  容器裸 span 文本，placeholder 属性策略不命中。
+- **修复**：locate 加 el-select-placeholder 专属策略（:has(.el-select__placeholder)
+  filter has_text）。
+- **预防**：element-plus 组件的"属性"常渲染在容器层，先看渲染 DOM 再定策略。
+
+### 28. Windows subprocess 中文输出：默认 GBK 崩读线程
+- **现象**：编排脚本跑 docker exec 输出中文，subprocess text=True 直接崩。
+- **修复**：encoding="utf-8", errors="replace"。
+- **预防**：所有 subprocess 调用统一带此参数（test_export 曾因此回归）。
+
+---
+
 *更新记录：2026-09-24 初版（Sprint 0-4 + Sprint 4.5 全自动闭环的踩坑汇总）；
-2026-09-24 二版（Windows 移植清单 + 回放水合竞态，§五）。*
+2026-09-24 二版（Windows 移植清单 + 回放水合竞态，§五）；
+2026-10-02 三版（§六 S43-4 七系统闭环实战 11 条：#18-#28）。*
