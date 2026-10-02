@@ -246,3 +246,18 @@ describe("describeElement select2 锚点（S43-4）", () => {
     expect(d.labels).toContain("ThinkPad X1");
   });
 });
+
+test("S43-4 行勾选框 labels 含宿主行文本（checkbox 区分信号）", () => {
+  const el = document.createElement("input");
+  el.type = "checkbox";
+  el.value = "on";
+  const row = document.createElement("div");
+  row.className = "list-item";
+  row.innerHTML = '<a href="#">SAL-QTN-2026-00001</a><span>SL客户甲</span>';
+  row.appendChild(el);
+  document.body.appendChild(row);
+  const desc = describeElement(el);
+  assert.ok(desc.labels.some((l: string) => l.includes("SAL-QTN")),
+    `labels 应含行文本: ${JSON.stringify(desc.labels)}`);
+  row.remove();
+});

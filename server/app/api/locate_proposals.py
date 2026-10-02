@@ -26,6 +26,11 @@ def _item(db: Session, row: LocateProposal) -> dict:
     if row.source_run_id:
         run = db.get(ReplayRun, row.source_run_id)
         attribution = run.attribution if run else None
+    if not attribution:
+        # S43-4：源 run 内联自愈 pass 时无失败归因——给确定性描述
+        # （提案状态语义），避免提案列表归因字段空洞
+        attribution = (f"提案 {row.status}（verify_count={row.verify_count}）："
+                       f"标签 {row.step_label!r} → {row.proposed_label!r}")
     return {
         "id": row.id,
         "skill_id": row.skill_id,

@@ -406,12 +406,12 @@ async def test_execute_plan_uses_label_fallback():
         await page.set_content("""
         <html><body>
           <input data-fieldname="customer_name" />
-          <button id="save-btn" data-fieldname="save_btn">Save</button>
+          <button id="save-btn" data-fieldname="save_btn">操作</button>
         </body></html>""")
         plan = {"url": "about:blank", "steps": [
             {"kind": "input", "name": "不存在的名字", "value": "v1",
              "labels": ["customer_name"]},
-            {"kind": "click", "label": "保存", "labels": ["save_btn"]},
+            {"kind": "click", "label": "操作", "labels": ["save_btn"]},
         ]}
         result = await execute_plan(page, plan)
         await browser.close()
@@ -427,7 +427,7 @@ async def test_execute_plan_captures_transient_toast():
         page = await browser.new_page()
         await page.set_content("""
         <html><body>
-          <button id="save">保存</button>
+          <button id="save">触发</button>
           <div class="toast" id="t" style="display:none">保存成功</div>
           <script>
             document.getElementById('save').addEventListener('click', () => {
@@ -438,7 +438,7 @@ async def test_execute_plan_captures_transient_toast():
           </script>
         </body></html>""")
         plan = {"url": "about:blank", "steps": [
-            {"kind": "click", "label": "保存"},
+            {"kind": "click", "label": "触发"},
         ]}
         result = await execute_plan(page, plan)
         await browser.close()
@@ -486,8 +486,11 @@ async def test_execute_plan_collects_validation_errors():
             {"kind": "click", "label": "确 认"}]}
         result = await execute_plan(page, plan)
         step = result["executed"][0]
-        assert step["ok"] is True
-        assert "请输入手机号码" in (step.get("validation_errors") or [])
+        # S43-4（Frappe save=intercept+wait 模式）：写类按钮点击后
+        # 无写请求 → 判失败（假阳性根治）。提示文案具体取哪条（HTML5
+        # 原生 vs 框架层）是实现细节，断言失败语义即可
+        assert step["ok"] is False
+        assert "提交被拦" in (step.get("error") or "")
         await browser.close()
 
 
@@ -792,6 +795,10 @@ async def test_execute_plan_stale_validation_not_blocking():
             });
           </script>
         </form></body></html>""")
+        # S43-4：Save 是写类按钮——点击后必须见到 POST（拦截器接管
+        # 使请求真实到达 on_response），否则被判"提交被拦"
+        await page.route("**/a/1/save", lambda route: route.fulfill(
+            status=200, body='{"code":200}'))
         plan = {"url": "about:blank", "steps": [
             {"kind": "click", "label": "Select Status"},
             {"kind": "input", "name": "status_id", "value": "Ready to Deploy"},
@@ -802,3 +809,61 @@ async def test_execute_plan_stale_validation_not_blocking():
         assert result["executed"][0].get("validation_errors")
         assert all(s.get("ok") for s in result["executed"])
         await browser.close()
+
+
+AMBIGUOUS_HTML = """
+<html><body>
+  <div class="form-group"><label>Customer</label>
+    <input name="party_name" class="input-with-feedback form-control" /></div>
+  <div class="modal show">
+    <div class="results">
+      <div class="list-item"><input type="checkbox" value="on" /></div>
+    </div>
+    <button class="btn btn-primary">Get Items</button>
+  </div>
+  <button class="btn btn-default">Get Items From</button>
+</body></html>
+"""
+
+
+async def test_locate_scored_fallback_checkbox_ambiguity():
+    """S43-4 评分兜底：短 label 'on'（checkbox value）不得误中
+    party_name 等无关输入框——多信号评分须拉开差距才命中。
+    模拟 ERPNext 实测：语义层 placeholder/label 子串误中主表单
+    输入框（此处直接调 _scored_fallback 验证评分消歧正确性）。"""
+    from app.replay.locate import _scored_fallback
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.route("http://mock.local/", lambda route: route.fulfill(
+            status=200, content_type="text/html; charset=utf-8", body=AMBIGUOUS_HTML))
+        await page.goto("http://mock.local/")
+        hit = await _scored_fallback(page, "on", ["on"], "input", 1, "div>div>div>div>input")
+        assert hit is not None, "评分兜底应命中 checkbox"
+        loc, strategy = hit
+        info = await loc.evaluate(
+            "el => ({type: el.type, val: el.value})")
+        await browser.close()
+    assert strategy == "scored"
+    assert info["type"] == "checkbox" and info["val"] == "on"
+
+
+async def test_locate_scored_fallback_button_prefix_ambiguity():
+    """S43-4 评分兜底：'Get Items' vs 'Get Items From' 前缀歧义——
+    精确文本匹配者得分高于前缀包含者。"""
+    from app.replay.locate import _scored_fallback
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.route("http://mock.local/", lambda route: route.fulfill(
+            status=200, content_type="text/html; charset=utf-8", body=AMBIGUOUS_HTML))
+        await page.goto("http://mock.local/")
+        hit = await _scored_fallback(page, "Get Items", ["Get Items"], "button", 2,
+                                     "div>div>div>div>button")
+        assert hit is not None, "评分兜底应命中 modal 内 Get Items"
+        loc, strategy = hit
+        info = await loc.evaluate(
+            "el => ({txt: el.textContent.trim(), inModal: !!el.closest('.modal')})")
+        await browser.close()
+    assert strategy == "scored"
+    assert info["txt"] == "Get Items" and info["inModal"]

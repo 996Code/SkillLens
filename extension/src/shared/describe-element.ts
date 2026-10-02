@@ -77,6 +77,10 @@ function collectLabels(el: Element): string[] {
     // S43-4：select2 渲染层取相邻原生 select 的 name（Snipe-IT 等
     // bootstrap 系——渲染层 placeholder 回放不可定位）
     select2HostSelect(el),
+    // S43-4：行勾选框（Frappe list-row-check 等）label 恒为 value=on
+    // ——多行同值不可区分。宿主行文本（SAL-QTN-2026-00001…）是唯一
+    // 可区分信号，回放侧 checkbox 按行文本过滤勾选
+    hostRowText(el),
     el.id && !isFrameworkId(el.id) ? el.id : undefined,
   ];
   const out: string[] = [];
@@ -116,6 +120,24 @@ function select2HostSelect(el: Element): string | undefined {
     cur = prev;
   }
   return undefined;
+}
+
+/** S43-4：行勾选框的宿主行文本——checkbox 自身 label 是 value=on
+ * （所有行相同），勾选目标只能靠行内容区分（单据号/名称）。
+ * 仅对 checkbox/radio 生效，其它元素文本已在 textSignal 覆盖。 */
+function hostRowText(el: Element): string | undefined {
+  const tag = el.tagName;
+  if (tag !== "INPUT") return undefined;
+  const type = (el.getAttribute("type") || "").toLowerCase();
+  if (type !== "checkbox" && type !== "radio") return undefined;
+  const row = el.closest(
+    ".list-item, .grid-row, tr, [role=row], [role=option]");
+  if (!row) return undefined;
+  const clone = row.cloneNode(true) as Element;
+  // 保留 <a>——列表行的主键（单据号）常是链接文本，正是要采集的信号
+  clone.querySelectorAll("input, button, select, textarea").forEach((n) => n.remove());
+  const t = (clone.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 80);
+  return t || undefined;
 }
 
 /** 最近表单组的字段标签（zui/ant/element 表单布局通用）。

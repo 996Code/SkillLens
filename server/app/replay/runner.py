@@ -64,6 +64,84 @@ async def _open_context(browser):
     return await browser.new_context(storage_state=STORAGE_STATE or None)
 
 
+async def _check_row_checkbox(page, cb_locator, item_name: str) -> str:
+    """S43-4：Frappe multi_select_dialog 行勾选（官方 list-row-check 带
+    data-item-name）。check 的稳定性等待会被行重渲打破（节点 A 校验、
+    节点 B 承接点击），逐级降级并在每级后核实 :checked。"""
+    import asyncio as _aio
+    async def _checked(sel) -> bool:
+        try:
+            return await page.evaluate(
+                "s => !!document.querySelector(s + ':checked')", sel)
+        except Exception:
+            return False
+    # 1) data-item-name 属性精确锚（无该属性时退回普通选择器）。
+    #    行渲染稳定化：连续两次 count 一致才动手（列表重渲窗口内
+    #    check 的 actionability 校验和点击会落在不同节点实例上——
+    #    手动成功路径的差异正是 wait_for(visible) 的稳定等待）
+    attr_sel = f'input.list-row-check[data-item-name="{item_name}"]'
+    has_attr = await page.evaluate(
+        "s => !!document.querySelector(s)", attr_sel)
+    sel = attr_sel if has_attr else "input.list-row-check"
+    base_sel = attr_sel if has_attr else "input.list-row-check"
+    loc = page.locator(base_sel)
+    for _ in range(10):
+        try:
+            c1 = await loc.count()
+            await _aio.sleep(0.3)
+            c2 = await loc.count()
+            if c1 == c2 and c1 > 0:
+                break
+        except Exception:
+            pass
+    # 双 rAF：渲染队列排空（重渲整块替换在帧间发生，count 探测不到）
+    try:
+        await page.evaluate(
+            "() => new Promise(r => requestAnimationFrame("
+            "() => requestAnimationFrame(r)))")
+    except Exception:
+        pass
+    # force+check 组合：跳过 stability（modal 搜索指示器的循环动画让
+    # 帧永不稳定——check 超时的真因），但仍是 CDP 可信输入（jQuery
+    # 委托把选中记入 selected 集合，重渲按集合恢复勾选）
+    try:
+        await loc.first.check(force=True, timeout=4000)
+        if await _checked(sel):
+            return "force-check"
+        return f"check-noeffect:{sel[:50]}"
+    except Exception as e:
+        check_err = f"{type(e).__name__}:{str(e)[:80]}"
+    try:
+        await page.evaluate(
+            "s => { const el = document.querySelector(s); if (el) el.click(); }", sel)
+        await _aio.sleep(0.4)
+        if await _checked(sel):
+            return f"native-click(l1:{check_err})"
+    except Exception:
+        pass
+    # 2) 原生 click 翻转（isTrusted=false 但浏览器默认行为仍翻转 checkbox，
+    #    jQuery prop 读到；冒泡到官方监听链）
+    try:
+        await page.evaluate(
+            "s => { const el = document.querySelector(s); if (el) el.click(); }", sel)
+        await _aio.sleep(0.4)
+        if await _checked(sel):
+            return "native-click"
+    except Exception:
+        pass
+    # 3) 最终兜底：force click（CDP 可信输入；不直写 checked——change
+    # 直写会触发框架请求（run_doc_method 预拉取），污染后续写按钮的
+    # intercept 基线）
+    try:
+        await page.locator(
+            attr_sel if has_attr else "input.list-row-check").first.click(
+            force=True, timeout=4000)
+        return "force-click"
+    except Exception:
+        pass
+    return "none"
+
+
 async def _locate_with_repair(page, label: str,
                              repair_map: dict[str, dict] | None,
                              extra_labels: list[str] | None = None,
@@ -74,6 +152,8 @@ async def _locate_with_repair(page, label: str,
     """S24 块 U：定位失败时按提案库重试——返回 (locator, strategy, proposal_id)。
 
     无提案或提案也定位失败 → 抛 LookupError（步骤照常失败）。
+    S43-4：上步交互触发的重渲染窗口（Frappe modal 勾选行后按钮瞬时
+    不可见）——首轮失败后短暂重试再走修复链。
     """
     try:
         locator, strategy = await locate(
@@ -81,6 +161,15 @@ async def _locate_with_repair(page, label: str,
             prefer_controls=prefer_controls)
         return locator, strategy, None
     except LookupError:
+        for _ in range(3):
+            await page.wait_for_timeout(500)
+            try:
+                locator, strategy = await locate(
+                    page, label, labels=extra_labels, tag=tag, ordinal=ordinal,
+                    path=path, prefer_controls=prefer_controls)
+                return locator, strategy, None
+            except LookupError:
+                continue
         rep = (repair_map or {}).get(label)
         if rep is None:
             raise
@@ -106,7 +195,10 @@ async def _shot_step(page, shot_dir, idx: int, entry: dict) -> None:
 # 确定性捕获错误文本供归因与字段类型自愈。
 _VALIDATION_SEL = (
     ".ant-form-item-explain-error, .el-form-item__error, .invalid-feedback, "
-    ".field-error, .help-block.error, .error-message, [role='alert'].error"
+    ".field-error, .help-block.error, .error-message, [role='alert'].error, "
+    # S43-4：Frappe 桌面端校验/业务提示弹层（Save 假阳性根因——点击
+    # 成功但 "Please select Quotation" 拦住后续，步骤需判失败给归因）
+    ".msgprint, .modal .indicator"
 )
 _PROBE_JS = """() => {
     const out = [];
@@ -122,7 +214,11 @@ _PROBE_JS = """() => {
 
 
 async def collect_validation_errors(page) -> list[str]:
-    """点击后短暂探测页面校验错误文本（跨 frame，fail-open）。"""
+    """点击后短暂探测页面校验错误文本（跨 frame，fail-open）。
+
+    S43-4：含 Frappe 桌面端 msgprint/indicator 弹层，但须语义过滤——
+    成功 toast（Saved/Submitted/成功）不是校验错误，只有拦截语义
+    （Please/mandatory/required/不能为空/Error 等）才计入。"""
     texts: list[str] = []
     for fr in page.frames:
         try:
@@ -130,7 +226,20 @@ async def collect_validation_errors(page) -> list[str]:
             texts.extend(errs or [])
         except Exception:
             continue
-    return texts[:10]
+    # S43-4：语义过滤——只留拦截类提示（含 Frappe msgprint 成功 toast
+    # 的排除：Saved/成功 是业务结果不是校验错误）
+    bad_words = ("please", "mandatory", "required", "must ", "不能为空",
+                 "必须", "请填写", "请选择", "请在列表", "请先", "至少",
+                 "not allowed", "invalid", "error", "错误", "失败")
+    ok_words = ("saved", "submitted", "成功", "created", "updated", "完成")
+    out = []
+    for t in texts:
+        low = t.lower()
+        if any(b in low for b in bad_words) and not any(o in low for o in ok_words):
+            out.append(t)
+        if len(out) >= 10:
+            break
+    return out
 
 
 async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
@@ -145,6 +254,39 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
 
     def on_request(request):
         req_times[request] = time.monotonic()
+
+    # S37 断言语义根治：toast 瞬态——轮询常见 toast 容器，捕获文本经
+    # observed_toasts 供断言判定（after 快照时机必然错过瞬态元素）。
+    # S43-4：提升到循环前——点击间的写等待窗口也要轮询（串行等待会
+    # 吃掉 600ms 级 toast 的存活窗口）
+    observed_toasts: list[str] = []
+    # S43-4：非写按钮点击引发的框架写请求水位（如勾选触发 Frappe
+    # run_doc_method 预拉）——写按钮判定失败时回看该水位放行
+    recent_write_mark = 0
+    entry_pending_note = ""
+
+    async def _poll_toasts():
+        try:
+            texts = await page.evaluate("""() => {
+              const sels = ['.toast', '.toast-message', '.alert', '[role=alert]',
+                '.ant-message-notice', '.el-message', '.o-notification', '.msg',
+                '.sweet-alert', '.noty', '.toastify', '.alert-message'];
+              const out = [];
+              for (const s of sels) {
+                for (const el of document.querySelectorAll(s)) {
+                  if (el.offsetParent !== null) {
+                    const t = el.textContent.trim().slice(0, 100);
+                    if (t) out.push(t);
+                  }
+                }
+              }
+              return out;
+            }""")
+            for t in texts:
+                if t not in observed_toasts:
+                    observed_toasts.append(t)
+        except Exception:
+            pass
 
     # 同步壳 + create_task：Playwright 的 on() 对 async 回调支持不稳（版本相关，
     # 可能静默不调用或调用不等待），同步回调内自建 task 最稳。
@@ -176,18 +318,155 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                              "skipped": "表单已由日期控件 Enter 提前提交，步骤跳过（结果由断言判定）"})
             continue
         try:
-            if step["kind"] == "click":
+            if step["kind"] == "goto":
+                # S43-4：多页流程的导航步（plan 编译从 navigation 事件
+                # 插入）——URL 归一化同 _plan_url 规则由编译侧保证
+                await page.goto(step["url"])
+                await page.wait_for_load_state("domcontentloaded", timeout=15000)
+                await page.wait_for_timeout(2000)
+                executed.append({**step, "ok": True})
+                await _shot_step(page, shot_dir, i, {**step, "ok": True})
+            elif step["kind"] == "click":
                 locator, strategy, rep_id = await _locate_with_repair(
                     page, step["label"], repair_map,
                     extra_labels=step.get("labels"), tag=step.get("tag"),
                     ordinal=step.get("ordinal"), path=step.get("path"))
-                await locator.click(timeout=timeout_ms)
+                # S43-4：checkbox 用 check()——结果列表渲染时 checkbox
+                # 反复重建，普通 click 的 stability 等待会超时；check 幂等
+                # 且自带等待
+                # S43-4（Frappe 官方 save 命令：intercept+wait）：写类按钮
+                # 点击前记录观测基线——点击后等写响应到达，超时即"提交
+                # 被拦"判失败（POST 是否发出是普适判据，toast 文案是
+                # 归因证据）。base 必须在点击前取：点击到判定的窗口内
+                # 请求可能已完成入 observed
+                # S43-4：整词匹配（词边界）——"Get Items From"（开菜单）
+                # 不得命中 "getitems"（确认动作）；精确区分打开类与提交类
+                import re as _re
+                label_norm = "".join(
+                    (step.get("label") or "").lower().split())
+                write_exact = {"getitems", "yes", "create"}
+                write_sub = ("save", "submit", "确认", "保存", "提交")
+                write_like = (any(w in label_norm for w in write_sub)
+                              or label_norm in write_exact)
+                # S43-4：两步提交流（Submit→Yes 确认）——Submit 只开确认
+                # 弹窗不发请求，写请求由下步 Yes 发出。plan 全量已知：
+                # 下一步是确认词则本步豁免写判定（判定移交 Yes 步）
+                steps_all = plan.get("steps", [])
+                next_lbl = ""
+                if i < len(steps_all):
+                    next_lbl = "".join(
+                        (steps_all[i].get("label") or "").lower().split())
+                next_is_confirm = next_lbl in write_exact or next_lbl in ("确定", "ok", "是")
+                write_base = (len(observed)
+                              if write_like and not next_is_confirm else None)
+                is_checkbox = False
+                try:
+                    is_checkbox = await locator.evaluate(
+                        "el => el.tagName === 'INPUT' && el.type === 'checkbox'")
+                except Exception:
+                    pass
+                if is_checkbox:
+                    # Frappe 官方 Cypress 命令（select_listview_row_checkbox）
+                    # 对行勾选框用普通 click 而非 check()——JS 托管的勾选
+                    # 状态 check() 的写入-校验会误报 did not change。
+                    # S43-4：多行 checkbox 按 labels 里的宿主行文本过滤
+                    # （采集端 hostRowText）——不过滤时 input-value 命中
+                    # 首行（最老单据），Get Items 拉错数据
+                    # 行区分信号优先级：本流程最近的搜索词（含 override
+                    # 换参值——checkbox 步骤 labels 是录制时行文本，跨轮
+                    # 必然陈旧）> 步骤自身 labels 的宿主行文本
+                    row_texts = []
+                    for prev in reversed(plan.get("steps", [])[:i]):
+                        if prev.get("kind") == "input" and prev.get("value")                                 and len(str(prev["value"])) > 6:
+                            row_texts.append(str(prev["value"]))
+                            break
+                    if not row_texts:
+                        row_texts = [l for l in (step.get("labels") or [])
+                                     if len(l) > 6 and l not in ("on", "off")]
+                    cb_locator = locator
+                    row_pinned = False
+                    if row_texts:
+                        rt = row_texts[0]
+                        try:
+                            row = page.locator(
+                                ".list-item, .grid-row, tr, [role=row]"
+                            ).filter(has_text=rt.split()[0]).first
+                            # 搜索结果渲染有 1-2s 延迟——行未到先等
+                            # （不等则 fallback 到表头框勾错对象）
+                            for _ in range(8):
+                                if await row.count():
+                                    break
+                                await page.wait_for_timeout(400)
+                            if await row.count():
+                                cb_locator = row.locator(
+                                    'input[type="checkbox"]').first
+                                row_pinned = True
+                        except Exception:
+                            pass
+                    scene_note = ""
+                    try:
+                        scene_note = await page.evaluate(
+                            "() => { const area = document.querySelector("
+                            "'[data-fieldname=results_area]'); const rows = area ? "
+                            "area.querySelectorAll('.list-item:not(.list-item--head)').length : -1; "
+                            "const checked = document.querySelectorAll("
+                            "'.list-row-check:checked, input[type=checkbox]:checked').length; "
+                            "return `rows=${rows} checked=${checked}`; }")
+                    except Exception:
+                        pass
+                    if row_pinned:
+                        # 官方锚点：Frappe modal 行勾选框带 data-item-name
+                        # （multi_select_dialog.js）——按属性钉死唯一节点，
+                        # 逐步降级：check → 原生 click（el.click() 翻转
+                        # checkbox 并冒泡，jQuery .prop 读 DOM 状态生效）
+                        # 勾选必须走真实 CDP 事件（jQuery 委托把选中
+                        # 记入 selected 集合，重渲按集合恢复勾选；合成
+                        # el.click() 只翻 DOM 不进集合，重渲即还原——
+                        # map_docs 因此不发）。重渲平息判定：双 rAF 帧
+                        # 后行仍存在再 check
+                        mode = await _check_row_checkbox(
+                            page, cb_locator, row_texts[0].split()[0])
+                        entry_pending_note = mode
+                    else:
+                        try:
+                            await cb_locator.click(force=True, timeout=max(timeout_ms, 10000))
+                        except Exception:
+                            await locator.evaluate("el => el.click()")
+                    await page.wait_for_timeout(800)
+                    # S43-4：勾选后校验——未生效直接失败并带现场（说真话）
+                    try:
+                        checked_now = await page.evaluate(
+                            "() => document.querySelectorAll("
+                            "'.list-row-check:checked, input[type=checkbox]:checked').length")
+                        if not checked_now:
+                            rows_now = await page.evaluate(
+                                "() => { const a = document.querySelector("
+                                "'[data-fieldname=results_area]'); return a ? "
+                                "a.querySelectorAll('.list-item:not(.list-item--head)').length : -1; }")
+                            raise RuntimeError(
+                                f"勾选未生效 before={scene_note} rows_now={rows_now}")
+                    except RuntimeError:
+                        raise
+                    except Exception:
+                        pass
+                else:
+                    try:
+                        await locator.click(timeout=timeout_ms)
+                    except Exception:
+                        # S43-4：重渲型 UI（modal/表格定时刷新）stability
+                        # 等待超时——force 点击（可信输入，同上）
+                        await locator.click(force=True, timeout=timeout_ms)
                 entry = {**step, "strategy": strategy,
                          **({"repair_proposal_id": rep_id} if rep_id else {}),
                          "ok": True}
-                # S42-7：点击后探测表单校验错误（提交被 JS 校验拦截的
-                # 确定性证据；300ms 等下一帧渲染——不能过长，会吃掉
-                # toast 轮询窗口，fail-open）
+                try:
+                    if entry_pending_note:
+                        entry["checkbox_mode"] = entry_pending_note
+                        entry_pending_note = ""
+                except NameError:
+                    pass
+                # S42-7：点击后探测表单校验错误（拦截文案作归因证据，
+                # fail-open 记录不判定）
                 try:
                     await page.wait_for_timeout(300)
                     v_errs = await collect_validation_errors(page)
@@ -195,6 +474,75 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                         entry["validation_errors"] = v_errs
                 except Exception:
                     pass
+                # S43-4：写类按钮等待写响应（基线在点击前记录）——
+                # 无 POST = 提交被拦，判失败；拦截文案进 error 供归因
+                if write_base is not None:
+                    try:
+                        await page.evaluate(
+                            "() => { if (window.__sl_cb_lock) {"
+                            "window.__sl_cb_lock.disconnect(); "
+                            "window.__sl_cb_lock = null; } }")
+                    except Exception:
+                        pass
+                    deadline = time.monotonic() + 6
+                    saw_write = False
+                    while time.monotonic() < deadline:
+                        await _poll_toasts()
+                        recent = [o for o in observed[write_base:]
+                                  if o.get("method") in ("POST", "PUT", "PATCH")]
+                        if recent:
+                            saw_write = True
+                            break
+                        await page.wait_for_timeout(300)
+                    if not saw_write and len(observed) > recent_write_mark:
+                        # 预拉放行：前一交互（勾选）已触发框架写请求
+                        # （run_doc_method 预拉），按钮点击无新请求是
+                        # 框架去重，业务动作已发生——非拦截
+                        saw_write = True
+                    if not saw_write:
+                        hint = ""
+                        try:
+                            errs = await collect_validation_errors(page)
+                            if errs:
+                                hint = f" 提示: {errs[0][:100]}"
+                        except Exception:
+                            pass
+                        entry = {**step, "ok": False,
+                                 "error": f"点击后无写请求（提交被拦）{hint}"}
+                        executed.append(entry)
+                        await _shot_step(page, shot_dir, i, entry)
+                        failed = True
+                        continue
+                # S43-4：写请求（POST/PATCH/PUT）在途时等它落地（异步
+                # 拉单/保存 ERPNext map_docs ~2-4s，完成前页面结构未变
+                # 后续定位必失败）。等待与 toast 快照并行——串行等待会
+                # 吃掉瞬态 toast 的存活窗口（600ms toast vs 300+400ms）
+                base = len(req_times)
+                url_before = page.url
+                obs_base = len(observed)
+                t0 = time.monotonic()
+                while time.monotonic() - t0 < 8:
+                    await page.evaluate(
+                        "() => {}")
+                    pend_writes = [r for r in list(req_times)[base:]
+                                   if r.method in ("POST", "PUT", "PATCH")]
+                    await _poll_toasts()
+                    if not pend_writes and time.monotonic() - t0 > 0.4:
+                        break
+                    await page.wait_for_timeout(300)
+                # 框架预拉水位更新（本窗口出现过写响应即记录）
+                if any(o.get("method") in ("POST", "PUT", "PATCH")
+                       for o in observed[obs_base:]):
+                    recent_write_mark = len(observed)
+                # S43-4：写后 SPA 跳转（Save→详情页）——url 变化时等
+                # 新文档加载完，否则后续 locate 在导航窗口空转
+                if page.url != url_before:
+                    try:
+                        await page.wait_for_load_state(
+                            "domcontentloaded", timeout=10000)
+                        await page.wait_for_timeout(1000)
+                    except Exception:
+                        pass
                 executed.append(entry)
                 await _shot_step(page, shot_dir, i, entry)
             elif step["kind"] == "input":
@@ -203,6 +551,26 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                     extra_labels=step.get("labels"), tag=step.get("tag"),
                     ordinal=step.get("ordinal"), path=step.get("path"),
                     prefer_controls=True)
+                # S43-4：类型守卫——重渲窗口内 locate 可能命中字段包装
+                # div（fill 必抛错）。命中不可填元素时限定 input/textarea
+                # 重定位（labels 轮转已含字段名变体）
+                try:
+                    tag_name = await locator.evaluate("el => el.tagName")
+                except Exception:
+                    tag_name = ""
+                if tag_name not in ("INPUT", "TEXTAREA"):
+                    for lbl in [step["name"], *(step.get("labels") or [])]:
+                        try:
+                            alt = page.locator(
+                                f'input[data-fieldname="{lbl}"], '
+                                f'textarea[data-fieldname="{lbl}"], '
+                                f'input[placeholder="{lbl}"]')
+                            if await alt.count() and await alt.first.is_visible():
+                                locator = alt.first
+                                strategy = "data-fieldname-typed"
+                                break
+                        except Exception:
+                            continue
                 # 水合竞态防护：SPA 可能在 fill 后回写旧值（njmind 实测，
                 # 值被改回则保存的脏检查跳过、不发请求），确认值真的写入
                 # S42-12：命中原生 <select>（zui picker 的 pick-value 承载
@@ -246,8 +614,34 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                     await locator.select_option(step["value"], timeout=timeout_ms)
                     filled = await locator.input_value() == step["value"]
                 else:
-                    for _ in range(3):
+                    for attempt in range(3):
+                        # S43-4：fill 后补一次无害 keyup——Frappe 等框架
+                        # 搜索框监听 keyup（fill 只发 input 事件不发键序），
+                        # search_widget 不触发则列表出全量旧数据，后续
+                        # 选项点击选错单据。End 键不改动值只产生 keyup/
+                        # keydown 事件流。弹层搜索框另等结果渲染（modal
+                        # 刚开时监听器未挂，fill 的 input 事件被吞——
+                        # 实测 00089 Open 可转单但 results_area 0 行）
                         await locator.fill(step["value"], timeout=timeout_ms)
+                        await locator.press("End", timeout=timeout_ms)
+                        in_modal = await locator.evaluate(
+                            "el => !!el.closest('.modal, [role=dialog]')")
+                        if in_modal:
+                            await page.wait_for_timeout(1200)
+                            try:
+                                rows = await page.evaluate(
+                                    "() => document.querySelectorAll("
+                                    "'[data-fieldname=results_area] .list-item:not(.list-item--head)').length")
+                                if rows == 0:
+                                    # 监听器迟到：重发 input 事件（React 合成
+                                    # 事件对 el.value 直写不触发，须 setter）
+                                    await locator.evaluate(
+                                        "el => { const s = Object.getOwnPropertyDescriptor("
+                                        "el.__proto__, 'value').set; s.call(el, el.value); "
+                                        "el.dispatchEvent(new Event('input', {bubbles: true})); }")
+                                    await page.wait_for_timeout(1500)
+                            except Exception:
+                                pass
                         # S42-12：日期控件 fill 不触发框架同步（zui 隐藏
                         # 承载域由 Enter 提交，禅道实测 fill 后直接保存报
                         # "计划完成不能为空"；Tab 失焦对范围日期不生效）。
@@ -255,9 +649,13 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                         # 已提前提交则剩余步骤跳过，判定交给断言（说真话：
                         # 业务结果已发生，POST 响应可判）
                         in_date_picker = await locator.evaluate(
-                            "el => !!(el.closest('.pick, [class*=date-picker], .ant-picker'))")
+                            "el => !!(el.closest('.pick, [class*=date-picker], .ant-picker, "
+                            "[data-fieldtype]'))")
+                        # S43-4：值写入后统一补 Enter——Frappe 行内编辑
+                        # （grid/row-form 的 date 字段）fill 不提交值，值停在
+                        # 控件里 Save 仍报 mandatory（手动成功路径靠 Enter）
+                        await locator.press("Enter", timeout=timeout_ms)
                         if in_date_picker:
-                            await locator.press("Enter", timeout=timeout_ms)
                             await page.wait_for_timeout(800)
                             try:
                                 connected = await locator.evaluate("el => el.isConnected")
@@ -285,37 +683,22 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                 executed.append({**step, "ok": False, "error": f"unknown kind {step['kind']}"})
                 failed = True
         except Exception as exc:
-            entry = {**step, "ok": False, "error": str(exc)[:200]}
+            # S43-4：失败现场文本证据（url+可见按钮）——截图不可机读，
+            # 归因需要确定性 DOM 摘要
+            scene = ""
+            try:
+                btns = await page.evaluate(
+                    "() => Array.from(document.querySelectorAll('button'))"
+                    ".filter(b => b.getBoundingClientRect().width > 0)"
+                    ".map(b => b.textContent.trim().slice(0, 18))"
+                    ".filter(Boolean).slice(0, 14)")
+                scene = f" @ {page.url[-60:]} btns={btns}"
+            except Exception:
+                pass
+            entry = {**step, "ok": False, "error": str(exc)[:200] + scene}
             executed.append(entry)
             await _shot_step(page, shot_dir, i, entry)
             failed = True
-    # S37 断言语义根治：toast 瞬态——settle 窗口内轮询常见 toast 容器，
-    # 捕获的文本经 observed_toasts 供断言判定（after 快照时机必然错过瞬态元素）
-    observed_toasts: list[str] = []
-
-    async def _poll_toasts():
-        try:
-            texts = await page.evaluate("""() => {
-              const sels = ['.toast', '.toast-message', '.alert', '[role=alert]',
-                '.ant-message-notice', '.el-message', '.o-notification', '.msg',
-                '.sweet-alert', '.noty', '.toastify', '.alert-message'];
-              const out = [];
-              for (const s of sels) {
-                for (const el of document.querySelectorAll(s)) {
-                  if (el.offsetParent !== null) {
-                    const t = el.textContent.trim().slice(0, 100);
-                    if (t) out.push(t);
-                  }
-                }
-              }
-              return out;
-            }""")
-            for t in texts:
-                if t not in observed_toasts:
-                    observed_toasts.append(t)
-        except Exception:
-            pass
-
     # 收尾：断言关心的模板全部命中即止，否则等满 settle_timeout_ms。
     # 固定短窗口会漏掉保存后的链式请求（njmind 实测 saveTableConfig 晚于 1.5s）。
     # S42-12：只认"步骤执行后新到达"的响应——模板可能已被步骤前的

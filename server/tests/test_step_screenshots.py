@@ -17,7 +17,7 @@ from app.replay.runner import ARTIFACT_DIR, execute_plan
 FORM_HTML = """
 <html><body>
   <input placeholder="请输入" />
-  <button role="button">保存</button>
+  <button role="button">演示</button>
 </body></html>
 """
 
@@ -60,7 +60,7 @@ async def test_execute_plan_captures_step_screenshots(tmp_path):
         await page.goto("http://mock.local/")
         plan = {"url": "http://mock.local/", "steps": [
             {"kind": "input", "name": "请输入", "value": "v1", "original_value": "o"},
-            {"kind": "click", "label": "保存"},
+            {"kind": "click", "label": "演示"},
         ]}
         shot_dir = tmp_path / "shots"
         result = await execute_plan(page, plan, shot_dir=shot_dir)
@@ -82,7 +82,7 @@ async def test_execute_plan_without_shot_dir_has_no_screenshots():
             status=200, content_type="text/html; charset=utf-8", body=FORM_HTML))
         await page.goto("http://mock.local/")
         plan = {"url": "http://mock.local/", "steps": [
-            {"kind": "click", "label": "保存"},
+            {"kind": "click", "label": "演示"},
         ]}
         result = await execute_plan(page, plan)
         await browser.close()

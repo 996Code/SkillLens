@@ -1,0 +1,17 @@
+{
+  "ErpCustomerCreate": {
+    "http": 200,
+    "entity_created": true,
+    "replay": "pass"
+  },
+  "ErpQuotationCreate": {
+    "http": 200,
+    "entity_created": true,
+    "replay": "pass"
+  },
+  "ErpSalesOrderCreate": {
+    "http": 200,
+    "entity_created": true,
+    "replay": "pass"
+  }
+}

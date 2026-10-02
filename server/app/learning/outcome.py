@@ -41,6 +41,16 @@ def generate_assertions(db: Session, skill_id: int) -> list[OutcomeAssertion]:
             if action is None:
                 continue
             for call in action.api_calls or []:
+                # S43-4：查询型调用不生成断言——ERPNext reportview/search 等
+                # RPC 虽走 POST 但语义是列表轮询/读取，与流程无因果（URL
+                # 直达回放时不出现），observed None 判 fail 是假阴性；业务
+                # 结果由真写方法+状态信号判定
+                t = call.get("template") or ""
+                if any(k in t for k in ("reportview", "search_link", "search_widget",
+                                        "get_count", "list_view", "get_list")):
+                    continue
+                if (call.get("method") or "GET").upper() == "GET":
+                    continue
                 rows.append(("api_status", call["template"], 3,
                              {"api_template": call["template"], "expect_status": call.get("status")}))
             for sig in action.state_signals or []:

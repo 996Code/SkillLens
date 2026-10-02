@@ -27,7 +27,10 @@ def compile_replay_plan(events: list[dict], overrides: dict[str, str]) -> dict:
 
 
 def _plan_url(events: list[dict]) -> str:
-    """URL 兜底链与 compile_replay_plan 一致：navigation 优先，否则 action.url。"""
+    """URL 兜底链与 compile_replay_plan 一致：navigation 优先，否则 action.url。
+    S43-4：Frappe 新建表单的 /desk/{doctype}/new-{doctype}-{随机串} 是
+    一次性会话草稿 URL——回放重定向结果随机（去旧客户页/空页），归一化
+    为 /app/{doctype}/new（Frappe 自动重定向到新草稿）。"""
     url = ""
     url_from_action = ""
     for e in events:
@@ -38,7 +41,13 @@ def _plan_url(events: list[dict]) -> str:
             continue
         if not url_from_action and payload.get("url"):
             url_from_action = payload["url"]
-    return url or url_from_action
+    result = url or url_from_action
+    import re as _re
+    m = _re.match(r"^(https?://[^/]+)/(desk|app)/([a-z_-]+)/new-[a-z_-]+-[a-z0-9]+$",
+                  result, _re.IGNORECASE)
+    if m:
+        result = f"{m.group(1)}/app/{m.group(3)}/new"
+    return result
 
 
 def compile_skeleton_plan(events: list[dict], skeleton: list[dict], ref_session_id: str,
@@ -124,8 +133,28 @@ def compile_skeleton_plan(events: list[dict], skeleton: list[dict], ref_session_
 
     emitted_vars: set[str] = set()
     next_skel = 0
+    seen_urls: set[str] = set()
     for e in ordered:
         payload = e.get("payload") or {}
+        # S43-4：多页流程（建单→转单跨页面）——导航事件按时间序插入
+        # goto 步（去 hash/query 的路径级变化才插，同页 hash 路由噪声
+        # 不插）。URL 归一化与 _plan_url 同规则（一次性草稿尾缀剪掉）
+        if e.get("kind") == "navigation":
+            nav_url = payload.get("url") or ""
+            # 首航由 plan.url 承载（goto 重复跳转白耗时间）——只记seen
+            if nav_url and not seen_urls:
+                seen_urls.add(nav_url.split("#")[0].split("?")[0])
+                continue
+            path = nav_url.split("#")[0].split("?")[0]
+            import re as _re
+            m = _re.match(
+                r"^(https?://[^/]+)/(desk|app)/([a-z_-]+)/new-[a-z_-]+-[a-z0-9]+$",
+                path, _re.IGNORECASE)
+            if m:
+                path = f"{m.group(1)}/app/{m.group(3)}/new"
+            if nav_url and path not in seen_urls:
+                seen_urls.add(path)
+                steps.append({"kind": "goto", "url": nav_url})
         if e.get("kind") == "action" and payload.get("type") == "input":
             name = payload.get("name") or ""
             # S42-7：录制到的 input 全部进步骤（不只变量）——常量字段
