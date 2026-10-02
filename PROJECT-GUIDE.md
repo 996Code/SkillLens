@@ -139,18 +139,18 @@ cd server && uv run python ../scripts/live_browser.py 9222
 
 ## 5. 当前进度与下一步（2026-10-02）
 
-- **已完成**：MVP→M1→M2→M3→M4 全里程碑 + v1.6-v2.0 差距块（S 账号/T 视觉/
-  V 性能/U 自愈/W 集成/AA 图基座/AB 自愈根治/AC 图基座二步/AD 字段归因/
-  AE 全系统闭环）。
+- **项目状态：开发进行时（非可交付产品）**。主计划 MVP→M1→M4 + v1.6-v2.0
+  差距块功能已实现；核心管道端到端能跑；七系统核心业务链验证通过。
+  距"可用产品"的差距清单与开发路线图：`docs/HANDOVER.md` §2-§3。
 - **S43-4（2026-10-01/02）**：七系统核心业务链闭环——Snipe-IT 资产/禅道 QA/
   Odoo 销售/Dolibarr 订单/JeecgBoot 在线表单/ERPNext CRM/若依权限，23 技能
   学成、22 换参回放全 PASS、实体级验证（直查目标系统 DB/API）。
   详见 `demo/sprint43/user-test-report.md`。
 - **测试基线**：server 447 / web 54 / extension 76（三套全绿是合并前提）。
-- **待办**：G4 指定真实试点团队（唯一外部输入）→ K 块两周试点；JeecG Sync/Fill
-  链式 override（小技术项，见 HANDOVER §6.1）；块 X（DB 深层验证）等试点反馈。
-- **交接材料**：`docs/HANDOVER.md`（交接总档——现状全景+环境运维+凭据模式+
-  未竟项+6 枚场景化接手提示词）。
+- **近期工作**（HANDOVER §3 路线图）：JeecG 链式 override（§6.1 有修法）→
+  L5 通用 Skill 迁移实测（G5 闸口条件已具备）→ 接入向导化（P3b）。
+- **交接材料**：`docs/HANDOVER.md`（**继任开发任务书**——差距清单/路线图/
+  环境运维/凭据模式/7 枚继任开发提示词）。
 - 进度详情：`docs/specs/2026-09-24-master-delivery-plan.md`（§7 变更记录）与
   各 Sprint 的 `demo/sprintN/user-test-report.md`。
 

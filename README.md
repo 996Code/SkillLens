@@ -42,15 +42,16 @@ open http://127.0.0.1:8710/skills   # Skill 库 / 四分类报告 / 审计 / 画
 | 文档 | 内容 |
 |---|---|
 | [产品宪法](docs/specs/2026-09-23-skilllens-mvp-design.md) | 愿景/硬性约束 C1-C3/阶段地图/竞品调研 |
-| [交付主计划](docs/specs/2026-09-24-master-delivery-plan.md) | M1-M4 里程碑/功能块 A-Q/闸口 G1-G6（唯一范围基准） |
-| [项目导览](PROJECT-GUIDE.md) | 目录地图/关键机制/怎么跑/**AI 学习提示词**（新成员与 AI 接手起点） |
+| [交付主计划](docs/specs/2026-09-24-master-delivery-plan.md) | M1-M4 里程碑/功能块 A-AE/闸口 G1-G7（唯一范围基准） |
+| [继任开发任务书](docs/HANDOVER.md) | **新成员/AI 接手第一站**：差距清单/开发路线图/环境运维/继任开发提示词 |
+| [项目导览](PROJECT-GUIDE.md) | 目录地图/关键机制/怎么跑/**AI 学习提示词** |
 | [协作宪章](docs/COLLABORATION-CHARTER.md) | 项目所有者全部要求汇总（传承文档） |
 | [工作规范](AGENTS.md) | 阶段闸门仪式/TDD/安全红线/环境要点 |
 | [原始设想](docs/references/ai_software_learning_change_intelligence_v3.md) | 43 节完整思路 |
-| [踩坑经验](docs/references/project-lessons.md) | 17 条实战教训 |
+| [踩坑经验](docs/references/project-lessons.md) | 28 条实战教训 |
 | [SWOT 与迭代](docs/reviews/2026-09-25-swot-iteration.md) | 优势/劣势/机会/威胁 + 优先级 |
 | 代码导览 | [server](server/README.md) / [extension](extension/README.md) / [web](server/web/README.md) |
-| 验收记录 | demo/sprint0 ~ sprint27（每 Sprint 实测证据 + 截图 + 用户测试报告） |
+| 验收记录 | demo/sprint0 ~ sprint43（每 Sprint 实测证据 + 截图 + 用户测试报告） |
 
 ## 差异化（为什么不是"又一个测试工具"）
 
@@ -61,4 +62,4 @@ open http://127.0.0.1:8710/skills   # Skill 库 / 四分类报告 / 审计 / 画
 
 ## 测试基线
 
-server **354 passed** / web **50 passed** / extension **31 passed**（三套全绿是每个 Sprint 的合并前提）
+server **447 passed** / web **54 passed** / extension **76 passed**（三套全绿是每个 Sprint 的合并前提）
