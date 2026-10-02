@@ -6,12 +6,12 @@
   },
   "OnlineFormSync": {
     "http": 200,
-    "entity_created": false,
-    "replay": "fail"
+    "entity_created": true,
+    "replay": "pass"
   },
   "OnlineFormFill": {
     "http": 200,
-    "entity_created": false,
-    "replay": "fail"
+    "entity_created": true,
+    "replay": "pass"
   }
 }

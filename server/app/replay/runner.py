@@ -255,7 +255,8 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                        awaited_templates: list[str] | None = None,
                        settle_timeout_ms: int = 10000,
                        repair_map: dict[str, dict] | None = None,
-                       shot_dir: Path | None = None) -> dict:
+                       shot_dir: Path | None = None,
+                       row_anchor_hints: list[str] | None = None) -> dict:
     observed: list[dict] = []
 
     # S23 块 V：request/response 配对测 API 延迟（request 对象做键）
@@ -347,9 +348,14 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                 # 带宿主行文本（采集端 hostRowText）时按行过滤点目标行
                 # 行文本信号须含 ASCII 字母/数字（实体名/表名特征）——
                 # 纯中文提示（"未选中任何数据"空表文案）不是行内容
-                row_texts = [l for l in (step.get("labels") or [])
-                             if len(l) > 6 and l != (step.get("label") or "")
-                             and any(c.isascii() and c.isalnum() for c in l)]
+                # S43-5：row_anchor_hints 优先（换参注入的新实体名）——
+                # labels 是录制时行文本，跨轮换参必然陈旧（JeecG 链式）
+                row_texts = ([h for h in (row_anchor_hints or [])
+                              if len(h) > 6 and
+                              any(c.isascii() and c.isalnum() for c in h)]
+                             or [l for l in (step.get("labels") or [])
+                                 if len(l) > 6 and l != (step.get("label") or "")
+                                 and any(c.isascii() and c.isalnum() for c in l)])
                 if row_texts:
                         rt = row_texts[0]
                         try:
@@ -417,12 +423,15 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                     # 首行（最老单据），Get Items 拉错数据
                     # 行区分信号优先级：本流程最近的搜索词（含 override
                     # 换参值——checkbox 步骤 labels 是录制时行文本，跨轮
-                    # 必然陈旧）> 步骤自身 labels 的宿主行文本
+                    # 必然陈旧）> row_anchor_hints 换参注入 > 步骤自身
+                    # labels 的宿主行文本
                     row_texts = []
                     for prev in reversed(plan.get("steps", [])[:i]):
                         if prev.get("kind") == "input" and prev.get("value")                                 and len(str(prev["value"])) > 6:
                             row_texts.append(str(prev["value"]))
                             break
+                    if not row_texts and row_anchor_hints:
+                        row_texts = [h for h in row_anchor_hints if len(h) > 6]
                     if not row_texts:
                         row_texts = [l for l in (step.get("labels") or [])
                                      if len(l) > 6 and l not in ("on", "off")]
@@ -861,7 +870,8 @@ async def _heal_with_llm_attribution(
 async def _attempt(db: Session, browser, skill_id: int, plan: dict,
                    assertions: list[dict], shared_ctx: bool,
                    repair_map: dict[str, dict] | None = None,
-                   has_overrides: bool = False) -> dict:
+                   has_overrides: bool = False,
+                   row_anchor_hints: list[str] | None = None) -> dict:
     """S24 块 U：单次执行尝试（无 DB 写）——_execute_skill 编排重试的基础。
 
     异常收敛为 error attempt（不抛）；返回键：
@@ -894,7 +904,8 @@ async def _attempt(db: Session, browser, skill_id: int, plan: dict,
             page, plan,
             awaited_templates=[a["payload"]["api_template"] for a in assertions
                                if "api_template" in a["payload"]],
-            repair_map=repair_map, shot_dir=shot_dir)
+            repair_map=repair_map, shot_dir=shot_dir,
+            row_anchor_hints=row_anchor_hints)
         duration_ms = int((time.monotonic() - t0) * 1000)
         after_snapshot = await collect_page_snapshot(page, phase="after")
 
@@ -1043,8 +1054,12 @@ async def _execute_skill(db: Session, browser, skill_id: int,
 
     repair_map = load_repair_map(db, skill_id)
     has_overrides = any(str(v).strip() for v in (overrides or {}).values())
+    # S43-5：换参值即行锚提示——行点击步 labels 的宿主行文本是录制时
+    # 实体名，跨轮换参必然陈旧（JeecG 链式 Sync/Fill 根因）
+    row_hints = [str(v) for v in (overrides or {}).values() if str(v).strip()]
     attempt = await _attempt(db, browser, skill_id, plan, assertions, shared_ctx,
-                             repair_map, has_overrides=has_overrides)
+                             repair_map, has_overrides=has_overrides,
+                             row_anchor_hints=row_hints)
     flaky = False
     field_healed = False
     healed_fields: list[dict] = []
@@ -1062,7 +1077,8 @@ async def _execute_skill(db: Session, browser, skill_id: int,
             if healed_fields:
                 retry = await _attempt(db, browser, skill_id, healed_plan,
                                        assertions, shared_ctx, repair_map,
-                                       has_overrides=has_overrides)
+                                       has_overrides=has_overrides,
+                                       row_anchor_hints=row_hints)
                 if retry["status"] == "pass":
                     field_healed = True
                     retry["first_attempt"] = {"status": attempt["status"],
@@ -1076,7 +1092,8 @@ async def _execute_skill(db: Session, browser, skill_id: int,
         # flaky 语义=真实非确定性；重试沿用同一 repair_map——本次新生成的提案
         # 留给下一轮回放（自愈是跨回放的，不与 flaky 混淆）
         retry = await _attempt(db, browser, skill_id, plan, assertions, shared_ctx,
-                               repair_map, has_overrides=has_overrides)
+                               repair_map, has_overrides=has_overrides,
+                               row_anchor_hints=row_hints)
         if retry["status"] == "pass":
             flaky = True
             # C3：首次失败明细嵌入（重试通过时失败尝试不单独落 run，但可审计）

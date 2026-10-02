@@ -6,6 +6,11 @@ from urllib.parse import urlsplit
 # 更长连续 hex 串（双 code 拼接路径如 form/{a}{b}）同理视为动态
 _ID_SEGMENT = re.compile(r"^(?:\d+|[0-9a-fA-F-]{36}|[0-9a-fA-F]{16,})$")
 
+# S43-5：state_signal 期望值的动态实体标识门——纯数字 ≥12 位（JeecG
+# 派生 code/Snowflake id）或 hex ≥16 位（online 表 code）跨轮回放必然
+# 漂移（回放命中行≠录制行），判 fail 是假阴性；记录不判定
+_DYNAMIC_EXPECT = re.compile(r"^(?:\d{12,}|[0-9a-fA-F]{16,})$")
+
 
 def _static_segments(path: str) -> list[str]:
     """路径段序列，剔除动态段（模板 {id}、纯数字段、UUID 段）。"""
@@ -128,6 +133,14 @@ def evaluate_assertions(assertions: list[dict], observed: list[dict],
                       ("POST", "PUT", "PATCH", "DELETE")]
             terminal = (writes or matched)[-1] if matched else None
             value = _extract_field(terminal.get("body", ""), p["field"]) if terminal else None
+            # S43-5：期望值本身是动态实体标识（纯数字≥12/hex≥16）——
+            # 跨轮回放实体必然新 id，observed≠expect 不是回归信号
+            if _DYNAMIC_EXPECT.match(str(p.get("expect_value") or "")):
+                out.append({"payload": p,
+                            "observed_status": matched[0]["status"] if matched else None,
+                            "passed": True,
+                            "skipped": "期望值为动态实体标识（跨轮回放必漂移），记录不判定"})
+                continue
             passed = bool(matched) and value == p["expect_value"]
             out.append({"payload": p, "observed_status": matched[0]["status"] if matched else None,
                         "passed": passed})

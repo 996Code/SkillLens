@@ -75,10 +75,12 @@ async def main() -> None:
                                    "replay": r["body"].get("status") if isinstance(r["body"], dict) else None}
     print(f"  OnlineFormCreate: http={r['status']} 表单 {before}→{after}")
 
-    # 2) Sync（对新建表——行按表名过滤）
+    # 2) Sync（对新建表——行按表名过滤；S43-5：换参值注入 row-anchor，
+    #    行点击步的 labels 是录制时旧表行文本，跨轮必然陈旧）
     phys = db_query(
         f'SHOW TABLES FROM `jeecg-boot` LIKE "{form}"')
-    r = await replay_skill(token, SKILLS["sync"], {})
+    r = await replay_skill(token, SKILLS["sync"],
+                           {"*表名": form, "*表描述": f"SL回放表单{ts}"})
     phys2 = db_query(
         f'SHOW TABLES FROM `jeecg-boot` LIKE "{form}"')
     synced = len(phys2) > 0
@@ -86,8 +88,9 @@ async def main() -> None:
                                  "replay": r["body"].get("status") if isinstance(r["body"], dict) else None}
     print(f"  OnlineFormSync: http={r['status']} 物理表 {len(phys)}→{len(phys2)}")
 
-    # 3) Fill（功能测试填单——POST 写证据）
-    r = await replay_skill(token, SKILLS["fill"], {})
+    # 3) Fill（功能测试填单——POST 写证据；行锚同样注入新表名）
+    r = await replay_skill(token, SKILLS["fill"],
+                           {"*表名": form, "*表描述": f"SL回放表单{ts}"})
     body = r["body"] if isinstance(r["body"], dict) else {}
     results["OnlineFormFill"] = {"http": r["status"], "entity_created": body.get("status") in ("pass", "flaky-pass"),
                                  "replay": body.get("status")}

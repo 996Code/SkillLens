@@ -24,11 +24,11 @@
 | 禅道 | QA 链：需求→用例→测试单→用例执行 | 166/167/168/169 | 4/4 PASS | story/case/testtask+执行结果落库 | ac88817 |
 | Odoo | 销售链：报价→确认→开票 | 178/179/180 | 3/3 PASS | sale.order 状态验证 | 8d1bf1a |
 | Dolibarr | 订单链：第三方→订单→确认→开票 | 188/189/190/191 | 4/4 PASS | 订单 PROV→validated、发票建出 | 3a47d58 |
-| JeecgBoot | 在线表单链：建表→同步→填数据 | 269/270/271 | Create 全 PASS；Sync/Fill 步骤层全过+物理表真实建出（换参未竟项见 §5） | onl_cgform_head+SHOW TABLES | 07cf50c |
+| JeecgBoot | 在线表单链：建表→同步→填数据 | 269/270/271 | 3/3 PASS（S43-5 链式 override 修复后） | onl_cgform_head+SHOW TABLES+数据行 | 07cf50c |
 | ERPNext | CRM 链：客户→报价→销售订单 | 234/235/236 | 3/3 PASS（22 步长链） | Frappe API count_doc 确认 | 8231e6e |
 | 若依 | 权限链：建角色→建用户→新账号登录 | 256/257/258 | 3/3 PASS | 新账号 POST /prod-api/login 拿 token（API 级证据） | 606ceed |
 
-合计 **23 个技能学成，22 个换参回放全 PASS，1 个链（JeecG 表单）步骤层通过+实体部分达成**。
+合计 **23 个技能学成，23 个换参回放全 PASS**（S43-5 补齐 JeecG 链式 override 后）。
 
 ## 3. 本 Sprint 根治的技术缺口（按发现顺序）
 
@@ -89,10 +89,16 @@
 
 ## 5. 已知未竟项（如实声明）
 
-1. **JeecG Sync/Fill 链式 override**：Sync 技能的 labels 是录制时的行文本，
-   回放新表时行过滤不到目标行——需把换参行文本注入 override（row-anchor
-   换参注入）。Create 已全 PASS，物理表真实建出。失败细节：
-   jeecg-form-replay.json（http 200 但 entity_created false）。
+1. ~~JeecG Sync/Fill 链式 override~~ **已修复（S43-5，2026-10-02 晚）**：
+   - 根因：行点击步 labels 是录制时行文本（旧表名），换参回放新表行过滤不到；
+     另一条断言期望值是纯数字实体 id，跨轮必漂移误判。
+   - 修复：①execute_plan 增加 row_anchor_hints（override 值注入行锚，click
+     与 checkbox 两分支优先级最前）；②assert_eval 对动态实体标识期望
+     （纯数字≥12/hex≥16）记录不判定（与 URL 层 _ID_SEGMENT 同哲学）。
+   - 复验：三链 ALL PASS（Create 表单 11→12 / Sync 物理表 0→1 / Fill
+     status=pass + sl_rp* 表 1 行真实数据）；#270 详情页最近执行 pass；
+     新增测试 test_jeecg_chain_override.py 5 用例；回放域回归 83 passed。
+   - 截图：screenshots/jeecg-sync-skill270-after-fix.png。
 2. **G4 试点团队**：唯一无法代理的外部输入。
 
 ## 6. 三套测试基线

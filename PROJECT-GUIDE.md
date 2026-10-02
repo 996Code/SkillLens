@@ -147,8 +147,9 @@ cd server && uv run python ../scripts/live_browser.py 9222
   学成、22 换参回放全 PASS、实体级验证（直查目标系统 DB/API）。
   详见 `demo/sprint43/user-test-report.md`。
 - **测试基线**：server 447 / web 54 / extension 76（三套全绿是合并前提）。
-- **近期工作**（HANDOVER §3 路线图）：JeecG 链式 override（§6.1 有修法）→
-  L5 通用 Skill 迁移实测（G5 闸口条件已具备）→ 接入向导化（P3b）。
+- **近期工作**（HANDOVER §3 路线图）：~~JeecG 链式 override~~ ✅（S43-5 完成，
+  2026-10-02：row-anchor 换参注入+动态 id 断言归一，三链全 PASS 实体级验证）
+  → L5 通用 Skill 迁移实测（G5 闸口条件已具备）→ 接入向导化（P3b）。
 - **交接材料**：`docs/HANDOVER.md`（**继任开发任务书**——差距清单/路线图/
   环境运维/凭据模式/7 枚继任开发提示词）。
 - 进度详情：`docs/specs/2026-09-24-master-delivery-plan.md`（§7 变更记录）与

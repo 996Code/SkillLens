@@ -44,7 +44,7 @@ LLM 边界纪律：**LLM 只做命名/结构化/归因/提案，一切判定确�
 | P2 | **多账号并发** | 单机单人形态；user/role 表有但无并发压测、无会话隔离验证 | 块 S（S21 已做）之上未深化 |
 | P3 | **数据层生产化** | SQLite 单文件（test.db），无备份演练记录、无迁移演练 | server/app/models.py；deploy/ |
 | P3b | **目标系统接入向导** | 接入新系统靠手写编排脚本（s43_*.py 模式） | scripts/s43_* 是模板；HANDOVER §8.3 |
-| P4 | **JeecG 链式 override** | Sync/Fill 回放实体未建出（步骤层过） | demo/sprint43/jeecg-form-replay.json；修法见 §6.1 |
+| ~~P4~~ | ~~JeecG 链式 override~~ | **已修复（S43-5，2026-10-02）**：row-anchor 换参注入 + 动态 id 断言归一；三链全 PASS 实体级验证 | demo/sprint43/ 证据+lessons #29 |
 | P5 | **性能/规模** | 无大规模（百级 Skill/长时录制）数据；100KB 截断有，容量上限未测 | server/app/config.py |
 
 ### 2.2 主计划内已规划但未全做完的功能
@@ -57,7 +57,7 @@ LLM 边界纪律：**LLM 只做命名/结构化/归因/提案，一切判定确�
 
 ### 2.3 已知技术债/未竟项
 
-- JeecG Sync/Fill 链式 override（同 P4，最小）。
+- ~~JeecG Sync/Fill 链式 override~~（已修复 S43-5，见 §2.1 P4 与 lessons #29）。
 - sprint40/41/42 无独立 user-test-report（当时验收以提交+HANDOVER 矩阵承载）。
 - 若依 checkout 的 livewire POST 语义（S42 探索遗留，骨架已带 POST 证据）。
 - LLM 依赖单网关单模型（deepseek-v4-flash-0731-oc），无 fallback 链。
@@ -66,7 +66,7 @@ LLM 边界纪律：**LLM 只做命名/结构化/归因/提案，一切判定确�
 
 ```
 近期（1-2 Sprint）：
-  1. JeecG 链式 override（P4）——收尾 S43-4 唯一技术尾巴
+  1. ~~JeecG 链式 override（P4）~~ ✅ 已完成（S43-5，2026-10-02）
   2. L5 通用 Skill 迁移实测——闸口条件已具备，主计划内高价值
   3. 目标系统接入向导化（P3b）——把 s43_*.py 编排模式产品化为
      "录配置→自动生成编排"或 UI 引导，降低接入成本
@@ -94,10 +94,10 @@ LLM 边界纪律：**LLM 只做命名/结构化/归因/提案，一切判定确�
 | ERPNext | 8090 | CRM：客户→报价→销售订单 | 234-236 | 3/3 PASS（22 步长链） |
 | Snipe-IT | 8081 | 资产：Create→Checkout→Checkin | 154-156 | 3/3 PASS |
 | 若依 | 8093 | 权限：角色→用户→新账号登录 | 256-258 | 3/3 PASS |
-| JeecgBoot | 8095 | 在线表单：建表→同步→填数 | 269-271 | Create PASS；Sync/Fill 未竟 |
+| JeecgBoot | 8095 | 在线表单：建表→同步→填数 | 269-271 | 3/3 PASS（S43-5 修复后全绿） |
 | njmind（真实） | 192.168.99.22 | 团队日常系统 | — | G2 两次真实发版验收 |
 
-**23 技能学成，22 回放全 PASS，实体级验证（直查目标系统 DB/API）。**
+**23 技能学成，23 回放全 PASS，实体级验证（直查目标系统 DB/API）。**
 覆盖 5 种前端框架（zui/element-plus/ant-design-vue/owl/select2+Bootstrap）。
 详情：demo/sprint43/user-test-report.md。
 
@@ -195,12 +195,14 @@ cd server && uv run python ../scripts/live_browser.py 9222
 7. 自主闭环授权：能自验的全自己闭环并如实报告（含盲区声明）；获授权后
    连跑不逐块请示。
 
-## 6.1 JeecG 链式 override 修法（最小未竟项，接手即可做）
+## 6.1 JeecG 链式 override 修法（已完成 S43-5，留档备查）
 
-Sync 技能（#270）行点击步的 labels 是录制时的行文本（表名），回放新表时
-行过滤不到目标行。修法：换参时把行文本注入 override——row-anchor 换参注入
-（参考 runner.py 的 `_row_anchor_token` 分支，把 override 变量也映射到行锚词）。
-Create（#269）已全 PASS、物理表真实建出，阻塞面小。
+**已修复（2026-10-02）**：①execute_plan 增加 row_anchor_hints 参数，
+_execute_skill 把 overrides 值注入——click/checkbox 行锚提取优先级最前；
+②assert_eval 对动态实体标识期望值（纯数字≥12/hex≥16）记录不判定
+（_DYNAMIC_EXPECT）。三链 ALL PASS + 实体级验证（物理表+数据行），
+测试 test_jeecg_chain_override.py（5 用例）。原根因（Sync #270 行点击步
+labels 是录制时行文本，回放新表行过滤不到）已消除。
 
 ## 7. 关键机制速查表
 
