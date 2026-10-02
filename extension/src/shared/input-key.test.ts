@@ -125,3 +125,15 @@ describe("inputKey select2 弹层输入兜底", () => {
     expect(inputKey(search)).toBe("model_id");
     document.body.removeChild(div);
   });
+
+test("S43-4 无属性输入取表单组 label 键（JeecG 设计器抽屉）", () => {
+  const item = document.createElement("div");
+  item.className = "cgf-item";
+  item.innerHTML = "<label>*表名</label>";
+  const input = document.createElement("input");
+  input.type = "text";
+  item.appendChild(input);
+  document.body.appendChild(item);
+  assert.equal(inputKey(input), "*表名");
+  item.remove();
+});

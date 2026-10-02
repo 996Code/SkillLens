@@ -100,7 +100,8 @@ async def test_export_script_runs_standalone_and_passes(client, monkeypatch):
             f.write(script)
             path = f.name
         proc = subprocess.run([sys.executable, path], capture_output=True,
-                              text=True, timeout=120)
+                              text=True, timeout=120, encoding="utf-8",
+                              errors="replace")
         Path(path).unlink()
         assert proc.returncode == 0, proc.stdout + proc.stderr
         assert "PASS" in proc.stdout
@@ -121,7 +122,8 @@ async def test_export_script_fails_when_assertion_broken(client, monkeypatch):
             f.write(script)
             path = f.name
         proc = subprocess.run([sys.executable, path], capture_output=True,
-                              text=True, timeout=120)
+                              text=True, timeout=120, encoding="utf-8",
+                              errors="replace")
         Path(path).unlink()
         assert proc.returncode == 1
         assert "FAIL" in proc.stdout

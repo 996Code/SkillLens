@@ -2,7 +2,9 @@ import json
 import re
 from urllib.parse import urlsplit
 
-_ID_SEGMENT = re.compile(r"^(?:\d+|[0-9a-fA-F-]{36})$")
+# S43-4：32 位无连字符 hex（JeecG online 表 code）也是跨会话实体 id；
+# 更长连续 hex 串（双 code 拼接路径如 form/{a}{b}）同理视为动态
+_ID_SEGMENT = re.compile(r"^(?:\d+|[0-9a-fA-F-]{36}|[0-9a-fA-F]{16,})$")
 
 
 def _static_segments(path: str) -> list[str]:

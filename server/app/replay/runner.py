@@ -142,6 +142,15 @@ async def _check_row_checkbox(page, cb_locator, item_name: str) -> str:
     return "none"
 
 
+
+def _row_anchor_token(row_text: str) -> str:
+    """S43-4：宿主行文本 → 行过滤锚词。中文行无空格 split() 拿整串
+    （含截断尾巴匹配必败）——按 ASCII 词边界切（表名/单据号特征）。"""
+    import re as _re
+    toks = _re.findall(r"[A-Za-z0-9_]{4,}", row_text)
+    return toks[0] if toks else row_text
+
+
 async def _locate_with_repair(page, label: str,
                              repair_map: dict[str, dict] | None,
                              extra_labels: list[str] | None = None,
@@ -334,6 +343,40 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                 # S43-4：checkbox 用 check()——结果列表渲染时 checkbox
                 # 反复重建，普通 click 的 stability 等待会超时；check 幂等
                 # 且自带等待
+                # S43-4：多行同 label 触发器（行操作"更多"下拉）——labels
+                # 带宿主行文本（采集端 hostRowText）时按行过滤点目标行
+                # 行文本信号须含 ASCII 字母/数字（实体名/表名特征）——
+                # 纯中文提示（"未选中任何数据"空表文案）不是行内容
+                row_texts = [l for l in (step.get("labels") or [])
+                             if len(l) > 6 and l != (step.get("label") or "")
+                             and any(c.isascii() and c.isalnum() for c in l)]
+                if row_texts:
+                        rt = row_texts[0]
+                        try:
+                            row = page.locator(
+                                ".ant-table-row, .list-item, .grid-row, tr"
+                            ).filter(has_text=_row_anchor_token(rt)).first
+                            if await row.count():
+                                trig = row.get_by_text(
+                                    step.get("label") or "", exact=True).first
+                                if await trig.count():
+                                    await trig.click(
+                                        timeout=max(timeout_ms, 10000), force=True)
+                                    await page.wait_for_timeout(800)
+                                    entry = {**step, "strategy": "row-trigger",
+                                             **({"repair_proposal_id": rep_id} if rep_id else {}),
+                                             "ok": True}
+                                    try:
+                                        if entry_pending_note:
+                                            entry["checkbox_mode"] = entry_pending_note
+                                            entry_pending_note = ""
+                                    except NameError:
+                                        pass
+                                    executed.append(entry)
+                                    await _shot_step(page, shot_dir, i, entry)
+                                    continue
+                        except Exception:
+                            pass
                 # S43-4（Frappe 官方 save 命令：intercept+wait）：写类按钮
                 # 点击前记录观测基线——点击后等写响应到达，超时即"提交
                 # 被拦"判失败（POST 是否发出是普适判据，toast 文案是
@@ -390,7 +433,7 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                         try:
                             row = page.locator(
                                 ".list-item, .grid-row, tr, [role=row]"
-                            ).filter(has_text=rt.split()[0]).first
+                            ).filter(has_text=_row_anchor_token(rt)).first
                             # 搜索结果渲染有 1-2s 延迟——行未到先等
                             # （不等则 fallback 到表头框勾错对象）
                             for _ in range(8):

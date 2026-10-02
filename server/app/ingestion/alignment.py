@@ -238,11 +238,17 @@ def _align_one(keyed: list[tuple[str, list[tuple[str, set[str]]]]]) -> list[dict
                 continue
             # S43-4：孤立动态对缝合——基准侧 ei 落单 click + 新侧 ni 落单
             # click（都不在 matched）→ 判同一步（两轮点击"当轮实体名"，
-            # 键取基准侧保录制语义；Healenium 位置+类型相似思想）
+            # 键取基准侧保录制语义；Healenium 位置+类型相似思想）。
+            # 动态特征门（防稳定词误缝：测试"国内/国际"这类 2 字词不缝）
+            # ——label 须 ≥4 字符且含 ASCII 字母/数字（实体名特征：
+            # 角色名/单据号都带轮次标记或英文名）
+            def _dynish(k: str) -> bool:
+                lbl = k.partition(":")[2]
+                return len(lbl) >= 4 and any(c.isascii() and c.isalnum() for c in lbl)
             if (ei < len(entries) and ei not in matched_e
-                    and entries[ei][0].split("|")[0].startswith("click:")
+                    and _dynish(entries[ei][0])
                     and ni < len(items) and ni not in matched_n
-                    and items[ni][0].split("|")[0].startswith("click:")):
+                    and _dynish(items[ni][0])):
                 new_entries.append((entries[ei][0],
                                     entries[ei][1] + [(sid, ni, items[ni][1])]))
                 ei += 1

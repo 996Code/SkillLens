@@ -15,7 +15,21 @@ export function inputKey(el: HTMLInputElement | HTMLTextAreaElement): string | n
   // S43-4：select2 弹层搜索输入无任何属性——取宿主 hidden select 的
   // name（select2 实测：搜索字段动态创建，三回退全空则整步丢失）
   return name || id || el.getAttribute("placeholder") || el.getAttribute("aria-label")
-    || el.getAttribute("data-fieldname") || select2HostName(el) || null;
+    || el.getAttribute("data-fieldname") || select2HostName(el) || formGroupLabelKey(el)
+    || null;
+}
+
+/** S43-4：无任何属性的输入框（JeecG 表单设计器抽屉 input 无
+ * name/id/placeholder）——取最近表单组 label（.cgf-item / ant-form-item
+ * 内 label 文本，如 "*表名"）做语义键，变量提取与回放定位才能对上。 */
+function formGroupLabelKey(el: Element): string | null {
+  const fg = el.closest(".cgf-item, .ant-form-item, .form-group");
+  if (!fg) return null;
+  const label = fg.querySelector(
+    "label, [class*=label]:not([class*=label-]), [class*=title]");
+  if (!label) return null;
+  const t = (label.textContent ?? "").trim().slice(0, 50);
+  return t || null;
 }
 
 /** select2 弹层输入的宿主 select name——弹层 DOM 挂在容器尾部或

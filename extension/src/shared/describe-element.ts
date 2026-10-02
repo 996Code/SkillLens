@@ -122,16 +122,19 @@ function select2HostSelect(el: Element): string | undefined {
   return undefined;
 }
 
-/** S43-4：行勾选框的宿主行文本——checkbox 自身 label 是 value=on
- * （所有行相同），勾选目标只能靠行内容区分（单据号/名称）。
- * 仅对 checkbox/radio 生效，其它元素文本已在 textSignal 覆盖。 */
+/** S43-4：宿主行文本——多行同 label 控件（checkbox 的 value=on /
+ * 行操作下拉触发器"更多"）只能靠行内容区分（单据号/表名）。 */
 function hostRowText(el: Element): string | undefined {
   const tag = el.tagName;
-  if (tag !== "INPUT") return undefined;
-  const type = (el.getAttribute("type") || "").toLowerCase();
-  if (type !== "checkbox" && type !== "radio") return undefined;
+  if (tag === "INPUT") {
+    const type = (el.getAttribute("type") || "").toLowerCase();
+    if (type !== "checkbox" && type !== "radio") return undefined;
+  } else if (!(el.classList?.contains("ant-dropdown-trigger")
+      || el.closest(".ant-dropdown-trigger"))) {
+    return undefined;
+  }
   const row = el.closest(
-    ".list-item, .grid-row, tr, [role=row], [role=option]");
+    ".list-item, .grid-row, tr, [role=row], [role=option], .ant-table-row");
   if (!row) return undefined;
   const clone = row.cloneNode(true) as Element;
   // 保留 <a>——列表行的主键（单据号）常是链接文本，正是要采集的信号

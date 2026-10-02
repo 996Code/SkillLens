@@ -177,13 +177,25 @@ async def _try_locate_in_frame(page: Page, frame, label: str,
             (frame.locator(".form-group, .ant-form-item, [class*=form-group]",
                            has_text=label).locator(".select2-container").first,
              "select2"))
+    # S43-4：必填星号前缀（ant "*表名"）——label 与渲染文本都剥 '*' 再配
+    bare = label.lstrip("*").strip()
+    if bare and bare != label:
+        candidates += [
+            # JeecG 表单设计器自定义容器 .cgf-item（label 含必填星号 "*表名"）
+            (frame.locator(".cgf-item", has_text=bare)
+             .locator("input").first, "cgf-item"),
+            (frame.locator(".ant-form-item", has_text=bare)
+             .locator("input:not(label input)").first, "form-item-bare"),
+        ]
     if prefer_controls:
         # S36：fill 场景控件优先——Frappe 把字段名渲染成可见帮助文本，
         # text/role 策略会抢先命中文本节点（不可填），控件类策略前置
         # S43-4：fill 场景剔除 data-fieldname-any（字段包装 div 同带
         # data-fieldname，fill 必抛"not an input"——Frappe 行编辑实测）
         order = ["placeholder", "label", "name-attr", "data-fieldname",
-                 "id", "input-value", "role-button", "text"]
+                 "id", "input-value", "role-button", "text",
+                 # S43-4：JeecG 设计器 label 带*前缀的容器键
+                 "cgf-item", "form-item-bare"]
         by_strategy = {s: (l, s) for l, s in candidates}
         candidates = [by_strategy[s] for s in order if s in by_strategy]
     for locator, strategy in candidates:
