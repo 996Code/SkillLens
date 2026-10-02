@@ -546,6 +546,12 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                 executed.append(entry)
                 await _shot_step(page, shot_dir, i, entry)
             elif step["kind"] == "input":
+                # S43-4：脱敏占位值（插件密码脱敏通道）——不回填假值
+                # （fill "[REDACTED]" 必被目标系统拒），跳过并把判定交断言
+                if str(step.get("value", "")) == "[REDACTED]":
+                    executed.append({**step, "ok": True,
+                                     "skipped": "脱敏字段不回放（凭据由编排注入）"})
+                    continue
                 locator, strategy, rep_id = await _locate_with_repair(
                     page, step["name"], repair_map,
                     extra_labels=step.get("labels"), tag=step.get("tag"),

@@ -112,6 +112,77 @@ def _bucket_sessions(sig_lists: list[tuple[str, list[str]]]) -> list[list[str]]:
     return buckets
 
 
+def _normalize_dynamic_keys(
+        keyed: list[tuple[str, list[tuple[str, set[str]]]]],
+        windows_per_session: list[tuple[str, list[dict]]],
+        ) -> list[tuple[str, list[tuple[str, set[str]]]]]:
+    """S43-4：动态值 label 归一——每轮录制点击的"当轮实体名"（角色名/
+    单据号）跨会话必然不同，精确键 LCS 丢步（若依角色选项实测）。
+    判据（确定性）：click label 命中本会话某 input 值（== 或含，值
+    ≥3 字符）→ 该步是"选择刚输入/刚建的实体"；两会话同位置（±2）
+    都判动态 → 双侧改占位键 click:⟨dyn⟩（LCS 才能对上）。稳定 UI
+    词不命中 input 值，不受影响。"""
+    if len(keyed) < 2:
+        return keyed
+
+    def _split(k: str) -> tuple[str, str]:
+        typ, _, label = k.partition(":")
+        return typ, label
+
+    input_values: dict[str, set[str]] = {}
+    for (sid, windows) in windows_per_session:
+        vals: set[str] = set()
+        for win in windows:
+            p = (win.get("anchor") or {}).get("payload") or {}
+            if p.get("type") == "input":
+                v = str(p.get("value", ""))
+                if len(v) >= 3:
+                    vals.add(v)
+        input_values[sid] = vals
+
+    def _is_dynamic(sid: str, label: str) -> bool:
+        for v in input_values.get(sid, ()):
+            if label == v or (len(v) >= 3 and v in label):
+                return True
+        return False
+
+    # 每会话的动态 click 位置集（按原始键判定）
+    dyn_flags: list[list[bool]] = []
+    for sid, items in keyed:
+        flags = []
+        for k, _ in items:
+            typ, label = _split(k)
+            flags.append(typ == "click" and bool(label)
+                         and _is_dynamic(sid, label))
+        dyn_flags.append(flags)
+
+    def _pair_dyn(a_idx: int, b_idx: int) -> bool:
+        """两会话 a/b 在位置 a_idx/b_idx（±2 内可对位）双侧均动态。"""
+        for j in range(max(0, b_idx - 2), min(len(keyed[a_idx][1]), b_idx + 3)):
+            if dyn_flags[a_idx][j]:
+                return True
+        return False
+
+    out: list[tuple[str, list[tuple[str, set[str]]]]] = []
+    for s_idx, (sid, items) in enumerate(keyed):
+        new_items = []
+        for i, (k, apis) in enumerate(items):
+            if not dyn_flags[s_idx][i]:
+                new_items.append((k, apis))
+                continue
+            # 其他任一会话近位也有动态 click → 归一
+            dyn = False
+            for o_idx in range(len(keyed)):
+                if o_idx == s_idx:
+                    continue
+                if _pair_dyn(o_idx, i):
+                    dyn = True
+                    break
+            new_items.append(("click:⟨dyn⟩" if dyn else k, apis))
+        out.append((sid, new_items))
+    return out
+
+
 def align_skeletons(windows_per_session: list[tuple[str, list[dict]]]) -> dict:
     """返回 {"skeleton": [...], "buckets": [{"sessions": [...], "skeleton": [...]}]}。
 
@@ -124,6 +195,7 @@ def align_skeletons(windows_per_session: list[tuple[str, list[dict]]]) -> dict:
         return {"skeleton": [], "buckets": []}
     keyed = [(sid, [(_anchor_key(win), _api_set(win)) for win in windows])
              for sid, windows in windows_per_session]
+    keyed = _normalize_dynamic_keys(keyed, windows_per_session)
 
     skeleton = _align_one(keyed)
     bucket_input = [(sid, [k for k, _ in items]) for sid, items in keyed]
@@ -137,11 +209,9 @@ def align_skeletons(windows_per_session: list[tuple[str, list[dict]]]) -> dict:
     return {"skeleton": skeleton, "buckets": out_buckets}
 
 
-def _align_one(keyed: list[tuple[str, list[tuple[str, set[str]]]]]) -> list[dict]:
-    """桶内对齐：锚点序列 LCS；每步 API 取出现会话的交集。
 
-    entries: [(anchor, [(sid, window_idx, api_set), ...]), ...]
-    """
+def _align_one(keyed: list[tuple[str, list[tuple[str, set[str]]]]]) -> list[dict]:
+    """桶内对齐：锚点序列 LCS + 孤立动态对缝合；每步 API 取出现会话交集。"""
     if not keyed:
         return []
     sid0, items0 = keyed[0]
@@ -154,10 +224,39 @@ def _align_one(keyed: list[tuple[str, list[tuple[str, set[str]]]]]) -> list[dict
         # 加载）、一轮没有（缓存），全签名比对必丢步（禅道流转链实测）
         pairs = _lcs_pairs([e[0].split("|")[0] for e in entries],
                            [k.split("|")[0] for k, _ in items])
-        entries = [
-            (entries[ci][0], entries[ci][1] + [(sid, ii, items[ii][1])])
-            for ci, ii in pairs
-        ]
+        matched_e = {ci for ci, _ in pairs}
+        matched_n = {ii for _, ii in pairs}
+        new_entries: list[tuple[str, list[tuple[str, int, set[str]]]]] = []
+        ei, ni = 0, 0
+        while ei < len(entries) or ni < len(items):
+            if ei < len(entries) and ni < len(items)                     and (ei, ni) in {(a, b) for a, b in pairs}:
+                # LCS 配对步：合并会话 occ
+                new_entries.append((entries[ei][0],
+                                    entries[ei][1] + [(sid, ni, items[ni][1])]))
+                ei += 1
+                ni += 1
+                continue
+            # S43-4：孤立动态对缝合——基准侧 ei 落单 click + 新侧 ni 落单
+            # click（都不在 matched）→ 判同一步（两轮点击"当轮实体名"，
+            # 键取基准侧保录制语义；Healenium 位置+类型相似思想）
+            if (ei < len(entries) and ei not in matched_e
+                    and entries[ei][0].split("|")[0].startswith("click:")
+                    and ni < len(items) and ni not in matched_n
+                    and items[ni][0].split("|")[0].startswith("click:")):
+                new_entries.append((entries[ei][0],
+                                    entries[ei][1] + [(sid, ni, items[ni][1])]))
+                ei += 1
+                ni += 1
+                continue
+            # 其余：未配对步丢弃（原 LCS 语义——单侧独有不进骨架）；
+            # 仅推进指针
+            if ei < len(entries) and (ni >= len(items) or ei not in matched_e):
+                ei += 1
+            elif ni < len(items):
+                ni += 1
+            else:
+                ei += 1
+        entries = new_entries
         if not entries:
             break
 
@@ -169,3 +268,5 @@ def _align_one(keyed: list[tuple[str, list[tuple[str, set[str]]]]]) -> list[dict
         seqs = {occ_sid: idx for occ_sid, idx, _ in occs}
         steps.append({"signature": sig, "session_window_seqs": seqs})
     return steps
+
+

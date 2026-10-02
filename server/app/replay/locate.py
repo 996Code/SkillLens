@@ -133,6 +133,13 @@ async def _try_locate_in_frame(page: Page, frame, label: str,
         # S43-4：placeholder 精确匹配——checkbox 的 value="on" 会成为
         # 采集 label，子串匹配意外命中任何含 "on" 的 placeholder/杂项
         (frame.get_by_placeholder(label, exact=True), "placeholder"),
+        # S43-4：element-plus el-select 空 placeholder 渲染为
+        # .el-select__placeholder 容器内的裸 span 文本（非 input 属性）
+        # ——录制点击抓到该文本；点击 span 不开下拉，须点 el-select 容器
+        (frame.locator(
+            '.el-select:has(.el-select__placeholder)').filter(
+            has_text=label).first,
+         "el-select-placeholder"),
         (frame.get_by_label(label, exact=True) if short_label
          else frame.get_by_label(label), "label"),
         # 框架自动生成 id（antd rc_select_N 等）回退：采集侧 input-key 链可能

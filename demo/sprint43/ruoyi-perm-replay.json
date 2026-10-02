@@ -1,0 +1,17 @@
+{
+  "RuoYiRoleCreate": {
+    "http": 200,
+    "entity_created": true,
+    "replay": "pass"
+  },
+  "RuoYiUserCreate": {
+    "http": 200,
+    "entity_created": true,
+    "replay": "pass"
+  },
+  "RuoYiLoginVerify": {
+    "http": 200,
+    "entity_created": true,
+    "replay": "api-verified"
+  }
+}

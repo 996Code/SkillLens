@@ -1,0 +1,5 @@
+{
+  "RuoYiRoleCreate": 256,
+  "RuoYiUserCreate": 257,
+  "RuoYiLoginVerify": 258
+}

@@ -110,3 +110,43 @@ def test_bucket_disjoint_paths_separate():
     buckets = _bucket_sessions([("s1", a), ("s2", c)])
     assert len(buckets) == 2
     assert buckets[0] == ["s1"] and buckets[1] == ["s2"]
+
+
+def test_align_dynamic_label_click_kept_as_wildcard():
+    """S43-4：动态值 label 的 click（每轮角色名/单据号不同）不得丢出
+    骨架——归一为占位键 click:⟨dyn⟩（回放按上下文最近输入值定位）。"""
+    # input 是锚类型自成一窗（真实结构）——角色名来自该 input 值
+    def wi(input_val):
+        return {"anchor": {"seq": 0, "ts": 0, "kind": "action",
+                           "payload": {"type": "input", "value": input_val,
+                                       "target": {"label": "请输入角色"}}},
+                "members": [], "end_ts": 0}
+    s1 = [w("click", "新增"), wi("角色甲123"), w("click", "角色甲123"),
+          w("click", "确定", [("POST", "/user")])]
+    s2 = [w("click", "新增"), wi("角色乙456"), w("click", "角色乙456"),
+          w("click", "确定", [("POST", "/user")])]
+    result = align_skeletons([("s1", s1), ("s2", s2)])
+    sigs = [s["signature"] for s in result["skeleton"]]
+    assert "click:⟨dyn⟩" in sigs, sigs
+    # 前后稳定步不丢
+    assert sigs[0] == "click:新增"
+    assert sigs[-1].startswith("click:确定")
+    # 两会话都被记录
+    dyn = next(s for s in result["skeleton"] if s["signature"] == "click:⟨dyn⟩")
+    assert set(dyn["session_window_seqs"]) == {"s1", "s2"}
+
+
+def test_align_stitches_orphan_dynamic_click_without_local_input():
+    """S43-4：动态值来自其它流程会话（本会话无对应 input）——孤立 1v1
+    落单 click 靠位置缝合不丢步（若依角色名跨流程实测）。"""
+    s1 = [w("click", "新增"), w("click", "角色甲123"),
+          w("click", "确定", [("POST", "/user")])]
+    s2 = [w("click", "新增"), w("click", "角色乙456"),
+          w("click", "确定", [("POST", "/user")])]
+    result = align_skeletons([("s1", s1), ("s2", s2)])
+    sigs = [s["signature"] for s in result["skeleton"]]
+    assert len(sigs) == 3, sigs
+    # 中间步保留（键为基准侧原 label——回放按上下文换参）
+    assert sigs[1].startswith("click:角色")
+    dyn = result["skeleton"][1]
+    assert set(dyn["session_window_seqs"]) == {"s1", "s2"}

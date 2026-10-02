@@ -104,6 +104,11 @@ def compile_skeleton_plan(events: list[dict], skeleton: list[dict], ref_session_
         # S26：骨架步 healed label（自愈晋升回写）优先于录制时的 anchor label
         target = payload.get("target") or {}
         label = step.get("label") or target.get("label") or ""
+        # S43-4：动态值占位步（对齐归一 click:⟨dyn⟩——当轮实体名跨会话
+        # 不同）——参考会话该窗 anchor 的原始 label 就是录制时实体名，
+        # 直接用它（回放换参由变量链路覆盖）
+        if label == "⟨dyn⟩":
+            label = target.get("label") or ""
         # S42-9：空 label 步骤无法定位（录制时点击了无语义元素——
         # picker 背景/模态框本身等噪声），丢弃不进计划
         if not label:
