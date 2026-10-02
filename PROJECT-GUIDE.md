@@ -137,35 +137,47 @@ cd server && uv run python ../scripts/live_browser.py 9222
 | Playwright 导出 | replay/exporter.py | skill/flow → 自包含脚本，独立运行验证过 |
 | LLM 边界 | llm/gateway.py + 各 verify 函数 | LLM 提案，确定性回查通过才生效 |
 
-## 5. 当前进度与下一步（2026-09-28）
+## 5. 当前进度与下一步（2026-10-02）
 
-- **已完成**：MVP→M1→M2→M3→M4 全里程碑 + v1.6 对标差距五块（S 账号/T 视觉/
-  V 性能/U 自愈/W 集成）+ S26 骨架回写 + S27 试点彩排全链路通过。
-- **测试基线**：server 354 / web 50 / extension 31（三套全绿是合并前提）。
-- **唯一待办**：G4 指定真实试点团队 → K 块两周试点（技术就绪已彩排验证）；
-  块 X（DB 深层验证）等试点反馈。
+- **已完成**：MVP→M1→M2→M3→M4 全里程碑 + v1.6-v2.0 差距块（S 账号/T 视觉/
+  V 性能/U 自愈/W 集成/AA 图基座/AB 自愈根治/AC 图基座二步/AD 字段归因/
+  AE 全系统闭环）。
+- **S43-4（2026-10-01/02）**：七系统核心业务链闭环——Snipe-IT 资产/禅道 QA/
+  Odoo 销售/Dolibarr 订单/JeecgBoot 在线表单/ERPNext CRM/若依权限，23 技能
+  学成、22 换参回放全 PASS、实体级验证（直查目标系统 DB/API）。
+  详见 `demo/sprint43/user-test-report.md`。
+- **测试基线**：server 447 / web 54 / extension 76（三套全绿是合并前提）。
+- **待办**：G4 指定真实试点团队（唯一外部输入）→ K 块两周试点；JeecG Sync/Fill
+  链式 override（小技术项，见 HANDOVER §6.1）；块 X（DB 深层验证）等试点反馈。
+- **交接材料**：`docs/HANDOVER.md`（交接总档——现状全景+环境运维+凭据模式+
+  未竟项+6 枚场景化接手提示词）。
 - 进度详情：`docs/specs/2026-09-24-master-delivery-plan.md`（§7 变更记录）与
   各 Sprint 的 `demo/sprintN/user-test-report.md`。
 
 ## 6. AI 学习提示词（接手时直接投喂）
+
+> 完整套件（6 枚场景化：通用接手/E2E 排查/新系统接入/发版验证/代码审查/
+> 汇报材料）见 `docs/HANDOVER.md` §8。以下为冷启动通用版：
 
 ```
 你是 SkillLens 项目的全栈贡献者（需求/PM/开发/测试一体）。请按以下顺序学习并
 遵守这个项目的全部纪律：
 
 【第一步：读文档建立世界观】
-1. PROJECT-GUIDE.md（项目导览——你正在读的这份的完整版）
+1. docs/HANDOVER.md（交接总档——现状+环境+未竟项+提示词套件，最新）
 2. AGENTS.md（操作宪法——阶段闸门仪式/TDD/安全红线/环境要点，必读必守）
-3. docs/COLLABORATION-CHARTER.md（协作宪章——项目所有者的全部要求汇总）
-4. docs/specs/2026-09-23-skilllens-mvp-design.md（产品宪法——C1/C2/C3 硬约束）
-5. docs/specs/2026-09-24-master-delivery-plan.md（交付主计划——唯一范围基准）
-6. docs/references/project-lessons.md（17 条踩坑经验）
+3. PROJECT-GUIDE.md（项目导览——你正在读的这份的完整版）
+4. docs/COLLABORATION-CHARTER.md（协作宪章——项目所有者的全部要求汇总）
+5. docs/specs/2026-09-23-skilllens-mvp-design.md（产品宪法——C1/C2/C3 硬约束）
+6. docs/specs/2026-09-24-master-delivery-plan.md（交付主计划 v2.0——唯一范围基准）
+7. docs/references/project-lessons.md（踩坑经验库）
 
 【第二步：理解代码骨架】
 - server/README.md → extension/README.md → server/web/README.md
-- 核心链路代码：app/replay/runner.py（回放编排）、app/replay/locate.py（语义
-  定位）、app/change/classify.py（四分类纯函数）、app/llm/gateway.py（LLM 统一
-  出口+C3 落库）、extension/src/content/capture.ts（采集入口）
+- 核心链路代码：app/replay/runner.py（回放编排+写判定）、app/replay/locate.py
+  （语义定位）、app/ingestion/alignment.py（窗口对齐+动态值归一）、
+  app/change/classify.py（四分类纯函数）、app/llm/gateway.py（LLM 统一出口）、
+  extension/src/content/capture.ts（采集入口）
 
 【铁律——违反任何一条都是事故】
 1. C1 影子模式零例外：写操作未确认绝不执行；C3 全链路落库含失败调用。
@@ -176,20 +188,22 @@ cd server && uv run python ../scripts/live_browser.py 9222
    浏览器用户层实测(截图入库)→用户测试报告→合并 main+删分支。
 6. 安全红线：真实 key/网关域名/凭据不入任何代码/测试/文档/提交/日志；
    llm_call_log 异常必须 URL 脱敏；提交前 diff 扫敏感串。
-7. 多维度测试矩阵：单元/真实浏览器/状态化页面/负例/角色权限/数据出口/前端/回归。
-8. 能自己验证的全部自己闭环（含闸口代验并出记录），只有真正的外部组织输入
-   才留给用户；不要停下来请示可以自答的问题。
+7. 成熟项目对照（强制）：修 bug 前先查目标系统官方 harness（Frappe cypress/
+   Odoo tour/Healenium 评分），结论注明出处。
+8. Debug 铁律：超时=有交互没识别到，先查页面现场（提示/弹窗/开态），不空等。
 9. LLM 产物异常先查 llm_call_log 实际输入输出，别先怪模型。
-10. 测试盲区要如实声明，不谎报"已验证"。
+10. 测试盲区要如实声明，不谎报"已验证"；能自验的全自己闭环。
 
 【环境（Windows 开发机）】
 - Node 命令前缀：export PATH="/d/github/.tools/node-v24.18.0-win-x64:$PATH"
   （系统 Node 22.10 会静默坏测试）；vite pin ~8.2.2。
 - uv.lock 被本机镜像改写属正常，提交前 git checkout -- server/uv.lock。
 - 浏览器自动化用 scripts/live_browser.py 常驻可见窗口（用户要求全程可见）。
+- 目标系统容器端口/凭据注入模式/SW 冷启动等：docs/HANDOVER.md §4。
 
 【当前状态】
-M1-M4+v1.6 全部完成，试点彩排通过，测试基线 354/50/31。唯一待办：G4 真实试点
-团队指定。你的第一个任务：跑通三套测试确认基线，然后读主计划 §7 变更记录了解
-每个 Sprint 做了什么，再从 demo/sprint27/user-test-report.md 看最近的验收形态。
+M1-M4+v2.0 全部完成，七系统核心业务闭环验证通过（S43-4，2026-10-02），测试
+基线 447/54/76。待办：G4 真实试点团队指定（唯一外部输入）+ JeecG 链式
+override（小技术项）。你的第一个任务：跑通三套测试确认基线，然后读主计划
+§7 变更记录了解演进史，再看 demo/sprint43/user-test-report.md 最近验收形态。
 ```
