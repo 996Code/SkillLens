@@ -13,17 +13,17 @@
     "skill": 271,
     "desc": "JeecG Fill（链式）",
     "login": "PASS",
-    "ext": "unknown([16:32:39] 定位失败：更多（触发服务端介入）)",
-    "server": "fail",
-    "consist": "不一致"
+    "ext": "pass",
+    "server": "pass",
+    "consist": "一致"
   },
   {
     "adapter": "odoo",
     "skill": 1,
     "desc": "Odoo PartnerQuickCreate（写）",
     "login": "PASS",
-    "ext": "fail",
+    "ext": "pass",
     "server": "pass",
-    "consist": "不一致"
+    "consist": "一致"
   }
 ]

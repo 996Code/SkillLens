@@ -282,15 +282,35 @@ async function execute(
       return { seq: ins.seq, result: "miss",
                evidence: { ...evidence, miss: label, page_texts: texts } };
     }
+    // row-trigger：scrollIntoView 后坐标 trusted click（元素级 el.click()
+    // 不开 ant-dropdown——React 需可信事件；服务端 click(force) 也是 CDP
+    // trusted。scroll 实证有效：cx 1439→1212 入视口）
     // scrollIntoView 先行：行操作触发器常在视口右缘外（AG5 铁证：
-    // rect.x=1409 > 视口 1280——坐标点击全落空）。滚入后重取 rect
+    // rect.x=1409 > 视口 1280——坐标点击全落空）。滚入后重取 rect。
+    // row-anchor 场景按 anchor+label 行内定位（与坐标重取同源——SW
+    // 复刻实证该链路开菜单）
     try {
+      const anchorJson = JSON.stringify(resolved.anchorTxt || "");
       const req = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
         expression: `(function(){
           const label = ${JSON.stringify(ins.label || ins.name || "")};
-          const el = [...document.querySelectorAll('span, a, button')]
-            .filter(e => (e.textContent||'').trim() === label
-              && e.getBoundingClientRect().width > 0)[0];
+          const anchor = ${anchorJson};
+          let el = null;
+          if (anchor) {
+            const rows = [...document.querySelectorAll('.ant-table-row, .list-item, .grid-row, tr')]
+              .filter(r => (r.textContent || '').includes(anchor));
+            for (const row of rows) {
+              const t = [...row.querySelectorAll('a, span, button')]
+                .find(e => (e.textContent||'').trim() === label
+                  && e.getBoundingClientRect().width > 0);
+              if (t) { el = t; break; }
+            }
+          }
+          if (!el) {
+            el = [...document.querySelectorAll('span, a, button')]
+              .filter(e => (e.textContent||'').trim() === label
+                && e.getBoundingClientRect().width > 0)[0];
+          }
           if (!el) return '';
           (el.closest('td, .ant-table-cell') || el)
             .scrollIntoView({block: 'center', inline: 'center'});
@@ -301,9 +321,23 @@ async function execute(
         const rr = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
           expression: `(function(){
             const label = ${JSON.stringify(ins.label || ins.name || "")};
-            const el = [...document.querySelectorAll('span, a, button')]
-              .filter(e => (e.textContent||'').trim() === label
-                && e.getBoundingClientRect().width > 0)[0];
+            const anchor = ${JSON.stringify(resolved.anchorTxt || "")};
+            let el = null;
+            if (anchor) {
+              const rows = [...document.querySelectorAll('.ant-table-row, .list-item, .grid-row, tr')]
+                .filter(r => (r.textContent || '').includes(anchor));
+              for (const row of rows) {
+                const t = [...row.querySelectorAll('a, span, button')]
+                  .find(e => (e.textContent||'').trim() === label
+                    && e.getBoundingClientRect().width > 0);
+                if (t) { el = t; break; }
+              }
+            }
+            if (!el) {
+              el = [...document.querySelectorAll('span, a, button')]
+                .filter(e => (e.textContent||'').trim() === label
+                  && e.getBoundingClientRect().width > 0)[0];
+            }
             if (!el) return '';
             const r = el.getBoundingClientRect();
             return JSON.stringify({x: r.x, y: r.y, width: r.width, height: r.height});
@@ -316,20 +350,16 @@ async function execute(
     } catch { /* fail-open */ }
     const rect = resolved.rect;
     const x = rect.x + rect.width / 2, y = rect.y + rect.height / 2;
-    // hover 先行：ant-dropdown 等触发器是 mouseenter 态展开（AG5 实证
-    // 更多点击后菜单不开——ftCount=0）；mouseMoved 后停 800ms 让菜单渲染
+    // hover 先行：mouseenter 态组件先展开；随后正常 click（服务端
+    // row-trigger 即 JS click——ant-dropdown 的 onClick 含 open 逻辑，
+    // hover-only 假设被服务端 pass 行为证伪）
     await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
       type: "mouseMoved", x, y });
     await sleep(800);
-    // ant-dropdown-trigger 是 hover 展开型：click 会 toggle 关掉菜单
-    // （AG5 现场实证）——该类元素只 hover 不 click
-    const hoverOnly = (resolved.tagCls || "").includes("ant-dropdown-trigger");
-    if (!hoverOnly) {
-      await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
-        type: "mousePressed", x, y, button: "left", clickCount: 1 });
-      await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
-        type: "mouseReleased", x, y, button: "left", clickCount: 1 });
-    }
+    await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+      type: "mousePressed", x, y, button: "left", clickCount: 1 });
+    await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+      type: "mouseReleased", x, y, button: "left", clickCount: 1 });
     if (ins.op === "fill" && ins.value !== undefined) {
       await chrome.debugger.sendCommand(debuggee, "Input.insertText", { text: String(ins.value) });
       await sleep(400);
@@ -361,6 +391,7 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
   // CDP returnByValue 对对象返回对象（JSON.parse 炸）——js 末尾显式
   // stringify 保字符串契约（AG5 铁证：每轮 main err .slice undefined）
   const js = `JSON.stringify((function() {
+    let rowAnchor = "";
     const candidates = ${JSON.stringify(cands)};
     const label = ${JSON.stringify(label)};
     const visible = (el) => { if (!el.isConnected) return false;
@@ -394,7 +425,7 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
           for (const row of rows) {
             const trig = [...row.querySelectorAll("a, span, button, [role=button]")]
               .filter(el => visible(el) && (el.textContent || "").trim() === label);
-            if (trig.length) { els = [trig[0]]; break; }
+            if (trig.length) { els = [trig[0]]; rowAnchor = c.anchor || ""; break; }
           }
         } else {
           els = [...document.querySelectorAll(c.selector)].filter(visible);
@@ -403,6 +434,7 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
       if (els.length === 1) {
         const r = els[0].getBoundingClientRect();
         return {hit: true, strategy: c.strategy, tagCls: (els[0].className || ""),
+          anchorTxt: rowAnchor || "",
           rect: {x: r.x, y: r.y, width: r.width, height: r.height}};
       }
     }
