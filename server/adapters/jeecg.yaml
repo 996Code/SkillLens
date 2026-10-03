@@ -17,20 +17,22 @@ probes:
   - id: form_count
     kind: docker-exec
     container: jeecg-boot-mysql
-    shell: 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "SHOW TABLES FROM `jeecg-boot` LIKE \"sl_%\""'
+    # SQL 避开反引号（sh -c 会把 `db` 当命令替换）——information_schema 查询
+    shell: 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = \"jeecg-boot\" AND table_name LIKE \"sl_%\""'
   - id: fill_row_count
     kind: docker-exec
     container: jeecg-boot-mysql
-    shell: 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "SELECT COUNT(*) FROM `jeecg-boot`.${table}"'
+    shell: 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = \"jeecg-boot\" AND table_name LIKE \"sl_%\""'
 chains:
   - name: form-chain
     rounds: 2
-    skills: [OnlineFormCreate, OnlineFormSync, OnlineFormFill]
+    # skill 引用支持 id:（S43-4 验证过的技能——LLM 命名不稳定，id 直引最稳）
+    skills: ["269", "270", "271"]
     replay:
-      - skill: OnlineFormCreate
+      - skill: "269"
         overrides: {"*表名": "sl_rp${ts}", "*表描述": "SL回放表单${ts}"}
         verify: {probe: form_count, expect: increased}
-      - skill: OnlineFormSync
+      - skill: "270"
         overrides: {"*表名": "sl_rp${ts}", "*表描述": "SL回放表单${ts}"}
-      - skill: OnlineFormFill
+      - skill: "271"
         overrides: {"*表名": "sl_rp${ts}", "*表描述": "SL回放表单${ts}"}
