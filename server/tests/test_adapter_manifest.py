@@ -126,7 +126,8 @@ def test_repo_seven_system_adapters_validate():
     assert ids == {"zentao", "ruoyi", "jeecg", "snipe", "odoo", "erpnext", "dolibarr"}
     linted_files = {l.file for l in lints}
     assert linted_files <= {"ruoyi.yaml", "jeecg.yaml", "snipe.yaml",
-                            "erpnext.yaml", "dolibarr.yaml"}
+                            "erpnext.yaml", "dolibarr.yaml", "zentao.yaml",
+                            "odoo.yaml"}
     for m in manifests:
         assert m.probes, f"{m.id} 无探针"
         assert m.chains, f"{m.id} 无业务链"

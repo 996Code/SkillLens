@@ -29,3 +29,31 @@ chains:
       - skill: ZentaoStoryCreate
         overrides: {"*标题": "SL回放${ts}"}
         verify: {probe: story_count, expect: increased}
+flows:
+  # AF4：走查录制（s43_zentao_qa 四流机械提取；iframe/routine 收编例程库）
+  - name: ZentaoStoryCreate
+    steps:
+      - goto: /index.php?m=story&f=create&productID=1
+      - routine: close_guide
+      - fill: ["input[name='title']", "${data}"]
+      - routine: biz_frame_submit
+  - name: ZentaoCaseCreate
+    steps:
+      - goto: /index.php?m=testcase&f=create&productID=1
+      - routine: close_guide
+      - fill: ["input[name='title']", "${data}"]
+      - routine: biz_frame_submit
+  - name: ZentaoTesttaskCreate
+    steps:
+      - goto: /index.php?m=testtask&f=create&productID=1
+      - routine: close_guide
+      - fill: ["input[name='name']", "${data}"]
+      - routine: biz_frame_submit
+  - name: ZentaoCaseRun
+    steps:
+      - goto: /index.php?m=testcase&f=browse&productID=1
+      - routine: close_guide
+      - click: "a[title=执行]"
+      - wait: "3500"
+      - routine: biz_frame_submit
+      - wait: "1500"

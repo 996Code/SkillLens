@@ -16,6 +16,20 @@ from app.adapters.manifest import Manifest, Step
 from app.adapters.probes import interpolate
 
 
+async def _locate_any_frame(page, selector: str):
+    """主 frame 优先，miss 后逐子 frame（禅道类 iframe 架构——s43 的
+    biz_frame 语义泛化到所有原语）。"""
+    frames = [page.main_frame, *[f for f in page.frames if f is not page.main_frame]]
+    for fr in frames:
+        loc = fr.locator(selector).first
+        try:
+            if await loc.count():
+                return loc
+        except Exception:
+            continue
+    return None
+
+
 async def run_step(page: Page, manifest: Manifest, step: Step) -> None:
     if step.op == "goto":
         url = interpolate(step.arg, manifest)
@@ -24,13 +38,25 @@ async def run_step(page: Page, manifest: Manifest, step: Step) -> None:
         await page.goto(url, wait_until="domcontentloaded")
         await page.wait_for_timeout(2000)
     elif step.op == "fill":
-        await page.locator(step.arg).first.fill(interpolate(step.arg2 or "", manifest))
+        loc = await _locate_any_frame(page, step.arg)
+        if loc is None:
+            raise LookupError(f"fill 定位失败: {step.arg}")
+        await loc.fill(interpolate(step.arg2 or "", manifest),
+                       timeout=8000)
         await page.wait_for_timeout(300)
     elif step.op == "click":
-        await page.locator(step.arg).first.click(timeout=8000)
-        await page.wait_for_timeout(800)
+        loc = await _locate_any_frame(page, step.arg)
+        if loc is None:
+            raise LookupError(f"click 定位失败: {step.arg}")
+        await loc.click(timeout=8000)
+        # 2500ms 余量：锚点后的 network/snapshot 须落进窗口（800ms 时
+        # 禅道 CaseRun 实测窗口 api_count=0 被 read_only 滤除）
+        await page.wait_for_timeout(2500)
     elif step.op == "select":
-        await page.locator(step.arg).first.select_option(interpolate(step.arg2 or "", manifest))
+        loc = await _locate_any_frame(page, step.arg)
+        if loc is None:
+            raise LookupError(f"select 定位失败: {step.arg}")
+        await loc.select_option(interpolate(step.arg2 or "", manifest))
     elif step.op == "wait":
         await page.wait_for_timeout(int(step.arg))
     elif step.op == "routine":
