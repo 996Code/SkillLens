@@ -195,8 +195,34 @@ async def executor_finish(run_id: int, body: ExecutorFinishRequest,
     run.status = body.status
     run.executed = body.summary.get("executed")
     run.duration_ms = body.summary.get("duration_ms")
+
+    # AG4：done 时服务端确定性断言——插件证据（observed/executed）喂
+    # evaluate_assertions（原封不动），判定语义=执行+断言；status 重判
+    assertion_results = None
+    if body.status == "done":
+        from app.models import OutcomeAssertion
+        from app.replay.assert_eval import evaluate_assertions
+        assertions = [{"kind": a.kind, "payload": a.payload} for a in
+                      db.query(OutcomeAssertion).filter(
+                          OutcomeAssertion.skill_id == run.skill_id).all()]
+        observed = [{"url": o.get("url", ""), "status": o.get("status"),
+                     "method": o.get("method", "GET"),
+                     "body": str(o.get("body", ""))}
+                    for o in body.summary.get("observed", [])]
+        assertion_results = evaluate_assertions(
+            assertions, observed,
+            executed_steps=body.summary.get("executed") or [])
+        run.assertion_results = assertion_results
+        if all(a.get("passed") for a in assertion_results):
+            run.status = "pass"
+        else:
+            run.status = "fail"
+
     run.plan = {**plan, "executor_state": state,
                 "executor_summary": body.summary}
+    if body.status in ("fail", "aborted", "lost"):
+        run.attribution = str(body.summary.get("error", ""))[:500]
     db.commit()
     db.refresh(run)
-    return {"id": run.id, "status": run.status, "executor": run.executor}
+    return {"id": run.id, "status": run.status, "executor": run.executor,
+            "assertion_results": assertion_results}

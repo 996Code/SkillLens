@@ -118,16 +118,29 @@ export async function runSkill(
   }
   onProgress("已 attach（顶部横幅=执行中，全程可见）");
 
-  // 网络证据：先订阅后动作（lesson #30）
+  // 网络证据：先订阅后动作（lesson #30）；AG4 补响应体（断言原料）
   const networkLog: any[] = [];
+  const pendingBodies = new Map<string, string>();
   chrome.debugger.onEvent.addListener(function onEvt(source, method, params: any) {
     if (source.tabId !== tabId) return;
+    if (method === "Network.requestWillBeSent") {
+      pendingBodies.set(params?.requestId, params?.request?.method || "GET");
+      return;
+    }
     if (method === "Network.responseReceived") {
+      const url: string = params?.response?.url || "";
       networkLog.push({
-        url: params?.response?.url, status: params?.response?.status,
+        url, status: params?.response?.status,
         requestId: params?.requestId,
-        method: params?.type || "",
+        method: pendingBodies.get(params?.requestId) || "GET", body: "",
       });
+      // 响应体异步取（AG0 实证 Network.getResponseBody 可用；失败留空）
+      const idx = networkLog.length - 1;
+      chrome.debugger.sendCommand(debuggee, "Network.getResponseBody", {
+        requestId: params?.requestId,
+      }).then((b: any) => {
+        networkLog[idx].body = (b?.body || "").slice(0, 102400);
+      }).catch(() => { /* 已导航/流式体不可取——留空不阻塞 */ });
     }
   });
   await chrome.debugger.sendCommand(debuggee, "Network.enable").catch(() => {});

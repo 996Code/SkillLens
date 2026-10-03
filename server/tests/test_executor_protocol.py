@@ -133,3 +133,33 @@ async def test_executor_finish_lands_run_with_executor_mark(client, monkeypatch)
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "aborted" and body["executor"] == "extension"
+
+
+async def test_executor_finish_evaluates_assertions(client, monkeypatch):
+    """AG4：done finish 吃证据跑 evaluate_assertions——判定语义=执行+断言，
+    断言结果落 run.assertion_results；status 由断言重判（pass/fail）。"""
+    skill_id = await _seed_skill(client, monkeypatch)
+    r = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                          json={"overrides": {}, "confirm_side_effect": True})
+    run_id = r.json()["run_id"]
+    # 模拟执行完成：网络证据=断言期望的 save POST 200
+    resp = await client.post(f"/api/v1/executor/runs/{run_id}/finish",
+                             json={"status": "done",
+                                   "summary": {
+                                       "executed": [
+                                           {"kind": "input", "name": "请输入",
+                                            "ok": True},
+                                           {"kind": "click", "label": "保存",
+                                            "ok": True}],
+                                       "observed": [
+                                           {"url": "http://t/a/9/save",
+                                            "status": 200, "method": "POST",
+                                            "body": '{"code":200}'}],
+                                       "duration_ms": 3000, "steps": 3}})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["executor"] == "extension"
+    # 断言被评估：结果非空且全部通过 → status pass
+    assert body["assertion_results"], "断言结果未落"
+    assert all(a.get("passed") for a in body["assertion_results"])
+    assert body["status"] == "pass"
