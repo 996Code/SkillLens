@@ -214,8 +214,23 @@ async function execute(
   if (ins.op === "goto") {
     onProgress(`导航 ${ins.url}`);
     await chrome.debugger.sendCommand(debuggee, "Page.enable").catch(() => {});
+    // hash 路由 SPA（Odoo 等）会从 localStorage 恢复视图状态（如 kanban
+    // 无 New 按钮）——先访问 origin 根清状态再进目标 URL（服务端新
+    // context 无此病史，插件端复用浏览器必须清）
+    try {
+      const origin = new URL(ins.url!).origin;
+      await chrome.debugger.sendCommand(debuggee, "Page.navigate", { url: origin });
+      await sleep(800);
+      await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+        expression: "try { localStorage.clear(); } catch (e) {}" });
+    } catch { /* fail-open */ }
     await chrome.debugger.sendCommand(debuggee, "Page.navigate", { url: ins.url });
     await sleep(2500);
+    try {
+      const u = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+        expression: "location.href", returnByValue: true });
+      onProgress(`导航后实际页面: ${(u?.result?.value || "").slice(0, 60)}`);
+    } catch { /* fail-open */ }
     return { seq: ins.seq, result: "ok", evidence };
   }
   if (ins.op === "snapshot") {
@@ -229,10 +244,38 @@ async function execute(
   }
   if (ins.op === "click" || ins.op === "fill") {
     const label = ins.label || ins.name || "";
-    const resolved = await resolve(debuggee, ins, label);
+    // 对齐 locate 语义：异步渲染重试（服务端 12 轮×1s；插件端 8 轮×1s
+    // ——首版真机实证：goto 后 2.5s 禅道 iframe/JeecG 列表未渲染完即 miss；
+    // 第 4 轮插一次 reload——SPA 视图状态病（Odoo kanban/list 记忆等）
+    // 重载即愈，服务端新 tab 无此病史）
+    let resolved: any = null;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      resolved = await resolve(debuggee, ins, label, onProgress);
+      if (resolved?.hit) break;
+      if (attempt === 3) {
+        try {
+          await chrome.debugger.sendCommand(debuggee, "Page.reload");
+          await sleep(2500);
+        } catch { /* fail-open */ }
+        continue;
+      }
+      await sleep(1000);
+    }
     if (!resolved?.hit) {
       onProgress(`定位失败：${label}（触发服务端介入）`);
-      return { seq: ins.seq, result: "miss", evidence: { ...evidence, miss: label } };
+      // 协议 §4：miss 附页面可见文本（服务端 LLM 提案的输入）
+      let texts: string[] = [];
+      try {
+        const t = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+          expression: `JSON.stringify([...document.querySelectorAll(
+            'button, a, [role="button"], input, label, .form-group, .ant-form-item')]
+            .map(e => (e.textContent || '').trim()).filter(t => t && t.length < 40).slice(0, 80))`,
+          returnByValue: true,
+        });
+        texts = JSON.parse(t?.result?.value || "[]");
+      } catch { /* fail-open */ }
+      return { seq: ins.seq, result: "miss",
+               evidence: { ...evidence, miss: label, page_texts: texts } };
     }
     const { rect } = resolved;
     const x = rect.x + rect.width / 2, y = rect.y + rect.height / 2;
@@ -259,9 +302,12 @@ async function execute(
   return { seq: ins.seq, result: "unsupported", evidence };
 }
 
-async function resolve(debuggee: any, ins: Instruction, label: string): Promise<any> {
+async function resolve(debuggee: any, ins: Instruction, label: string,
+                       onDebug?: (m: string) => void): Promise<any> {
   const cands = ins.resolve_candidates || [];
-  const js = `(function() {
+  // CDP returnByValue 对对象返回对象（JSON.parse 炸）——js 末尾显式
+  // stringify 保字符串契约（AG5 铁证：每轮 main err .slice undefined）
+  const js = `JSON.stringify((function() {
     const candidates = ${JSON.stringify(cands)};
     const label = ${JSON.stringify(label)};
     const visible = (el) => { if (!el.isConnected) return false;
@@ -296,10 +342,67 @@ async function resolve(debuggee: any, ins: Instruction, label: string): Promise<
       }
     }
     return {hit: false};
-  })()`;
-  const r = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
-    expression: js, returnByValue: true });
-  try { return JSON.parse(r?.result?.value || '{"hit":false}'); } catch { return { hit: false }; }
+  })())`;
+  // 多 frame resolve（对齐 locate 全 frame 语义）：主 frame 未中→逐子
+  // frame 经 CDP executionContext 求值。子 frame 的 rect 需加 frame 偏移
+  try {
+    const r = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+      expression: js, returnByValue: true });
+    const main = (() => { try { return JSON.parse(r?.result?.value || '{"hit":false}'); }
+      catch { return { hit: false }; } })();
+    if (main?.hit) return main;
+  } catch { /* 主 frame 失败继续子 frame */ }
+  try {
+    const tree = await chrome.debugger.sendCommand(debuggee, "Page.getFrameTree");
+    const frames: any[] = [];
+    (function walk(n: any) {
+      if (!n?.frame) return;
+      frames.push(n.frame);
+      for (const c of n.childFrames || []) walk(c);
+    })(tree.frameTree);
+    // 主 frame 之外的：拿 executionContextId 求值
+    const enabled = await chrome.debugger.sendCommand(debuggee, "Runtime.enable");
+    const ctxs: any[] = enabled?.executionContextCreated
+      ? [enabled.executionContextCreated] : [];
+    // 逐 frame createIsolatedWorld 或用 contextId——最稳：Runtime.evaluate
+    // 的 contextId 从 Runtime.enable 后的事件流拿不到（一次性），
+    // 改用 frame 唯一上下文：对每 frame evaluate with contextId=null 不行
+    // → 用 Page.createIsolatedWorld(frameId) 拿 contextId
+    for (const f of frames) {
+      if (!f.parentId) continue; // 跳过主 frame
+      try {
+        const world = await chrome.debugger.sendCommand(debuggee,
+          "Page.createIsolatedWorld", { frameId: f.id });
+        const cid = world?.executionContextId;
+        if (cid === undefined) continue;
+        const r2 = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+          expression: js, contextId: cid, returnByValue: true });
+        const v = (() => { try { return JSON.parse(r2?.result?.value || '{"hit":false}'); }
+          catch { return { hit: false }; } })();
+        if (v?.hit) {
+          // 子 frame 元素坐标转换：直接在 frame 内取 viewport 坐标
+          // （getBoundingClientRect 在 isolated world 里相对 frame 原点，
+          // 加 frame 边界偏移——经 DOM 查询 frame 元素）
+          const off = await chrome.debugger.sendCommand(debuggee,
+            "Runtime.evaluate", {
+              expression: `(function(){
+                const fr = [...document.querySelectorAll('iframe')]
+                  .find(f => f.contentWindow && f.getBoundingClientRect().width >= 0
+                            && f.src === ${JSON.stringify(f.url || "")});
+                if (!fr) return [0, 0];
+                const r = fr.getBoundingClientRect();
+                return [r.x, r.y];
+              })()`, returnByValue: true });
+          try {
+            const [ox, oy] = JSON.parse(off?.result?.value || "[0,0]");
+            v.rect.x += ox; v.rect.y += oy;
+          } catch { /* 偏移失败用原坐标（0 偏移常见于全屏 iframe） */ }
+          return v;
+        }
+      } catch { continue; }
+    }
+  } catch { /* frame 树失败 fail-open */ }
+  return { hit: false };
 }
 
 function sleep(ms: number): Promise<void> {

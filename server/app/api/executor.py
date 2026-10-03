@@ -172,6 +172,40 @@ async def executor_step(run_id: int, body: ExecutorStepReport,
     state["cursor"] = cursor + 1
     nxt = instructions[cursor + 1] if cursor + 1 < len(instructions) \
         else instructions[-1] if instructions else None
+
+    # 协议 §4 当轮 LLM 介入：定位 miss → 快照文本喂 LLM 提案（LLM 只提案）
+    # → 提案 label 重编译候选 → heal 重试当前步（判定=插件端 resolve 实测，
+    # 确定性）；每 run 上限 2 次；提案落 LocateProposal（C3）
+    if (body.result == "miss" and nxt is not None
+            and state.get("interventions", 0) < 2
+            and nxt.get("label")):
+        try:
+            from app.models import LocateProposal
+            from app.llm.gateway import acomplete
+            import json as _json
+            texts = [str(t) for t in (body.evidence.get("page_texts") or [])]
+            forms = [str(f) for f in (body.evidence.get("form_labels") or [])]
+            label = nxt["label"]
+            prompt = (
+                f"自动化回放中按钮定位失败。原标签：{label}\n"
+                f"当前页面可见文本元素：{_json.dumps(texts + forms, ensure_ascii=False)}\n"
+                "从上述元素中选出最可能对应同一操作的新标签，"
+                "只输出标签文本本身，不要任何解释。")
+            result = await acomplete(db, "locate_repair", prompt)
+            proposed = (result.text or "").strip().strip('"').splitlines()[0].strip()[:100]
+            if proposed and proposed != label:
+                db.add(LocateProposal(skill_id=run.skill_id, step_label=label,
+                                      proposed_label=proposed, status="proposed"))
+                db.commit()
+                from app.replay.resolver import compile_resolve_candidates
+                healed = compile_resolve_candidates(proposed, nxt.get("labels"))
+                state["interventions"] = state.get("interventions", 0) + 1
+                nxt = {**nxt, "label": proposed,
+                       "resolve_candidates": healed, "healed": True}
+                state["cursor"] = cursor  # 重试当前步（seq 不推进）
+        except Exception:
+            pass  # 介入失败不破坏步循环（fail-open；C3 已留痕 received）
+
     run.plan = {**plan, "executor_state": state}
     db.commit()
     return {"instruction": nxt, "duplicate": False}

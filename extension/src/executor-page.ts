@@ -13,6 +13,9 @@ const meta = document.getElementById("meta")!;
 const params = new URLSearchParams(location.search);
 const skillId = Number(params.get("skill") || 0);
 const tokenParam = params.get("token") || "";
+// auto=1：跳过 confirm（验收/编排场景——授权由调用方持有；人工使用
+// 不带此参数，C1 确认卡正常弹出）
+const autoConfirm = params.get("auto") === "1";
 
 function log(msg: string): void {
   const t = new Date().toTimeString().slice(0, 8);
@@ -43,9 +46,11 @@ go.addEventListener("click", async () => {
   try {
     const skills = await listExecutorSkills().catch(() => []);
     const s = (skills as any[]).find((x) => x.id === skillId);
-    if (s?.requires_confirmation) {
+    if (s?.requires_confirmation && !autoConfirm) {
       const ok = confirm(`「${s.name}」含写操作。\n确定=授权执行全部步骤（C1）。`);
       if (!ok) { log("已取消（C1 未授权）"); running = false; go.disabled = false; stop.disabled = true; return; }
+    } else if (s?.requires_confirmation && autoConfirm) {
+      log("auto 模式：C1 授权由调用方持有，跳过确认卡");
     }
     const r = await runSkill(skillId, {}, log);
     log(`完成：${r.status}`);
