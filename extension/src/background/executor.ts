@@ -150,6 +150,11 @@ export async function runSkill(
   let steps = 0;
   try {
     while (instruction && instruction.op !== "detach") {
+      // after 快照执行后留晚到响应窗口（写后的异步拉取如 Odoo mail
+      // thread 实证晚 1-2s——web_save 已过而 messages 晚到漏采）
+      if (instruction.op === "snapshot" && instruction.phase === "after") {
+        await sleep(2500);
+      }
       const ev = await execute(debuggee, tabId, instruction, networkLog, onProgress);
       steps++;
       // AG3：步 POST 加 8s race——任何卡点浮出为错误而非静默挂死
@@ -277,12 +282,54 @@ async function execute(
       return { seq: ins.seq, result: "miss",
                evidence: { ...evidence, miss: label, page_texts: texts } };
     }
-    const { rect } = resolved;
+    // scrollIntoView 先行：行操作触发器常在视口右缘外（AG5 铁证：
+    // rect.x=1409 > 视口 1280——坐标点击全落空）。滚入后重取 rect
+    try {
+      const req = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+        expression: `(function(){
+          const label = ${JSON.stringify(ins.label || ins.name || "")};
+          const el = [...document.querySelectorAll('span, a, button')]
+            .filter(e => (e.textContent||'').trim() === label
+              && e.getBoundingClientRect().width > 0)[0];
+          if (!el) return '';
+          (el.closest('td, .ant-table-cell') || el)
+            .scrollIntoView({block: 'center', inline: 'center'});
+          return 'ok';
+        })()`, returnByValue: true });
+      if (req?.result?.value === "ok") {
+        await sleep(400);
+        const rr = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+          expression: `(function(){
+            const label = ${JSON.stringify(ins.label || ins.name || "")};
+            const el = [...document.querySelectorAll('span, a, button')]
+              .filter(e => (e.textContent||'').trim() === label
+                && e.getBoundingClientRect().width > 0)[0];
+            if (!el) return '';
+            const r = el.getBoundingClientRect();
+            return JSON.stringify({x: r.x, y: r.y, width: r.width, height: r.height});
+          })()`, returnByValue: true });
+        try {
+          const nr = JSON.parse(rr?.result?.value || "");
+          if (nr && nr.width) resolved.rect = nr;
+        } catch { /* 用原 rect */ }
+      }
+    } catch { /* fail-open */ }
+    const rect = resolved.rect;
     const x = rect.x + rect.width / 2, y = rect.y + rect.height / 2;
+    // hover 先行：ant-dropdown 等触发器是 mouseenter 态展开（AG5 实证
+    // 更多点击后菜单不开——ftCount=0）；mouseMoved 后停 800ms 让菜单渲染
     await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
-      type: "mousePressed", x, y, button: "left", clickCount: 1 });
-    await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
-      type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+      type: "mouseMoved", x, y });
+    await sleep(800);
+    // ant-dropdown-trigger 是 hover 展开型：click 会 toggle 关掉菜单
+    // （AG5 现场实证）——该类元素只 hover 不 click
+    const hoverOnly = (resolved.tagCls || "").includes("ant-dropdown-trigger");
+    if (!hoverOnly) {
+      await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+        type: "mousePressed", x, y, button: "left", clickCount: 1 });
+      await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+        type: "mouseReleased", x, y, button: "left", clickCount: 1 });
+    }
     if (ins.op === "fill" && ins.value !== undefined) {
       await chrome.debugger.sendCommand(debuggee, "Input.insertText", { text: String(ins.value) });
       await sleep(400);
@@ -294,6 +341,12 @@ async function execute(
           return '';
         })()`, returnByValue: true });
       evidence.value_after = v?.result?.value || "";
+      // blur：Odoo 等框架的 onchange/save 触发链需要输入框失焦（官方
+      // tour 实证同模式）；下一个动作前统一 blur
+      await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+        expression: "(document.activeElement || {}).blur && document.activeElement.blur()" })
+        .catch(() => {});
+      await sleep(300);
     }
     onProgress(`${ins.op} ${label}${resolved.strategy ? `（${resolved.strategy}）` : ""}`);
     return { seq: ins.seq, result: "ok", evidence };
@@ -331,13 +384,25 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
             const ctl = g.querySelector('input, select, textarea');
             if (ctl && visible(ctl)) { els = [ctl]; break; }
           }
+        } else if (c.kind === "menuitem-text") {
+          els = [...document.querySelectorAll(c.selector)]
+            .filter(el => visible(el) && (el.textContent || "").trim() === label);
+        } else if (c.kind === "row-trigger") {
+          // AG5 行锚：含 anchor 词的行内找 label 文本触发器
+          const rows = [...document.querySelectorAll(c.selector)]
+            .filter(r => (r.textContent || "").includes(c.anchor || ""));
+          for (const row of rows) {
+            const trig = [...row.querySelectorAll("a, span, button, [role=button]")]
+              .filter(el => visible(el) && (el.textContent || "").trim() === label);
+            if (trig.length) { els = [trig[0]]; break; }
+          }
         } else {
           els = [...document.querySelectorAll(c.selector)].filter(visible);
         }
       } catch (e) { continue; }
       if (els.length === 1) {
         const r = els[0].getBoundingClientRect();
-        return {hit: true, strategy: c.strategy,
+        return {hit: true, strategy: c.strategy, tagCls: (els[0].className || ""),
           rect: {x: r.x, y: r.y, width: r.width, height: r.height}};
       }
     }

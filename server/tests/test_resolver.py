@@ -14,11 +14,12 @@ from app.replay.resolver import (
 def test_candidates_ordered_by_strategy_strength():
     cands = compile_resolve_candidates("保存表单", labels=["保存表单"], tag="button")
     sels = [c["selector"] for c in cands]
-    # title 强语义（排导航容器）在最前
+    # title 强语义（排导航容器）在最前，aria-attr 紧随（图标按钮无文本）
     assert "title-attr" == cands[0]["strategy"]
+    assert "aria-attr" == cands[1]["strategy"]
     assert "@title=" in sels[0] and "保存表单" in sels[0]
-    # role-button 精确名紧随
-    assert cands[1]["strategy"] == "role-button"
+    # role-button 精确名随后
+    assert cands[2]["strategy"] == "role-button"
     strategies = [c["strategy"] for c in cands]
     # 关键策略全在场且顺序正确（语义强度序）
     for expect in ("form-group-control", "select2-by-name", "menuitem",

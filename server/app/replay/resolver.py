@@ -13,25 +13,35 @@ _NAV_EXCLUDE_XPATH = (
 )
 
 
-def _candidate(strategy: str, selector: str, kind: str = "click") -> dict:
-    return {"strategy": strategy, "selector": selector, "kind": kind}
+def _candidate(strategy: str, selector: str, kind: str = "click",
+               anchor: str | None = None) -> dict:
+    out = {"strategy": strategy, "selector": selector, "kind": kind}
+    if anchor:
+        out["anchor"] = anchor
+    return out
 
 
 def compile_resolve_candidates(label: str, labels: list[str] | None = None,
                                tag: str | None = None,
                                ordinal: int | None = None,
-                               path: str | None = None) -> list[dict]:
+                               path: str | None = None,
+                               row_anchor: str | None = None) -> list[dict]:
     """locate 策略矩阵的编译版：语义强度序产候选 selector。
 
     与 locate() 的对应关系（策略名同源便于审计）：
-    title-attr（强语义，排导航）→ role-button 精确 → form-group 控件
-    （>3 字符）→ select2-by-name → menuitem → text（排 tooltip/导航）
-    → placeholder 精确 → el-select 容器 → label → id → name-attr。
+    title-attr（强语义，排导航）→ aria-attr（图标按钮无文本）→
+    role-button 精确 → form-group 控件（>3 字符）→ select2-by-name →
+    menuitem → text（排 tooltip/导航）→ placeholder 精确 →
+    el-select 容器 → label → id → name-attr →
+    row-anchor（AG5：行操作触发器——宿主行文本过滤，labels/row_anchor）。
     """
     short_label = len(label) <= 3
     cands: list[dict] = [
         _candidate("title-attr",
                    f'//*[@title={_xpath_str(label)} and {_NAV_EXCLUDE_XPATH}]'),
+        # AG5：图标按钮文本空、标识在 aria-label（Odoo o_form_button_save
+        # 实证："Save manually" 无文本）——强语义，紧跟 title
+        _candidate("aria-attr", f'[aria-label="{label}"]'),
         _candidate("role-button", f'[role="button"]', kind="role"),
     ]
     if not short_label:
@@ -47,6 +57,10 @@ def compile_resolve_candidates(label: str, labels: list[str] | None = None,
         _candidate("menuitem",
                    f'//*[@role="menuitem" or @role="option" or @role="menu"]'
                    f'[normalize-space(.)={_xpath_str(label)}]'),
+        # AG5：ant-dropdown 菜单项挂 body（hover 态渲染）——CSS 版 menuitem
+        # 供插件端 querySelectorAll（XPath 形态插件端不执行）
+        _candidate("menuitem-css", '[role="menuitem"], .ant-dropdown-menu-item, li[role="option"]',
+                   kind="menuitem-text"),
         _candidate("text",
                    f'//*[normalize-space(text())={_xpath_str(label)} and '
                    f'not(ancestor-or-self::*[contains(@class,"tooltip") or '
@@ -59,6 +73,15 @@ def compile_resolve_candidates(label: str, labels: list[str] | None = None,
         _candidate("id", f'#{label}'),
         _candidate("name-attr", f'[name="{label}"]'),
     ]
+    # AG5 row-anchor：行操作触发器（JeecG"更多"下拉等）——触发词在含
+    # 宿主行文本的行内点击（kind=row-trigger 由插件端行内找 label）
+    if row_anchor:
+        import re as _re
+        toks = _re.findall(r"[A-Za-z0-9_]{4,}", row_anchor)
+        if toks:
+            cands.append(_candidate(
+                "row-anchor", ".ant-table-row, .list-item, .grid-row, tr",
+                kind="row-trigger", anchor=toks[0]))
     return cands
 
 

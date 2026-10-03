@@ -90,13 +90,19 @@ def compile_executor_plan(plan: dict) -> list[dict]:
                             step.get("name") or "", step.get("labels")),
                         "timeout_ms": DEFAULT_TIMEOUT_MS})
         elif step.get("kind") == "click":
+            # AG5 行锚：labels 里的宿主行文本（>6 字符含 ASCII alnum，
+            # ≠label——runner row-trigger 同门）编译进候选尾
+            row_texts = [l for l in (step.get("labels") or [])
+                         if len(l) > 6 and l != (step.get("label") or "")
+                         and any(c.isascii() and c.isalnum() for c in l)]
+            row_anchor = row_texts[0] if row_texts else None
             out.append({"seq": seq, "op": "click",
                         "label": step.get("label"),
                         "labels": step.get("labels") or [],
                         "tag": step.get("tag"),
                         "resolve_candidates": compile_resolve_candidates(
                             step.get("label") or "", step.get("labels"),
-                            tag=step.get("tag")),
+                            tag=step.get("tag"), row_anchor=row_anchor),
                         "timeout_ms": DEFAULT_TIMEOUT_MS})
         seq += 1
     out.append({"seq": seq, "op": "snapshot",
