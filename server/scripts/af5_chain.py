@@ -70,8 +70,17 @@ async def replay_and_verify(token: str, manifest: Manifest, chain: Chain,
             body = r.json() if r.status_code == 200 else {"status": f"http{r.status_code}"}
             verdict = body.get("status")
             if item.verify and item.verify.probe in probes:
+                # 实体落库常有异步延迟（JeecG addAll 200 后台 sync 建表）：
+                # after 探针带重试窗口——首次不中再等 2s×5
+                import time as _t
                 after = run_probe(manifest, probes[item.verify.probe])
                 ok = compare_expect(item.verify.expect, verify_before, after)
+                for _ in range(5):
+                    if ok:
+                        break
+                    _t.sleep(2)
+                    after = run_probe(manifest, probes[item.verify.probe])
+                    ok = compare_expect(item.verify.expect, verify_before, after)
                 verdict = f"{verdict}+{'verified' if ok else 'VERIFY_FAIL'}"
             results[item.skill] = verdict
     return results
