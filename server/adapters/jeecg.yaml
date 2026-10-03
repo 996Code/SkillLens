@@ -1,0 +1,36 @@
+# AF1：JeecgBoot 适配清单（从 scripts/s43_jeecg_form.py + s43_jeecg_replay2.py 机械提取）
+id: jeecg
+label: JeecgBoot 在线表单
+target:
+  base_url: http://127.0.0.1:8095
+credentials:
+  username: admin
+  password_literal: "123456"  # 本地演示容器（lint 警告属预期）
+login:
+  steps:
+    - goto: /
+    - fill: ["input[placeholder*='账号']", "${username}"]
+    - fill: ["input[placeholder*='密码']", "${password}"]
+    - click: "button:has-text(\"登\")"
+  post_login: []
+probes:
+  - id: form_count
+    kind: docker-exec
+    container: jeecg-boot-mysql
+    shell: 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "SHOW TABLES FROM `jeecg-boot` LIKE \"sl_%\""'
+  - id: fill_row_count
+    kind: docker-exec
+    container: jeecg-boot-mysql
+    shell: 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "SELECT COUNT(*) FROM `jeecg-boot`.${table}"'
+chains:
+  - name: form-chain
+    rounds: 2
+    skills: [OnlineFormCreate, OnlineFormSync, OnlineFormFill]
+    replay:
+      - skill: OnlineFormCreate
+        overrides: {"*表名": "sl_rp${ts}", "*表描述": "SL回放表单${ts}"}
+        verify: {probe: form_count, expect: increased}
+      - skill: OnlineFormSync
+        overrides: {"*表名": "sl_rp${ts}", "*表描述": "SL回放表单${ts}"}
+      - skill: OnlineFormFill
+        overrides: {"*表名": "sl_rp${ts}", "*表描述": "SL回放表单${ts}"}

@@ -1,0 +1,31 @@
+# AF1：禅道适配清单（从 scripts/s43_zentao_qa.py + s43_zentao_qa_replay.py 机械提取）
+id: zentao
+label: 禅道 22
+target:
+  base_url: http://127.0.0.1:8082
+credentials:
+  username: admin
+  password_env: ZENTAO_PW
+login:
+  steps:
+    - goto: /index.php?m=user&f=login
+    - fill: ["#account", "${username}"]
+    - fill: ["input[name=password]", "${password}"]
+    - click: "button[type=submit], #submit"
+  post_login: [close_guide]
+probes:
+  # 禅道容器 root 密码不在 env（官方镜像存应用配置）——复杂 shell 放
+  # 独立脚本（adapters/scripts/zentao_db.sh，内含从 my.php 抽密码逻辑，
+  # 密码不落清单/日志——安全红线）；manifest 只引用脚本+传 SQL
+  - id: story_count
+    kind: docker-exec
+    container: zentao
+    shell: 'sh /opt/skilllens/zentao_db.sh "SELECT COUNT(*) FROM zentao.zt_story WHERE title LIKE \"SL%\""'
+chains:
+  - name: qa-chain
+    rounds: 2
+    skills: [ZentaoStoryCreate, ZentaoCaseCreate, ZentaoTesttaskCreate, ZentaoCaseRun]
+    replay:
+      - skill: ZentaoStoryCreate
+        overrides: {"*标题": "SL回放${ts}"}
+        verify: {probe: story_count, expect: increased}

@@ -18,6 +18,7 @@ from app.api import (
     field_types,
     dev_plans,
     events,
+    executor,
     export,
     flows,
     generic_skills,
@@ -114,6 +115,7 @@ app.include_router(flows.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(visual.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(locate_proposals.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(export.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(executor.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(dashboard.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(timeline.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(suites.router, prefix=API_PREFIX, dependencies=_GUARDED)

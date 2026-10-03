@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>AG0 Spike Page</title></head>
+<body>
+  <button id="btn">点击我</button>
+  <div id="state">初始</div>
+  <script>
+    window.__lastTrusted = null;
+    document.querySelector('#btn').addEventListener('click', async (e) => {
+      window.__lastTrusted = e.isTrusted;
+      document.querySelector('#state').textContent = '已点击';
+      fetch('/api/spike', {method: 'POST', body: '{"probe":"ag0"}'})
+        .then(r => r.json()).then(d => {
+          document.querySelector('#state').textContent = '完成:' + d.ok;
+        });
+    });
+  </script>
+</body>
+</html>

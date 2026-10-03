@@ -251,6 +251,43 @@ M4 交付       ── S16-S18 ── 全闭环贯通 + 加固 + 试点运行【
 
 > 只读 SQL 断言（DB 状态作为第 7 层证据）。依赖：目标系统 DB 只读账号授权（新闸口 G7）。K 块试点反馈确认需求后再启动。
 
+### 块 AF：适配器架构（P3b 升级，v2.1 新增）
+
+> 2026-10-03 用户方向裁定：SkillLens 做基座，目标系统适配以插件（声明式清单）支持自定义。
+> 依据：S43-4 七系统 2549 行编排脚本解剖——约 60% 是逐字相同的基座骨架，每系统真正
+> 不同的只有 4 类（登录怪癖/走查步骤/实体探针/状态注入）。设计三原则：
+> ①例程库而非无限 DSL（6 原语 goto/fill/click/select/wait/routine，怪癖收编进例程库）；
+> ②探针是第一公民（docker-exec/http 统一抽象，同服务实体验证+状态注入+块 X）；
+> ③flow 走查可选（缺省时退化为登录引导+人工走查+探针验证）。
+
+| # | 功能点 | 验收标准 | 测试 |
+|---|---|---|---|
+| AF0 | schema spike 定稿 | 本表（6 原语+探针 kinds+chains 结构）评审通过 | 评审记录 |
+| AF1 | manifest Pydantic schema+loader | ✅ 7 系统清单（从 s43 脚本机械提取）全部通过校验；password_literal lint 警告（安全红线） | TDD |
+| AF2 | 探针运行时 | ✅ docker-exec/http+parse+凭据 env 注入+辅助脚本自动注入；禅道 zt_story 全量 18 与手跑逐位一致 | TDD |
+| AF3 | 登录+例程库 | ✅ 六原语解释器+例程五件套+幂等登录（已登录直通）；批 1 五系统（若依/JeecG/Snipe/ERPNext/Dolibarr）真机 PASS；禅道/Odoo 待 env 凭据复验（外部输入） | TDD+真机 |
+| AF4 | flow 步骤解释器 | 禅道+若依链纯清单驱动录制，产出技能质量与 s43 脚本等同 | TDD+真机 |
+| AF5 | 链编排器 | record→learn→replay→verify 全自动；JeecG 三链清单跑出 ALL PASS（对齐 s43_jeecg_replay2.py） | TDD+真机 |
+| AF6 | 接入向导 UI | 工作台读清单/表单生成清单，新系统接入零手写编排脚本 | 浏览器实操 |
+
+### 块 AG：扩展执行后端（chrome.debugger 桥接，v2.1 新增）
+
+> 2026-10-03 用户方向裁定：回放不都在服务器跑——Chrome 插件作桥梁调用客户端执行。
+> 架构：瘦执行器——定位/评分/写判定/C1 门控/断言全留服务端，插件只执行微指令+回传
+> 证据（避免 execute_plan 双实现漂移）。技术底座：chrome.debugger attach 后走 CDP
+> Input.dispatch*（与 Playwright 同源可信输入，isTrusted=true，规避合成事件坑
+> lesson #19）；Network 域观察响应体（webRequest 读不了 body）。红利：真实登录态
+> 回放（密码脱敏死结消失）+ P2 并发执行面（每用户浏览器=执行节点）。
+
+| # | 功能点 | 验收标准 | 测试 |
+|---|---|---|---|
+| AG0 | spike 验风险 | ✅ 已完成（2026-10-03，lesson #30）：attach/可信点击/网络体捕获/detach 4/4；SW 事件驱动期间不杀；冲突形态明确 | spike 记录 |
+| AG1 | 微指令协议规格 | 指令集（goto/snapshot/resolve/click/fill/press/wait_events/screenshot/retry/detach）+证据回传 schema 定稿（复用 events 上报通道）；**当轮 LLM 介入**：定位失败→现场快照上报→服务端提案→resolver 重下发当轮验证（每 run 介入上限 2 次，超限判 fail 留下轮）；attach 冲突/横幅中断错误路径 | TDD |
+| AG2 | resolver 编译器+debugger 原语 | locate 签名改造（活 Locator→对现场快照跑策略链产 selector 序列）；可信 click/fill+Network 观察+Page.captureScreenshot；iframe executionContext/scrollIntoView 先行；单页闭环 | TDD+真机 |
+| AG3 | popup 执行交互 | 用户点击开始触发（SW 必活，无 alarm 需求）；C1 确认卡（写步骤清单，requires_confirmation 元数据下发）；实时进度+[停止]；步循环+证据流回传落库（C3） | TDD+真机 |
+| AG4 | 服务端断言接线 | 插件证据喂 evaluate_assertions（原封不动）；run 标记 executor=extension；自愈数据链（repair_map/record_usage）插件端等效 | TDD |
+| AG5 | 客户端闭环验收 | 用户在 popup 选择技能（含写技能经确认卡）执行全闭环 PASS；结果工作台可见；≥3 技能跨 2 系统对比服务端一致性；真实登录态技能 PASS | E2E |
+
 ### 明确不做（v1.6 决策记录）
 
 跨浏览器（Firefox/WebKit）、移动端、无障碍校验——私有化内部 Web 系统场景下 Chromium 是事实标准，投入产出比不成立。竞品有此能力不构成跟进理由。
@@ -276,6 +313,24 @@ S7(A) → S8(B) → S9(C) → 【G1 目标系统授权】S10(D) → 【G2 两次
 | G3 (S13) | njmind 开发侧自动化授权（配置 API/账号） | S12 期间 |
 | G4 (S16) | 试点团队/客户确定 | S14 期间；**v1.6 起前置块 S（协作与准入）须先完成** |
 
+**v2.1 执行序（块 AF/AG，2026-10-03 起）：**
+
+```
+AG0 spike ✅（2026-10-03，lesson #30：4/4 PASS+SW 保活+冲突形态）
+AG1 协议 server 侧 ✅（端点组+迁移+4 用例；契约文档 docs/arch/extension-executor-protocol.md）
+  → AF1 manifest schema+7 系统清单回填 ✅ → AF2 探针运行时 ✅ → AF3 登录+例程库 ✅
+    （批 1 五系统真机 PASS；禅道/Odoo 待 env 凭据复验）
+  → AG2 resolver 编译器+原语 → AG3 popup 执行交互 → AG4 断言接线
+  → AF4 flow 解释器 → AF5 链编排器（JeecG 三链对齐 ALL PASS）
+  → AG5 客户端闭环验收（popup 执行+双端一致性）
+  → AF6 接入向导 UI（闸门④浏览器实操）
+```
+
+架构定案（2026-10-03 用户澄清）：**插件=完整执行节点，用户在 popup 选择并点击执行
+（含写技能，点击即 C1 授权）；服务器=管理+知识库，不下发任务**。夜间/画布批量暂留
+服务端 Playwright 兜底。依据：AF1-AF3 零依赖可立即开工；AG5 前置 AF5（清单技能
+用于双端一致性对比）。
+
 ## 6. 执行与变更流程
 
 - **Sprint 执行**：派生计划 → docs/superpowers/plans/ → SDD 子代理执行（TDD 先红后绿）→ 全量测试绿 + 实测验收 → 本地合 main + 删分支。
@@ -298,3 +353,5 @@ S7(A) → S8(B) → S9(C) → 【G1 目标系统授权】S10(D) → 【G2 两次
 - 2026-09-29 v1.8（系统重定向，用户："不是以流程图为底座打造的系统"）：**新增块 AA「图基座重构」**——图优先导航（/graph 图工作台：左树+图卡总览+流程图详情+执行图），S39 双路由合并；S40 数据清零+UI 重做（搜索/折叠/真图）；S41 用户八问修复。功能点 73→79。
 - 2026-09-30 v1.9（自愈+图基座深化）：**新增块 AB「自愈系统缺陷根治」**（record_usage 只在 run 整体 pass 时计数——垃圾提案污染根治；状态依赖失败不生成）+ **块 AC「图基座第二步」**（状态机归纳/学习图五层 trace/画布子图展开）+ **块 AD「字段类型 LLM 归因」**（llm_attribute_type 枚举约束落库，自愈接线只归因校验错误提到的字段）。测试基线 server 440 / web 54 / extension 69。
 - 2026-10-01/02 v2.0（用户："把开源系统全部走一遍闭环，完善的流程业务测试，不要光知道基础数据，每个系统都有核心流程，多个角度走几遍"）：**新增块 AE「全系统核心业务多角度闭环」**（S43-4）——七系统（Snipe-IT 资产/禅道 QA/Odoo 销售/Dolibarr 订单/JeecgBoot 字典+在线表单/ERPNext CRM/若依权限）每系统核心业务链 2 轮录制→学习→换参回放→实体级验证；23 技能学成、22 回放全 PASS（JeecG 表单链 Create 全 PASS、Sync/Fill 步骤层过+物理表建出，链式 override 列未竟项）。**同步固化「成熟项目对照」开发纪律**（用户强制：遇坑先查目标系统官方 harness——Frappe cypress intercept+wait/check(force)、Odoo tour 种数据、Healenium LCS 评分，已入 AGENTS.md §二）。功能点 79→86。测试基线 server 447 / web 54 / extension 76。验收：demo/sprint43/user-test-report.md。
+- 2026-10-02 v2.0.1：S43-5 收尾——JeecG 链式 override 修复（row-anchor 换参注入+动态 id 断言归一，commit 246b752），七系统 **23 技能 23 回放全 PASS**。测试基线 server 452 / web 54 / extension 76。lessons #29。
+- 2026-10-03 v2.1（用户方向裁定："做一套基座，系统适配作为插件支持自定义"+"回放不都在服务器上，用 Chrome 插件作桥梁调用客户端"）：**新增块 AF「适配器架构」**（P3b 升级：manifest 清单+探针运行时+例程库+链编排器+向导 UI，7 片含 AF0 schema 定稿）+ **块 AG「扩展执行后端」**（chrome.debugger 桥接客户端执行：瘦执行器架构+微指令协议+双后端一致性，6 片含 AG0 spike）。功能点 86→99。执行顺序：AG0 spike 先行（验 SW 保活/attach 冲突两风险）→ AF1-AF3（纯收益）→ AG1-AG4 → AF4-AF5 → AG5 双后端一致性验收 → AF6 向导 UI。块 L（L5 迁移实测）不阻塞，与 AF 并行可做。

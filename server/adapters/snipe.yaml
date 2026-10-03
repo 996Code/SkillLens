@@ -1,0 +1,24 @@
+# AF1：Snipe-IT 适配清单（从 scripts/s43_snipe_flow.py + s43_snipe_replay.py 机械提取）
+id: snipe
+label: Snipe-IT 资产管理
+target:
+  base_url: http://127.0.0.1:8081
+credentials:
+  username: admin
+  password_literal: "Snipe@618local"  # 本地演示容器（lint 警告属预期）
+login:
+  steps:
+    - goto: /
+    - fill: ["input[name=username]", "${username}"]
+    - fill: ["input[name=password]", "${password}"]
+    - click: "button[type=submit]"
+  post_login: []
+probes:
+  - id: asset_count
+    kind: docker-exec
+    container: snipeit-db-1
+    shell: 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "SELECT COUNT(*) FROM snipeit.assets WHERE name LIKE \"SL-%\""'
+chains:
+  - name: asset-chain
+    rounds: 2
+    skills: [AssetCreate, AssetCheckout, AssetCheckin]

@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "AG0 Spike Debugger",
+  "version": "0.0.1",
+  "permissions": ["debugger", "tabs"],
+  "background": { "service_worker": "sw.js" },
+  "action": {}
+}

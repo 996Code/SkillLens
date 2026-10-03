@@ -246,9 +246,50 @@
   同哲学：断言期望值是纯数字≥12/hex≥16 的实体 id 时跨轮必漂移，记录
   不判定（assert_eval._DYNAMIC_EXPECT）——回放命中行≠录制行不是回归。
 
+### 30. chrome.debugger 桥接回放（AG0 spike 实证，2026-10-03）
+- **结论**：插件内回放技术路径全通——attach / CDP `Input.dispatchMouseEvent`
+  可信点击（isTrusted=true，页面状态更新）/ `Network.getResponseBody` 取响应体
+  / detach 四件事 PASS；MV3 SW 在 debugger 事件驱动期间 30s 观察窗不被杀；
+  attach 冲突有明确错误形态（"Another debugger is already attached"）可转
+  用户提示（关 DevTools 重试）。
+- **关键时序**：Network listener 必须在触发动作**之前**注册——响应早于注册
+  即丢事件（spike 首跑 body=null 的根因）。AG3 步循环遵循"先订阅后动作"。
+- **出处**：与 Playwright 同源 CDP（Input/Network/Runtime 域），等价于把
+  服务端执行通道搬进插件；对照 Selenium IDE 的 content script 合成事件
+  （isTrusted=false 被框架忽略，lesson #19）正是分水岭。
+- 证据：spike/ag0_drive.py 复跑输出（4/4+保活+冲突形态）。
+
+### 31. 声明式清单不塞复杂 shell——引号嵌套是深渊（AF2 实证）
+- **现象**（禅道探针）：manifest YAML 里的 shell 含密码抽取（grep+正则+多层
+  引号），单引号双写/块标量折叠/`\K` 转义三层地狱，三种写法全断——sh 报
+  "Unterminated quoted string"。
+- **修复**：复杂 shell 放独立脚本 `adapters/scripts/zentao_db.sh`（密码从
+  容器内应用配置抽取，不落清单），manifest 只写 `sh /opt/skilllens/x.sh
+  "<SQL>"`；探针运行时 `_ensure_helper_scripts` 自动 docker cp 注入。
+- **预防**：manifest 是声明物不是脚本容器——凡引号超两层/含正则反斜杠的
+  shell 一律外置脚本（设计原则①的 escape hatch）。YAML 里 shell 用单引号
+  标量+双写转义仅适用于简单命令。
+- 禅道容器 root 密码不在 env（官方镜像存 /apps/zentao/config/my.php）——
+  MYSQL_ROOT_PASSWORD 假设不通用，逐容器核实凭据形态。
+
+### 32. persistent_context 常驻浏览器 + 外部 connect_over_cdp 的驱动冲突（AF3 实证）
+- **现象**：live_browser.py 宿主（launch_persistent_context）开着时，外部脚本
+  connect_over_cdp 后 `ctx.new_page()` 报 "Connection closed while reading
+  from the driver"；且宿主异常退出会污染 CDP 状态（后续连接全断）。
+- **根因**：两个 Playwright driver（宿主 + 外接）对同一浏览器并发操作，
+  newPage 通道冲突；宿主崩后 socket 半开。
+- **修复**：外部脚本**复用既有页**（ctx.pages[0]）不 new_page；宿主挂了先
+  TaskStop/重启 live_browser（profile 在 /tmp/skilllens-live-profile，登录态
+  不丢）再连。
+- **预防**：编排脚本连 9222 一律复用 pages[0]；需要多页时开自己的
+  launch_persistent_context 或直连 CDP HTTP 接口，不经 Playwright ctx。
+
 ---
 
 *更新记录：2026-09-24 初版（Sprint 0-4 + Sprint 4.5 全自动闭环的踩坑汇总）；
 2026-09-24 二版（Windows 移植清单 + 回放水合竞态，§五）；
 2026-10-02 三版（§六 S43-4 七系统闭环实战 11 条：#18-#28）；
-2026-10-02 四版（#29 链式回放行锚陈旧——JeecG Sync/Fill 收尾）。*
+2026-10-02 四版（#29 链式回放行锚陈旧——JeecG Sync/Fill 收尾）；
+2026-10-03 五版（#30 chrome.debugger 桥接回放 AG0 spike 实证）；
+2026-10-03 六版（#31 声明式清单不塞复杂 shell——AF2 禅道探针实证）；
+2026-10-03 七版（#32 persistent_context 双驱动冲突——AF3 登录验证实证）。*

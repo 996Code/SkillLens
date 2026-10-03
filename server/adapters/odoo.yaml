@@ -1,0 +1,24 @@
+# AF1：Odoo 适配清单（从 scripts/s43_odoo_sales.py + s43_odoo_replay.py 机械提取）
+id: odoo
+label: Odoo 18 销售
+target:
+  base_url: http://127.0.0.1:8069
+credentials:
+  username: admin@local.test
+  password_env: ODOO_PW
+login:
+  steps:
+    - goto: /web/login
+    - fill: ["input[name=login]", "${username}"]
+    - fill: ["input[name=password]", "${password}"]
+    - click: "button[type=submit]"
+  post_login: []
+probes:
+  - id: sale_order_count
+    kind: docker-exec
+    container: odoo-odoo-1
+    shell: 'python3 -c "import xmlrpc.client,os;u=xmlrpc.client.ServerProxy(\"http://127.0.0.1:8069/xmlrpc/2/common\");uid=u.authenticate(\"skilllens-demo\",\"admin@local.test\",os.environ.get(\"ODOO_PW\",\"\"),{});m=xmlrpc.client.ServerProxy(\"http://127.0.0.1:8069/xmlrpc/2/object\");print(m.execute_kw(\"skilllens-demo\",uid,os.environ.get(\"ODOO_PW\",\"\"),\"sale.order\",\"search_count\",[[(\"name\",\"like\",\"SL\")]]))"'
+chains:
+  - name: sales-chain
+    rounds: 2
+    skills: [SaleQuoteCreate, SaleOrderConfirm, SaleInvoiceCreate]

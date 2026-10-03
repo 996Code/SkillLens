@@ -318,6 +318,8 @@ class ReplayRun(Base):
     duration_ms: Mapped[int | None] = mapped_column(nullable=True)
     # S24 块 U：flaky 标记——首试 fail 重试 pass（两次结果不一致），进一致性统计
     flaky: Mapped[bool] = mapped_column(default=False)
+    # AG1：执行后端标记（server|extension）——插件执行端 run 可区分
+    executor: Mapped[str] = mapped_column(String(20), default="server")
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 

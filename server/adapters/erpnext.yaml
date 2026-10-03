@@ -1,0 +1,25 @@
+# AF1：ERPNext 适配清单（从 scripts/s43_erpnext_crm.py + s43_erpnext_replay.py 机械提取）
+id: erpnext
+label: ERPNext CRM
+target:
+  base_url: http://127.0.0.1:8090
+credentials:
+  username: Administrator
+  password_literal: admin   # 本地演示容器（lint 警告属预期）
+login:
+  steps:
+    - goto: /login
+    - fill: ["input[data-fieldname=email]", "${username}"]
+    - fill: ["input[type=password]", "${password}"]
+    - click: "button:has-text(\"Log in\")"
+  post_login: []
+probes:
+  - id: quotation_count
+    kind: docker-exec
+    container: erpnext-backend-1
+    shell: 'cd /home/frappe/frappe-bench && bench --site frontend execute frappe.client.get_list --kwargs "{\"doctype\":\"Quotation\",\"filters\":[[\"docstatus\",\"=\",1]],\"limit_page_length\":0,\"fields\":[\"name\"]}"'
+    parse_regex: '"name": "(.+?)"'
+chains:
+  - name: crm-chain
+    rounds: 2
+    skills: [CustomerCreate, QuotationCreate, SalesOrderCreate]

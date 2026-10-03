@@ -1,0 +1,39 @@
+# AF1：若依适配清单（从 scripts/s43_ruoyi_perm.py + s43_ruoyi_replay.py 机械提取）
+id: ruoyi
+label: 若依 RuoYi-Vue3
+target:
+  base_url: http://127.0.0.1:8093
+credentials:
+  username: admin
+  password_literal: admin123   # 本地演示容器（lint 警告属预期）
+login:
+  steps:
+    - goto: /
+    - fill: ["[placeholder=账号]", "${username}"]
+    - fill: ["[placeholder=密码]", "${password}"]
+    - click: "button:has-text(\"登\")"
+  post_login: [confirm_el_box]
+probes:
+  - id: role_count
+    kind: docker-exec
+    container: ruoyi-mysql
+    shell: 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "SELECT COUNT(*) FROM `ry-vue`.sys_role WHERE role_key LIKE \"sl_%\""'
+  - id: user_count
+    kind: docker-exec
+    container: ruoyi-mysql
+    shell: 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "SELECT COUNT(*) FROM `ry-vue`.sys_user WHERE user_name LIKE \"sluser%\""'
+  - id: login_ok
+    kind: http
+    request:
+      method: POST
+      url: "${base_url}/prod-api/login"
+      json: {username: "${new_user}", password: "${new_pass}"}
+    assert: {status: 200, contains: token}
+chains:
+  - name: perm-chain
+    rounds: 2
+    skills: [RuoYiRoleCreate, RuoYiUserCreate, RuoYiLoginVerify]
+    replay:
+      - skill: RuoYiRoleCreate
+        overrides: {"请输入角色名称": "SL回放${ts}", "请输入权限字符": "sl_replay_${ts}"}
+        verify: {probe: role_count, expect: increased}
