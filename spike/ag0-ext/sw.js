@@ -111,6 +111,38 @@ async function run(testUrl) {
     const body = await networkBody;
     log("network-body", body !== null && !String(body).startsWith("ERR"), `body=${String(body).slice(0, 60)}`);
 
+    // AG2 追验：fill 原语（click 聚焦→insertText→值确认——水合语义）
+    const fillRes = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+      expression: "JSON.stringify(document.querySelector('#fillme') ? 1 : 0)",
+      returnByValue: true,
+    });
+    if (JSON.parse(fillRes.result.value) === 1) {
+      const fr = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+        expression: "JSON.stringify(document.querySelector('#fillme').getBoundingClientRect())",
+        returnByValue: true,
+      });
+      const fr2 = JSON.parse(fr.result.value);
+      const fx = fr2.x + fr2.width / 2, fy = fr2.y + fr2.height / 2;
+      await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+        type: "mousePressed", x: fx, y: fy, button: "left", clickCount: 1 });
+      await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+        type: "mouseReleased", x: fx, y: fy, button: "left", clickCount: 1 });
+      await chrome.debugger.sendCommand(debuggee, "Input.insertText", { text: "ag2-fill-ok" });
+      await sleep(500);
+      const val = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+        expression: "document.querySelector('#fillme').value",
+        returnByValue: true,
+      });
+      log("ag2-fill", val.result.value === "ag2-fill-ok", `value=${val.result.value}`);
+      // 截图原语
+      try {
+        const shot = await chrome.debugger.sendCommand(debuggee, "Page.captureScreenshot", { format: "png" });
+        log("ag2-screenshot", !!shot && shot.data.length > 1000, `len=${shot.data ? shot.data.length : 0}`);
+      } catch (e) {
+        log("ag2-screenshot", false, e.message);
+      }
+    }
+
     // ⑤ detach
     await chrome.debugger.detach(debuggee);
     log("detach", true);

@@ -86,6 +86,29 @@ async def test_executor_step_loop_and_idempotency(client, monkeypatch):
     assert r3.json()["instruction"] == ins
 
 
+async def test_executor_instructions_carry_resolve_candidates(client, monkeypatch):
+    """AG2 接线：click/fill 指令内联 resolver 候选序列（策略名与
+    locate.py 同源）——插件端按序实测，无需自行理解定位语义。"""
+    skill_id = await _seed_skill(client, monkeypatch)
+    r = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                          json={"overrides": {}, "confirm_side_effect": True})
+    run_id = r.json()["run_id"]
+    from app.db import SessionLocal
+    from app.models import ReplayRun
+    db = SessionLocal()
+    try:
+        run = db.get(ReplayRun, run_id)
+        instrs = (run.plan or {}).get("executor_instructions") or []
+        clicks = [i for i in instrs if i["op"] == "click"]
+        assert clicks, "无 click 指令"
+        c = clicks[0]
+        assert c.get("resolve_candidates"), "click 指令缺 resolver 候选"
+        strategies = [x["strategy"] for x in c["resolve_candidates"]]
+        assert "title-attr" in strategies and "role-button" in strategies
+    finally:
+        db.close()
+
+
 async def test_executor_finish_lands_run_with_executor_mark(client, monkeypatch):
     skill_id = await _seed_skill(client, monkeypatch)
     r = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",

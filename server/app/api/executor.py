@@ -21,6 +21,7 @@ from app.db import SessionLocal
 from app.models import Alignment, OutcomeAssertion, RawEvent, ReplayRun, Skill
 from app.replay.plan import compile_skeleton_plan, requires_confirmation
 from app.replay.repair import load_repair_map
+from app.replay.resolver import compile_resolve_candidates
 from sqlalchemy import select
 
 router = APIRouter()
@@ -83,12 +84,17 @@ def compile_executor_plan(plan: dict) -> list[dict]:
             out.append({"seq": seq, "op": "fill",
                         "name": step.get("name"), "value": step.get("value"),
                         "labels": step.get("labels") or [],
+                        "resolve_candidates": compile_resolve_candidates(
+                            step.get("name") or "", step.get("labels")),
                         "timeout_ms": DEFAULT_TIMEOUT_MS})
         elif step.get("kind") == "click":
             out.append({"seq": seq, "op": "click",
                         "label": step.get("label"),
                         "labels": step.get("labels") or [],
                         "tag": step.get("tag"),
+                        "resolve_candidates": compile_resolve_candidates(
+                            step.get("label") or "", step.get("labels"),
+                            tag=step.get("tag")),
                         "timeout_ms": DEFAULT_TIMEOUT_MS})
         seq += 1
     out.append({"seq": seq, "op": "snapshot",
