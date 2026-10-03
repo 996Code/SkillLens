@@ -284,6 +284,17 @@
 - **预防**：编排脚本连 9222 一律复用 pages[0]；需要多页时开自己的
   launch_persistent_context 或直连 CDP HTTP 接口，不经 Playwright ctx。
 
+### 33. Odoo 17 改密：SQL 直写 passlib 串，生成必须用 passlib 权威函数（AF3 补验实证）
+- **现象**：本地容器超管密码遗失需重置。odoo shell `write({"password":...})`
+  打印成功但登录仍拒（Odoo 17 密码字段 write 不触发 crypt 管线落库）；
+  手搓 pbkdf2 串（hex salt 三段式）也不被识别。
+- **修复**：`passlib.hash.pbkdf2_sha512.using(rounds=600000).hash(pw)` 生成
+  （注意 `--with passlib` 的安装日志会混进重定向 stdout——分离 stderr 或
+  python -c 写文件），SQL 直写 res_users.password，XML-RPC authenticate 验证。
+- **预防**：成熟项目对照的极端案例——哈希串格式没有"差不多"，必须用目标
+  系统同源库生成（passlib 之于 Odoo，如同官方 harness 之于回放）。禅道
+  反例：md5 直写即可（无盐无 crypt 管线）——逐系统核实密码栈再动手。
+
 ---
 
 *更新记录：2026-09-24 初版（Sprint 0-4 + Sprint 4.5 全自动闭环的踩坑汇总）；
@@ -292,4 +303,5 @@
 2026-10-02 四版（#29 链式回放行锚陈旧——JeecG Sync/Fill 收尾）；
 2026-10-03 五版（#30 chrome.debugger 桥接回放 AG0 spike 实证）；
 2026-10-03 六版（#31 声明式清单不塞复杂 shell——AF2 禅道探针实证）；
-2026-10-03 七版（#32 persistent_context 双驱动冲突——AF3 登录验证实证）。*
+2026-10-03 七版（#32 persistent_context 双驱动冲突——AF3 登录验证实证）；
+2026-10-03 八版（#33 Odoo 17 密码栈——passlib 权威生成实证）。*

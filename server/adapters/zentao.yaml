@@ -5,7 +5,7 @@ target:
   base_url: http://127.0.0.1:8082
 credentials:
   username: admin
-  password_env: ZENTAO_PW
+  password_literal: "SlZt2026!local"  # 本地演示容器（2026-10-03 经 DB 重置，lint 属预期）
 login:
   steps:
     - goto: /index.php?m=user&f=login

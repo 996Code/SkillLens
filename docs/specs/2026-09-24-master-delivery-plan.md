@@ -265,7 +265,7 @@ M4 交付       ── S16-S18 ── 全闭环贯通 + 加固 + 试点运行【
 | AF0 | schema spike 定稿 | 本表（6 原语+探针 kinds+chains 结构）评审通过 | 评审记录 |
 | AF1 | manifest Pydantic schema+loader | ✅ 7 系统清单（从 s43 脚本机械提取）全部通过校验；password_literal lint 警告（安全红线） | TDD |
 | AF2 | 探针运行时 | ✅ docker-exec/http+parse+凭据 env 注入+辅助脚本自动注入；禅道 zt_story 全量 18 与手跑逐位一致 | TDD |
-| AF3 | 登录+例程库 | ✅ 六原语解释器+例程五件套+幂等登录（已登录直通）；批 1 五系统（若依/JeecG/Snipe/ERPNext/Dolibarr）真机 PASS；禅道/Odoo 待 env 凭据复验（外部输入） | TDD+真机 |
+| AF3 | 登录+例程库 | ✅ 六原语解释器+例程五件套+幂等登录（已登录直通）；**7 系统真机登录全 PASS**（2026-10-03：禅道/Odoo 经本地容器凭据重置后补验——重置操作经 DB/odoo shell，凭据入清单 literal+lint 标注） | TDD+真机 |
 | AF4 | flow 步骤解释器 | 禅道+若依链纯清单驱动录制，产出技能质量与 s43 脚本等同 | TDD+真机 |
 | AF5 | 链编排器 | record→learn→replay→verify 全自动；JeecG 三链清单跑出 ALL PASS（对齐 s43_jeecg_replay2.py） | TDD+真机 |
 | AF6 | 接入向导 UI | 工作台读清单/表单生成清单，新系统接入零手写编排脚本 | 浏览器实操 |

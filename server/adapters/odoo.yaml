@@ -5,7 +5,7 @@ target:
   base_url: http://127.0.0.1:8069
 credentials:
   username: admin@local.test
-  password_env: ODOO_PW
+  password_literal: "SlOd2026!local"  # 本地演示容器（2026-10-03 经 odoo shell 重置，lint 属预期）
 login:
   steps:
     - goto: /web/login
