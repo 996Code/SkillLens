@@ -9,8 +9,12 @@ export default defineManifest({
   host_permissions: ["http://127.0.0.1:8710/*", "<all_urls>"],
   // S42：scripting+webNavigation——动态创建的 about:blank iframe（禅道综合
   // 界面等）不会自动注入 content script，须 SW 程序化注入子 frame
-  permissions: ["alarms", "storage", "scripting", "webNavigation"],
+  // AG3：debugger+tabs——扩展执行器（chrome.debugger CDP 可信输入+tab 枚举）
+  permissions: ["alarms", "storage", "scripting", "webNavigation", "debugger", "tabs"],
   action: { default_popup: "popup.html" },
+  // AG3：执行页经 options_ui 引用进构建（CRXJS 只转译 manifest 功能入口；
+  // 实际访问形态=chrome-extension://…/executor.html?skill=N 独立 tab）
+  options_ui: { page: "executor.html", open_in_tab: true },
   // S42：all_frames——禅道 22 综合界面等 iframe 架构应用把业务内容渲染在
   // about:blank iframe 里，顶层注入采集不到任何事件
   content_scripts: [{ matches: ["<all_urls>"], js: ["src/content/capture.ts"], all_frames: true }],

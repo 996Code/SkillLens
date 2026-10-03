@@ -13,6 +13,8 @@
 """
 import time
 
+import copy
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -160,7 +162,10 @@ async def executor_step(run_id: int, body: ExecutorStepReport,
             else {"seq": None, "op": "detach"}
         return {"instruction": cached, "duplicate": True}
 
-    # 证据归档（C3）
+    # 证据归档（C3）。state 深拷贝后变异——直接变异 plan 内嵌 dict 会让
+    # SQLAlchemy 的新旧值相等（别名同对象），UPDATE 不发（AG3 实证）
+    import copy
+    state = copy.deepcopy(state)
     state.setdefault("received", []).append(
         {"seq": body.seq, "result": body.result,
          "evidence": body.evidence})
@@ -186,7 +191,7 @@ async def executor_finish(run_id: int, body: ExecutorFinishRequest,
     if body.status not in ("done", "fail", "aborted", "lost"):
         raise HTTPException(422, "status 须为 done|fail|aborted|lost")
     plan = run.plan or {}
-    state = plan.get("executor_state") or {}
+    state = copy.deepcopy(plan.get("executor_state") or {})
     run.status = body.status
     run.executed = body.summary.get("executed")
     run.duration_ms = body.summary.get("duration_ms")

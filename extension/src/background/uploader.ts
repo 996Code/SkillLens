@@ -3,6 +3,7 @@ import { AGENT_URL, EVENT_MSG } from "../shared/types";
 import type { RawEvent } from "../shared/types";
 import { assignSession } from "../shared/assign-session";
 import { getRecordingState, startRecording, stopRecording } from "./session";
+import { listExecutorSkills, runSkill } from "./executor";
 
 // S31 修复：录制状态已从 chrome.storage.session 改为 chrome.storage.local
 // （MV3 SW 空闲被杀后 session 存储丢失，local 持久化跨 SW 重启）。
@@ -160,6 +161,26 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "GET_STATE") {
     getRecordingState().then(sendResponse);
     return true;
+  }
+  // AG3：扩展执行器消息面（单一 listener 分发——MV3 多 listener 的
+  // sendResponse 竞争会互踩）。静态导入：动态 import 在 SW 冷启动竞态下
+  // 会丢 sendResponse（popup 收 undefined）
+  if (msg?.type === "EXECUTOR_LIST") {
+    listExecutorSkills()
+      .then(sendResponse)
+      .catch((e) => sendResponse({ error: String(e) }));
+    return true;
+  }
+  if (msg?.type === "EXECUTOR_RUN") {
+    // MV3：同步 sendResponse + return false 会丢 channel（实测 TIMEOUT）。
+    // 正确姿势：sendResponse 后不 return（listener 自然结束），
+    // 长任务 fire-and-forget，结果经 EXECUTOR_PROGRESS 推送
+    sendResponse({ started: true });
+    runSkill(msg.skillId, msg.overrides || {},
+      (txt) => { try { chrome.runtime.sendMessage(
+        { type: "EXECUTOR_PROGRESS", msg: txt }, () => void chrome.runtime.lastError); } catch { /* noop */ } })
+      .catch((e) => { try { chrome.runtime.sendMessage(
+        { type: "EXECUTOR_PROGRESS", msg: `失败：${e}` }, () => void chrome.runtime.lastError); } catch { /* noop */ } });
   }
 });
 chrome.alarms.onAlarm.addListener(() => void flush());

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <title>SkillLens 执行器</title>
+    <style>
+      body { font: 14px/1.6 system-ui, sans-serif; margin: 0; padding: 24px;
+             color: #1a2233; background: #f7f8fa; }
+      .card { max-width: 640px; margin: 0 auto; background: #fff;
+              border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; }
+      h1 { font-size: 18px; margin: 0 0 12px; }
+      #log { font: 12px/1.7 Consolas, monospace; background: #0f172a; color: #a7f3d0;
+             border-radius: 8px; padding: 12px; height: 360px; overflow-y: auto;
+             white-space: pre-wrap; }
+      .btn { padding: 8px 20px; border: none; border-radius: 8px; cursor: pointer;
+             font-size: 14px; }
+      .run { background: #2563eb; color: #fff; }
+      .stop { background: #dc2626; color: #fff; margin-left: 8px; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1 id="title">SkillLens 执行器</h1>
+      <div id="meta" style="color: #6b7280; font-size: 12px; margin-bottom: 12px"></div>
+      <div id="log"></div>
+      <div style="margin-top: 14px">
+        <button class="btn run" id="go">开始执行</button>
+        <button class="btn stop" id="stop" disabled>停止</button>
+      </div>
+    </div>
+    <script type="module" src="src/executor-page.ts"></script>
+  </body>
+</html>

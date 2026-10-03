@@ -85,6 +85,18 @@ async def test_executor_step_loop_and_idempotency(client, monkeypatch):
     assert r3.json()["instruction"]["seq"] == 2
     assert r3.json()["instruction"] == ins
 
+    # AG3 别名回归：step 写入须真落库——新 session 重读（旧 bug：变异
+    # plan 内嵌 dict 使 SQLAlchemy 新旧值相等，UPDATE 不发，内存看似推进）
+    from app.db import SessionLocal
+    from app.models import ReplayRun as RR
+    db = SessionLocal()
+    try:
+        fresh = db.get(RR, run_id)
+        st = (fresh.plan or {}).get("executor_state") or {}
+        assert st.get("cursor") == 1 and len(st.get("received", [])) == 1
+    finally:
+        db.close()
+
 
 async def test_executor_instructions_carry_resolve_candidates(client, monkeypatch):
     """AG2 接线：click/fill 指令内联 resolver 候选序列（策略名与

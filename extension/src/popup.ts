@@ -51,3 +51,42 @@ document.getElementById("stop")!.addEventListener("click", async () => {
 
 void refresh();
 void probe();
+
+// AG3：执行在独立 executor tab（popup 生命周期关不住执行循环——
+// 实证：导航发生即 popup 被冻结）。popup 只做选择+跳转。
+const execList = document.getElementById("exec-list")!;
+
+async function loadSkills(): Promise<void> {
+  try {
+    const skills = await listExecutorSkills();
+    renderSkills(Array.isArray(skills) ? skills.slice(0, 20) : []);
+  } catch (e: any) {
+    execList.innerHTML = `<div style="color: var(--muted); font-size: 12px">${e.message}</div>`;
+  }
+}
+
+function renderSkills(skills: any[]): void {
+  execList.innerHTML = "";
+  if (!skills.length) {
+    execList.innerHTML = '<div style="color: var(--muted); font-size: 12px">无技能（先在工作台学习）</div>';
+    return;
+  }
+  for (const s of skills) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex; align-items:center; gap:6px; padding:4px 0; border-bottom:1px solid var(--line)";
+    const name = document.createElement("span");
+    name.style.cssText = "flex:1; font-size:12px";
+    name.textContent = `#${s.id} ${s.name}${s.requires_confirmation ? " ✎" : ""}`;
+    const btn = document.createElement("button");
+    btn.textContent = "执行";
+    btn.style.cssText = "font-size:12px; padding:2px 10px";
+    btn.addEventListener("click", () => {
+      chrome.tabs.create({ url: `executor.html?skill=${s.id}` });
+      window.close();
+    });
+    row.append(name, btn);
+    execList.append(row);
+  }
+}
+
+void loadSkills();
