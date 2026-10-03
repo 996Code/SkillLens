@@ -295,6 +295,33 @@
   系统同源库生成（passlib 之于 Odoo，如同官方 harness 之于回放）。禅道
   反例：md5 直写即可（无盐无 crypt 管线）——逐系统核实密码栈再动手。
 
+### 34. 扩展执行器三层坑（AG3 十轮排障实录，2026-10-03）
+- **坑 1（最隐蔽）SQLAlchemy JSON 别名**：executor_step 变异 `plan["executor_state"]`
+  内嵌 dict 再 `{**plan}` 赋回——新旧值是同一对象判等，UPDATE 根本不发；
+  响应正常（内存态）+同 session 读"看似推进"，只有**新连接 raw 读**才现形。
+  修复=deepcopy 后变异；回归测试必须新 session 重读。
+- **坑 2 MV3 消息面**：①多 listener 的 sendResponse 竞争互踩（undefined 响应）
+  →单一 listener 分发；②`return false`+同步 sendResponse 丢 channel；
+  ③SW 里挂长任务的 sendResponse channel 被 SW 空闲终止。终局=长任务不进
+  消息层，独立页面直调模块函数。
+- **坑 3 popup 生命周期**：执行中导航别的 tab → popup 被 Chrome 冻结/关闭，
+  整个执行链静默死（run 卡 running 无错误）。终局架构=执行住独立
+  executor.html tab（全程可见也顺带满足产品要求）。
+- **坑 3.5 CRXJS**：只转译 manifest 功能入口引用的 html——新页面须经
+  options_ui/action 等引用进构建，web_accessible_resources 原样复制不转译。
+- **预防**：扩展新页面先查 manifest 引用链；JSON 列更新一律 deepcopy；
+  SW 长任务一律换页面承载。
+
+---- **现象**：本地容器超管密码遗失需重置。odoo shell `write({"password":...})`
+  打印成功但登录仍拒（Odoo 17 密码字段 write 不触发 crypt 管线落库）；
+  手搓 pbkdf2 串（hex salt 三段式）也不被识别。
+- **修复**：`passlib.hash.pbkdf2_sha512.using(rounds=600000).hash(pw)` 生成
+  （注意 `--with passlib` 的安装日志会混进重定向 stdout——分离 stderr 或
+  python -c 写文件），SQL 直写 res_users.password，XML-RPC authenticate 验证。
+- **预防**：成熟项目对照的极端案例——哈希串格式没有"差不多"，必须用目标
+  系统同源库生成（passlib 之于 Odoo，如同官方 harness 之于回放）。禅道
+  反例：md5 直写即可（无盐无 crypt 管线）——逐系统核实密码栈再动手。
+
 ---
 
 *更新记录：2026-09-24 初版（Sprint 0-4 + Sprint 4.5 全自动闭环的踩坑汇总）；
@@ -304,4 +331,5 @@
 2026-10-03 五版（#30 chrome.debugger 桥接回放 AG0 spike 实证）；
 2026-10-03 六版（#31 声明式清单不塞复杂 shell——AF2 禅道探针实证）；
 2026-10-03 七版（#32 persistent_context 双驱动冲突——AF3 登录验证实证）；
-2026-10-03 八版（#33 Odoo 17 密码栈——passlib 权威生成实证）。*
+2026-10-03 八版（#33 Odoo 17 密码栈——passlib 权威生成实证）；
+2026-10-03 九版（#34 扩展执行器三层坑——AG3 十轮排障实录）。*
