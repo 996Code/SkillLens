@@ -540,7 +540,9 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
           els = [...document.querySelectorAll(c.selector)].filter(visible);
         }
       } catch (e) { continue; }
-      if (els.length === 1) {
+      // role 精确匹配放宽：多个同名可见按钮时取第一个（ERPNext Save
+      // 实证 texts 有 Save 但唯一性判定 miss——主按钮通常文档序最前）
+      if (els.length === 1 || (els.length > 1 && c.kind === "role")) {
         const r = els[0].getBoundingClientRect();
         return {hit: true, strategy: c.strategy, tagCls: (els[0].className || ""),
           tagName: (els[0].tagName || "").toLowerCase(),

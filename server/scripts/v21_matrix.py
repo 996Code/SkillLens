@@ -99,8 +99,24 @@ async def server_rounds(token, out):
 async def ext_rounds(token, out):
     """插件端主矩阵（v2.1 定位：插件=执行节点）：七系统核心链**全技能**
     ×2 轮，executor.html 真实路径（轮 2=重复执行角度，幂等观察）。
-    每技能独立 Playwright 连接生命周期（attach 期间连接会被永久打断）。"""
+    每技能独立 Playwright 连接生命周期（attach 期间连接会被永久打断）。
+    每系统先清单登录（幂等——插件端复用浏览器登录态，odoo 实证必需）。"""
+    from pathlib import Path as _P
+    from app.adapters.manifest import load_adapter_dir as _lad
+    from app.adapters.steps import login as _alogin
+    _manifests, _ = _lad(_P(__file__).resolve().parent.parent / "adapters")
+    _by_id = {m.id: m for m in _manifests}
     for sys_id, cfg in CHAINS.items():
+        # 系统级登录（每系统一轮前）
+        try:
+            async with async_playwright() as pw:
+                b = await pw.chromium.connect_over_cdp(CDP)
+                m = _by_id.get(sys_id)
+                if m and m.login:
+                    ok = await _alogin(b.contexts[0].pages[0], m)
+                    print(f"[{sys_id}] 登录: {'PASS' if ok else 'FAIL'}", flush=True)
+        except Exception as e:
+            print(f"[{sys_id}] 登录异常: {str(e)[:50]}", flush=True)
         for rnd in (1, 2):
             for sid in cfg["skills"]:
                     # attach 期间宿主 Playwright 连接会被永久打断（AG5 矩阵

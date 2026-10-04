@@ -35,7 +35,9 @@ def compile_resolve_candidates(label: str, labels: list[str] | None = None,
     el-select 容器 → label → id → name-attr →
     row-anchor（AG5：行操作触发器——宿主行文本过滤，labels/row_anchor）。
     """
-    short_label = len(label) <= 3
+    # short_label 门：防 'on' 等短值子串误命中——但 JeecG "*表名"（3 字符
+    # 含 ASCII 星号+中文）是真实字段名——放宽为：纯 ASCII ≤3 才跳过
+    short_label = len(label) <= 3 and all(c.isascii() for c in label)
     cands: list[dict] = [
         _candidate("title-attr",
                    f'//*[@title={_xpath_str(label)} and {_NAV_EXCLUDE_XPATH}]'),
@@ -68,6 +70,9 @@ def compile_resolve_candidates(label: str, labels: list[str] | None = None,
                    f'contains(@class,"navbar") or '
                    f'contains(@class,"nav-link")])]'),
         _candidate("placeholder", f'[placeholder="{label}"]', kind="fill"),
+        # Frappe/ERPNext：input 无 name/placeholder——标识在
+        # data-fieldname（现场实证 customer_name 等）
+        _candidate("data-fieldname", f'[data-fieldname="{label}"]', kind="fill"),
         _candidate("el-select-placeholder", '.el-select', kind="el-select"),
         _candidate("label", "label", kind="label"),
         _candidate("id", f'#{label}'),
