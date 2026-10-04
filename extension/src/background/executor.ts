@@ -321,6 +321,66 @@ async function execute(
   }
   if (ins.op === "click" || ins.op === "fill") {
     const label = ins.label || ins.name || "";
+    // fill 直通 JS 设值（官方 harness 本质：data-fieldname/placeholder/
+    // form-item label 三级查找+input 事件派发——ERPNext 234 PASS 实证；
+    // resolver 候选对 fill 的 form-group 命中错元素/多元素 miss 实证）
+    if (ins.op === "fill" && ins.value !== undefined) {
+      // 直通+重试（模态/抽屉渲染窗口——JeecG 新增点击后模态 1-2s 才开，
+      // 首次查找空实证）
+      let setVal: any = null;
+      for (let tryN = 0; tryN < 3; tryN++) {
+        setVal = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+          expression: `(function(){
+            const label = ${JSON.stringify(label)};
+            let target = null;
+            const df = document.querySelector('[data-fieldname="' + label + '"] input');
+            if (df && df.getBoundingClientRect().width > 0) target = df;
+            if (!target) {
+              const phs = [...document.querySelectorAll('input')]
+                .filter(e => e.placeholder === label
+                  && e.getBoundingClientRect().width > 0);
+              if (phs.length === 1) target = phs[0];
+              else if (phs.length > 1) {
+                const inModal = phs.find(e => e.closest(
+                  '.ant-modal-content, .ant-drawer-content, .el-dialog, [role=dialog]'));
+                target = inModal || phs[0];
+              }
+            }
+            if (!target) {
+              const bare = label.replace(/[*\\s]/g, '');
+              const groups = [...document.querySelectorAll(
+                '.ant-form-item, .cgf-item, .form-group')];
+              for (const g of groups) {
+                const lbl = (g.querySelector('label')?.textContent || '')
+                  .replace(/[*\\s]/g, '');
+                if (lbl === bare) {
+                  const inp = g.querySelector('input');
+                  if (inp && inp.getBoundingClientRect().width > 0) { target = inp; break; }
+                }
+              }
+            }
+            if (!target) return '';
+            const setter = Object.getOwnPropertyDescriptor(
+              window.HTMLInputElement.prototype, 'value').set;
+            setter.call(target, ${JSON.stringify(String(ins.value))});
+            target.dispatchEvent(new Event('input', {bubbles: true}));
+            target.dispatchEvent(new Event('change', {bubbles: true}));
+            return target.value;
+          })()`, returnByValue: true });
+        if (setVal?.result?.value) break;
+        await sleep(2000);
+      }
+      const val = setVal?.result?.value || "";
+      if (val) {
+        await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+          expression: "(document.activeElement || {}).blur && document.activeElement.blur()" })
+          .catch(() => {});
+        await sleep(300);
+        onProgress(`fill ${label}（JS 设值）`);
+        return { seq: ins.seq, result: "ok", evidence: { network: [], toasts: [], value_after: val } };
+      }
+      // JS 设值未命中——落回 resolver 路径（重试+介入）
+    }
     // 对齐 locate 语义：异步渲染重试（服务端 12 轮×1s；插件端 8 轮×1s
     // ——首版真机实证：goto 后 2.5s 禅道 iframe/JeecG 列表未渲染完即 miss；
     // 第 4 轮插一次 reload——SPA 视图状态病（Odoo kanban/list 记忆等）
@@ -439,6 +499,26 @@ async function execute(
       onProgress(`${ins.op} ${label}（frame 元素级）`);
       return { seq: ins.seq, result: "ok", evidence };
     }
+    // 保存/确定类点击+模态开着：模态 footer primary 优先（JeecG 实证
+    // 保存步 ok 但 addAll 未发——点中列表页同名按钮；官方 harness 模式
+    // =模态上下文的提交按钮）
+    if (ins.op === "click" && /保存|确定|提\s*交/.test(label)) {
+      const modalBtn = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+        expression: `(function(){
+          const modal = document.querySelector('.ant-modal-content, .ant-drawer-content');
+          if (!modal || modal.getBoundingClientRect().width === 0) return '';
+          const btns = [...modal.querySelectorAll('button')]
+            .filter(e => /保存|确定|提\\s*交/.test((e.textContent||'').trim())
+              && e.getBoundingClientRect().width > 0);
+          if (btns.length) { btns[0].click(); return 'ok'; }
+          return '';
+        })()`, returnByValue: true });
+      if (modalBtn?.result?.value === "ok") {
+        await sleep(2000);
+        onProgress(`click ${label}（模态提交）`);
+        return { seq: ins.seq, result: "ok", evidence };
+      }
+    }
     if (resolved.tagName === "label") {
       await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
         expression: `(function(){
@@ -465,16 +545,53 @@ async function execute(
     await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
       type: "mouseReleased", x, y, button: "left", clickCount: 1 });
     if (ins.op === "fill" && ins.value !== undefined) {
-      await chrome.debugger.sendCommand(debuggee, "Input.insertText", { text: String(ins.value) });
-      await sleep(400);
-      // 水合确认（lesson #15 语义）：读回值
-      const v = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
-        expression: `(() => {
-          const els = document.querySelectorAll('input, textarea');
-          for (const el of els) if (el.value === ${JSON.stringify(ins.value)}) return el.value;
-          return '';
+      // 官方 harness 本质（Frappe cypress fill_field→type→input 事件）：
+      // JS 设值+dispatch input/change 事件——比模拟键击可靠（框架监听
+      // 事件而非键击；ERPNext 实证 insertText+keyEvent 均未写入）
+      const setVal = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+        expression: `(function(){
+          const label = ${JSON.stringify(ins.label || ins.name || "")};
+          // 目标：data-fieldname 容器内 input（Frappe）或 placeholder 匹配
+          let target = null;
+          const df = document.querySelector(
+            '[data-fieldname="' + label + '"] input');
+          if (df && df.getBoundingClientRect().width > 0) target = df;
+          if (!target) {
+            const phs = [...document.querySelectorAll('input')]
+              .filter(e => e.placeholder === label
+                && e.getBoundingClientRect().width > 0);
+            if (phs.length === 1) target = phs[0];
+            else if (phs.length > 1) {
+              // 模态内优先（JeecG 两义性实证）
+              const inModal = phs.find(e => e.closest(
+                '.ant-modal-content, .ant-drawer-content, .el-dialog, [role=dialog]'));
+              target = inModal || phs[0];
+            }
+          }
+          if (!target) {
+            // ant form-item label 匹配（JeecG "*表名"——label 去星号后
+            // 与 form-item label 文本匹配，取组内 input）
+            const bare = label.replace(/[*\s]/g, '');
+            const groups = [...document.querySelectorAll(
+              '.ant-form-item, .cgf-item, .form-group')];
+            for (const g of groups) {
+              const lbl = (g.querySelector('label')?.textContent || '')
+                .replace(/[*\s]/g, '');
+              if (lbl === bare) {
+                const inp = g.querySelector('input');
+                if (inp && inp.getBoundingClientRect().width > 0) { target = inp; break; }
+              }
+            }
+          }
+          if (!target) return '';
+          const setter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype, 'value').set;
+          setter.call(target, ${JSON.stringify(String(ins.value))});
+          target.dispatchEvent(new Event('input', {bubbles: true}));
+          target.dispatchEvent(new Event('change', {bubbles: true}));
+          return target.value;
         })()`, returnByValue: true });
-      evidence.value_after = v?.result?.value || "";
+      evidence.value_after = setVal?.result?.value || "";
       // blur：Odoo 等框架的 onchange/save 触发链需要输入框失焦（官方
       // tour 实证同模式）；下一个动作前统一 blur
       await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
@@ -510,8 +627,22 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
       let els = [];
       try {
         if (c.kind === "role") {
-          els = [...document.querySelectorAll('[role="button"], button')]
+          const all = [...document.querySelectorAll('[role="button"], button')]
             .filter(el => visible(el) && (el.textContent||'').trim() === label);
+          // 多命中时模态/抽屉内优先（JeecG 保存步实证：列表页工具栏
+          // 与模态 footer 同名"保存"——first 取到列表页错按钮）
+          const inModal = all.filter(el => el.closest(
+            '.ant-modal-content, .ant-drawer-content, .el-dialog, .modal, [role=dialog]'));
+          els = inModal.length ? inModal : all;
+        } else if (c.kind === "frappe-save") {
+          // Frappe 官方 cypress save：button[data-label=Save]/.primary-action
+          // （data-label 属性非文本——文本匹配 miss 实证）
+          els = [...document.querySelectorAll(c.selector)].filter(visible);
+        } else if (c.kind === "placeholder-modal") {
+          // placeholder 两义性（JeecG "请输入表名"同页两处实证）：
+          // 模态/抽屉容器内的 input 按 placeholder 过滤
+          els = [...document.querySelectorAll(c.selector)]
+            .filter(el => visible(el) && el.placeholder === label);
         } else if (c.kind === "form-group-control") {
           for (const g of document.querySelectorAll(c.selector)) {
             if (!(g.textContent||'').includes(label)) continue;

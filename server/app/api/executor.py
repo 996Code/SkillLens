@@ -149,11 +149,18 @@ async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
     # P2：自愈数据链插件端等效——活跃提案（verified/promoted）的
     # proposed_label 编译进对应 click 步候选首位（服务端 runner 的
     # repair_map 语义）
-    repair_map = load_repair_map(db, skill_id)
-    if repair_map:
+    # repair_map 注入只取 promoted（人工确认/多次验证晋升）——verified
+    # 可能是错配（269 实证：'保存'→'请输入表名' verified 但验证命中的是
+    # 搜索框——注入后保存步永久改错）
+    from app.models import LocateProposal
+    promoted_map = {r.step_label: {"label": r.proposed_label, "id": r.id}
+                    for r in db.query(LocateProposal).filter(
+                        LocateProposal.skill_id == skill_id,
+                        LocateProposal.status == "promoted").all()}
+    if promoted_map:
         for ins in instructions:
-            if ins.get("op") == "click" and ins.get("label") in repair_map:
-                rep = repair_map[ins["label"]]
+            if ins.get("op") == "click" and ins.get("label") in promoted_map:
+                rep = promoted_map[ins["label"]]
                 from app.replay.resolver import compile_resolve_candidates
                 healed = compile_resolve_candidates(rep["label"], ins.get("labels"))
                 ins["resolve_candidates"] = healed
@@ -247,6 +254,17 @@ async def executor_step(run_id: int, body: ExecutorStepReport,
     cur_idx = cursor  # = state["cursor"] - 1（推进前的当前步）
     cur_ins = instructions[cur_idx] if cur_idx < len(instructions) else None
 
+    # 聚焦步豁免：click miss 且**下一步是同 label 的 fill**（录制时用户
+    # 点输入框聚焦——fill 直通 JS 设值已不需要前置点击；JeecG 269 实证
+    # 聚焦步反复 miss 耗尽介入额度，保存步没执行到就超限终止）
+    next_ins = instructions[cur_idx + 1] if cur_idx + 1 < len(instructions) else None
+    if (body.result == "miss" and cur_ins is not None
+            and cur_ins.get("op") == "click" and next_ins is not None
+            and next_ins.get("op") == "fill"
+            and (cur_ins.get("label") or "") == (next_ins.get("name") or "")):
+        return {"instruction": nxt, "duplicate": False,
+                "focus_step_skipped": True}
+
     if (body.result == "miss" and cur_ins is not None
             and state.get("interventions", 0) < 2
             and cur_ins.get("label")):
@@ -273,13 +291,12 @@ async def executor_step(run_id: int, body: ExecutorStepReport,
                 db.commit()
                 from app.replay.resolver import compile_resolve_candidates
                 healed = compile_resolve_candidates(proposed, cur_ins.get("labels"))
-                # heal 当前步：指令改写+游标回退重试（seq 不推进）
-                instructions[cur_idx] = {**cur_ins, "label": proposed,
-                                         "resolve_candidates": healed,
-                                         "healed": True}
-                plan["executor_instructions"] = instructions
+                # heal 只影响当轮响应（healed 指令随响应下发重试）——
+                # **不写回 plan.executor_instructions**（跨轮污染实证：
+                # 上轮 heal 改写被持久化，后续轮直接执行错误指令）
                 state["cursor"] = cursor
-                nxt = instructions[cur_idx]
+                nxt = {**cur_ins, "label": proposed,
+                       "resolve_candidates": healed, "healed": True}
         except Exception:
             pass  # 介入失败不破坏步循环（fail-open；C3 已留痕 received）
 

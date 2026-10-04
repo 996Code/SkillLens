@@ -69,10 +69,18 @@ def compile_resolve_candidates(label: str, labels: list[str] | None = None,
                    f'@aria-hidden="true" or contains(@class,"sidebar") or '
                    f'contains(@class,"navbar") or '
                    f'contains(@class,"nav-link")])]'),
+        # placeholder 两义性（列表搜索框 vs 模态表单——JeecG "请输入表名"
+        # 实证同页两处）：容器内优先（模态/抽屉/表单组）
+        _candidate("placeholder-modal",
+                   '.ant-modal-content input, .ant-drawer-content input, '
+                   '.el-dialog input, [role=dialog] input', kind="placeholder-modal"),
         _candidate("placeholder", f'[placeholder="{label}"]', kind="fill"),
-        # Frappe/ERPNext：input 无 name/placeholder——标识在
-        # data-fieldname（现场实证 customer_name 等）
-        _candidate("data-fieldname", f'[data-fieldname="{label}"]', kind="fill"),
+        # Frappe/ERPNext（官方 cypress fill_field 模式）：input 无 name/
+        # placeholder——选择器是 [data-fieldname=X] input（容器+后代）
+        _candidate("data-fieldname", f'[data-fieldname="{label}"] input', kind="fill"),
+        # Frappe save（官方 cypress save 命令）：button[data-label=Save]
+        # （data-label 属性非文本）
+        _candidate("frappe-save", 'button[data-label="Save"], .primary-action', kind="frappe-save"),
         _candidate("el-select-placeholder", '.el-select', kind="el-select"),
         _candidate("label", "label", kind="label"),
         _candidate("id", f'#{label}'),
