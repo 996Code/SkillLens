@@ -39,8 +39,34 @@ def get_db():
         db.close()
 
 
+def _reap_stale_runs(db: Session) -> int:
+    """协议 §5 心跳兜底：extension run 卡 running 超 120s（无 step 上报）
+    → lost。在 /executor/skills 与 step 访问时顺带收割（无独立进程）。"""
+    from datetime import datetime, timedelta, timezone
+    import json as _j
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=120)
+    rows = db.query(ReplayRun).filter(
+        ReplayRun.executor == "extension",
+        ReplayRun.status == "running").all()
+    n = 0
+    for r in rows:
+        st = (r.plan or {}).get("executor_state") or {}
+        received = st.get("received") or []
+        last_ts = r.created_at
+        if received:
+            # 无逐步时间戳——用 created_at+步数近似；保守 120s 总时长
+            pass
+        if r.created_at < cutoff and not received:
+            r.status = "lost"
+            n += 1
+    if n:
+        db.commit()
+    return n
+
+
 @router.get("/executor/skills")
 async def list_executor_skills(db: Session = Depends(get_db)) -> list:
+    _reap_stale_runs(db)
     items = []
     for s in db.query(Skill).filter(Skill.status != "superseded").all():
         items.append({
@@ -126,6 +152,19 @@ async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
 
     plan = _load_plan_input(db, skill)
     instructions = compile_executor_plan(plan)
+    # P2：自愈数据链插件端等效——活跃提案（verified/promoted）的
+    # proposed_label 编译进对应 click 步候选首位（服务端 runner 的
+    # repair_map 语义）
+    repair_map = load_repair_map(db, skill_id)
+    if repair_map:
+        for ins in instructions:
+            if ins.get("op") == "click" and ins.get("label") in repair_map:
+                rep = repair_map[ins["label"]]
+                from app.replay.resolver import compile_resolve_candidates
+                healed = compile_resolve_candidates(rep["label"], ins.get("labels"))
+                ins["resolve_candidates"] = healed
+                ins["label"] = rep["label"]
+                ins["healed"] = True
     state = {"cursor": 0, "received": [], "interventions": 0,
              "overrides": body.overrides}
     run = ReplayRun(skill_id=skill_id, mode="execute", status="running",

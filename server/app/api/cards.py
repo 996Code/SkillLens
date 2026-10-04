@@ -32,8 +32,13 @@ def _last_run(db: Session, skill_id: int) -> dict | None:
     ).scalar_one_or_none()
     if run is None:
         return None
+    # UX 评审：UTC 无时区标记被前端直显（差 8 小时）——序列化为本地
+    # 时区时间（DB 存 UTC）
+    from datetime import timezone, timedelta
+    local = run.created_at.replace(tzinfo=timezone.utc).astimezone(
+        timezone(timedelta(hours=8)))
     return {"id": run.id, "status": run.status, "mode": run.mode,
-            "flaky": bool(run.flaky), "ts": run.created_at.isoformat()}
+            "flaky": bool(run.flaky), "ts": local.isoformat()}
 
 
 @router.get("/skills/{skill_id}/flow")

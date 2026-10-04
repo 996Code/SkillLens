@@ -22,7 +22,20 @@ const WORKBENCH = "http://127.0.0.1:8710/graph";
 
 function log(msg: string): void {
   const t = new Date().toTimeString().slice(0, 8);
-  logEl.textContent += `[${t}] ${msg}\n`;
+  // UX 评审：日志黑话→白话（用户看不懂 attach/快照/介入）
+  const plain = msg
+    .replace(/^已 attach（顶部横幅=执行中，全程可见）$/,
+             "已连接浏览器（页面顶部的提示条表示执行中）")
+    .replace(/^快照（(before|after)）$/,
+             (m, p) => p === "before" ? "记录执行前页面状态" : "记录执行后页面状态")
+    .replace(/^导航 (.+)$/, (m, u) => `正在打开页面：${u}`)
+    .replace(/^导航后实际页面: (.+)$/, (m, u) => `页面已打开：${u.slice(0, 60)}`)
+    .replace(/^定位失败：(.+)（触发服务端介入）$/,
+             (m, l) => `未找到「${l}」按钮——正在智能重试`)
+    .replace(/^复用空白页签执行$/, "准备执行页签")
+    .replace(/^中止：(.+)$/, (m, e) => `执行中止：${e}`)
+    .replace(/^完成：(.+)$/, (m, s) => `执行结束（${s}）`);
+  logEl.textContent += `[${t}] ${plain}\n`;
   logEl.scrollTop = logEl.scrollHeight;
 }
 
@@ -68,9 +81,11 @@ if (!skillId) {
 }
 
 let running = false;
+let stopRequested = false;
 go.addEventListener("click", async () => {
   if (running || !skillId) return;
   running = true;
+  stopRequested = false;
   go.disabled = true;
   stop.disabled = false;
   document.getElementById("result-card")!.style.display = "none";
@@ -84,7 +99,7 @@ go.addEventListener("click", async () => {
     } else if (skillWrites && autoConfirm) {
       log("auto 模式：C1 授权由调用方持有，跳过确认卡");
     }
-    const r = await runSkill(skillId, {}, log);
+    const r = await runSkill(skillId, {}, log, () => stopRequested);
     log(`完成：${r.status}`);
     showResultCard(r.status, r.runId ?? null);
   } catch (e: any) {
@@ -97,5 +112,6 @@ go.addEventListener("click", async () => {
 });
 
 stop.addEventListener("click", () => {
-  log("用户请求停止（当前步完成后中断）");
+  stopRequested = true;
+  log("已请求停止——当前步骤完成后中断");
 });

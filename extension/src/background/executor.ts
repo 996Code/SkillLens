@@ -69,7 +69,8 @@ const active: RunHandle | null = null;
 export async function runSkill(
   skillId: number, overrides: Record<string, string>,
   onProgress: (msg: string) => void,
-): Promise<{ status: string }> {
+  shouldStop?: () => boolean,
+): Promise<{ status: string; runId?: number }> {
   const plan = await api(`/executor/skills/${skillId}/plan`, {
     method: "POST",
     body: JSON.stringify({ overrides, confirm_side_effect: true }),
@@ -150,6 +151,18 @@ export async function runSkill(
   let steps = 0;
   try {
     while (instruction && instruction.op !== "detach") {
+      // 用户停止（当前步完成后中断——UX 评审 P2：真停）
+      if (shouldStop?.()) {
+        onProgress("用户停止——当前步后中断");
+        await Promise.race([
+          api(`/executor/runs/${runId}/finish`, {
+            method: "POST",
+            body: JSON.stringify({ status: "aborted",
+              summary: { error: "用户停止", executed: [], observed: [] } }) }),
+          new Promise((res) => setTimeout(res, 8000)),
+        ]).catch(() => {});
+        return { status: "aborted", runId };
+      }
       // 导航失败（目标站不可达）即中止——不再执行后续步骤（错误页上
       // 的点击是假执行）
       if (instruction.op === "goto") {
@@ -407,6 +420,38 @@ async function execute(
         } catch { /* 用原 rect */ }
       }
     } catch { /* fail-open */ }
+    // label 元素命中：坐标点击不触发关联控件（label 无 for 时不转发）
+    // ——元素级 click() 走 label 原生转发（服务端 locate 同语义）
+    // iframe 内按钮（frame 命中）：坐标系换算不可靠（CDP frame context
+    // 坐标与主视口差值非 iframe rect——禅道实证 432 vs 480）——原生
+    // form submit 按钮用元素级 click()（HTML 表单提交不校验 isTrusted）
+    if (resolved.fromFrame && resolved.tagName === "button"
+        && ins.op === "click") {
+      await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+        expression: `(function(){
+          const btns = [...document.querySelectorAll('button')]
+            .filter(e => (e.textContent||'').trim() === ${JSON.stringify(label)}
+              && e.getBoundingClientRect().width > 0);
+          if (btns.length === 1) { btns[0].click(); return 'ok'; }
+          return '';
+        })()`, contextId: resolved.frameContextId });
+      await sleep(1500);
+      onProgress(`${ins.op} ${label}（frame 元素级）`);
+      return { seq: ins.seq, result: "ok", evidence };
+    }
+    if (resolved.tagName === "label") {
+      await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+        expression: `(function(){
+          const labels = [...document.querySelectorAll('label')]
+            .filter(e => (e.textContent||'').trim() === ${JSON.stringify(label)}
+              && e.getBoundingClientRect().width > 0);
+          if (labels.length === 1) { labels[0].click(); return 'ok'; }
+          return '';
+        })()` });
+      await sleep(1000);
+      onProgress(`${ins.op} ${label}（label 转发）`);
+      return { seq: ins.seq, result: "ok", evidence };
+    }
     const rect = resolved.rect;
     const x = rect.x + rect.width / 2, y = rect.y + rect.height / 2;
     // hover 先行：mouseenter 态组件先展开；随后正常 click（服务端
@@ -445,13 +490,18 @@ async function execute(
 }
 
 async function resolve(debuggee: any, ins: Instruction, label: string,
-                       onDebug?: (m: string) => void): Promise<any> {
+                       onDebug?: (m: string) => void,
+                       isMainFrame = true): Promise<any> {
   const cands = ins.resolve_candidates || [];
   // CDP returnByValue 对对象返回对象（JSON.parse 炸）——js 末尾显式
   // stringify 保字符串契约（AG5 铁证：每轮 main err .slice undefined）
+  // 主 frame 跳过 label 策略（禅道外壳 label 与 iframe 内真按钮同名——
+  // 主 frame label 命中会点错对象；label 只在子 frame 兜底）
   const js = `JSON.stringify((function() {
     let rowAnchor = "";
-    const candidates = ${JSON.stringify(cands)};
+    const skipLabel = /*SKIP_LABEL*/${isMainFrame ? "true" : "false"}/**/;
+    const candidates = ${JSON.stringify(cands)}
+      .filter(c => !skipLabel || c.strategy !== 'label');
     const label = ${JSON.stringify(label)};
     const visible = (el) => { if (!el.isConnected) return false;
       const r = el.getBoundingClientRect();
@@ -493,6 +543,7 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
       if (els.length === 1) {
         const r = els[0].getBoundingClientRect();
         return {hit: true, strategy: c.strategy, tagCls: (els[0].className || ""),
+          tagName: (els[0].tagName || "").toLowerCase(),
           anchorTxt: rowAnchor || "",
           rect: {x: r.x, y: r.y, width: r.width, height: r.height}};
       }
@@ -501,6 +552,8 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
   })())`;
   // 多 frame resolve（对齐 locate 全 frame 语义）：主 frame 未中→逐子
   // frame 经 CDP executionContext 求值。子 frame 的 rect 需加 frame 偏移
+  // 子 frame 版：label 策略保留（主 frame 版已滤除——禅道外壳 label 同名坑）
+  const jsSub = js.replace("/*SKIP_LABEL*/true/**/", "/*SKIP_LABEL*/false/**/");
   try {
     const r = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
       expression: js, returnByValue: true });
@@ -524,35 +577,25 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
     // 的 contextId 从 Runtime.enable 后的事件流拿不到（一次性），
     // 改用 frame 唯一上下文：对每 frame evaluate with contextId=null 不行
     // → 用 Page.createIsolatedWorld(frameId) 拿 contextId
+    let frameIndex = -1;  // 子 frame 序（对应页面可见 iframe 列表）
     for (const f of frames) {
       if (!f.parentId) continue; // 跳过主 frame
+      frameIndex += 1;
       try {
         const world = await chrome.debugger.sendCommand(debuggee,
           "Page.createIsolatedWorld", { frameId: f.id });
         const cid = world?.executionContextId;
         if (cid === undefined) continue;
         const r2 = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
-          expression: js, contextId: cid, returnByValue: true });
+          expression: jsSub, contextId: cid, returnByValue: true });
         const v = (() => { try { return JSON.parse(r2?.result?.value || '{"hit":false}'); }
           catch { return { hit: false }; } })();
         if (v?.hit) {
-          // 子 frame 元素坐标转换：直接在 frame 内取 viewport 坐标
-          // （getBoundingClientRect 在 isolated world 里相对 frame 原点，
-          // 加 frame 边界偏移——经 DOM 查询 frame 元素）
-          const off = await chrome.debugger.sendCommand(debuggee,
-            "Runtime.evaluate", {
-              expression: `(function(){
-                const fr = [...document.querySelectorAll('iframe')]
-                  .find(f => f.contentWindow && f.getBoundingClientRect().width >= 0
-                            && f.src === ${JSON.stringify(f.url || "")});
-                if (!fr) return [0, 0];
-                const r = fr.getBoundingClientRect();
-                return [r.x, r.y];
-              })()`, returnByValue: true });
-          try {
-            const [ox, oy] = JSON.parse(off?.result?.value || "[0,0]");
-            v.rect.x += ox; v.rect.y += oy;
-          } catch { /* 偏移失败用原坐标（0 偏移常见于全屏 iframe） */ }
+          v.fromFrame = true;
+          v.frameContextId = cid;
+          // CDP frame context 的 getBoundingClientRect 已是**主视口坐标**
+          // （实证：Playwright bounding_box 与 frame 内求值一致——加偏移
+          // 反而点偏 120px，禅道保存按钮实证）。直接用原坐标
           return v;
         }
       } catch { continue; }
