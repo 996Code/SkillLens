@@ -1,0 +1,38 @@
+[
+  {
+    "system": "odoo",
+    "round": 1,
+    "skill": 178,
+    "status": "pass"
+  },
+  {
+    "system": "odoo",
+    "round": 1,
+    "skill": 179,
+    "status": "fail"
+  },
+  {
+    "system": "odoo",
+    "round": 1,
+    "skill": 180,
+    "status": "fail"
+  },
+  {
+    "system": "odoo",
+    "round": 2,
+    "skill": 178,
+    "status": "pass"
+  },
+  {
+    "system": "odoo",
+    "round": 2,
+    "skill": 179,
+    "status": "timeout"
+  },
+  {
+    "system": "odoo",
+    "round": 2,
+    "skill": 180,
+    "status": "fail"
+  }
+]

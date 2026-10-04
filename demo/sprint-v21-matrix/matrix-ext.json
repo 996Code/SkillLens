@@ -1,0 +1,278 @@
+[
+  {
+    "system": "odoo",
+    "round": 1,
+    "skill": 178,
+    "status": "error:Locator.text_content: Connection closed "
+  },
+  {
+    "system": "odoo",
+    "round": 1,
+    "skill": 179,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "odoo",
+    "round": 1,
+    "skill": 180,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "odoo",
+    "round": 2,
+    "skill": 178,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "odoo",
+    "round": 2,
+    "skill": 179,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "odoo",
+    "round": 2,
+    "skill": 180,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "dolibarr",
+    "round": 1,
+    "skill": 188,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "dolibarr",
+    "round": 1,
+    "skill": 189,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "dolibarr",
+    "round": 1,
+    "skill": 190,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "dolibarr",
+    "round": 1,
+    "skill": 191,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "dolibarr",
+    "round": 2,
+    "skill": 188,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "dolibarr",
+    "round": 2,
+    "skill": 189,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "dolibarr",
+    "round": 2,
+    "skill": 190,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "dolibarr",
+    "round": 2,
+    "skill": 191,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "zentao",
+    "round": 1,
+    "skill": 166,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "zentao",
+    "round": 1,
+    "skill": 167,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "zentao",
+    "round": 1,
+    "skill": 168,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "zentao",
+    "round": 1,
+    "skill": 169,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "zentao",
+    "round": 2,
+    "skill": 166,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "zentao",
+    "round": 2,
+    "skill": 167,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "zentao",
+    "round": 2,
+    "skill": 168,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "zentao",
+    "round": 2,
+    "skill": 169,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "erpnext",
+    "round": 1,
+    "skill": 234,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "erpnext",
+    "round": 1,
+    "skill": 235,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "erpnext",
+    "round": 1,
+    "skill": 236,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "erpnext",
+    "round": 2,
+    "skill": 234,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "erpnext",
+    "round": 2,
+    "skill": 235,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "erpnext",
+    "round": 2,
+    "skill": 236,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "snipe",
+    "round": 1,
+    "skill": 154,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "snipe",
+    "round": 1,
+    "skill": 155,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "snipe",
+    "round": 1,
+    "skill": 156,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "snipe",
+    "round": 2,
+    "skill": 154,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "snipe",
+    "round": 2,
+    "skill": 155,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "snipe",
+    "round": 2,
+    "skill": 156,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "ruoyi",
+    "round": 1,
+    "skill": 256,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "ruoyi",
+    "round": 1,
+    "skill": 257,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "ruoyi",
+    "round": 1,
+    "skill": 258,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "ruoyi",
+    "round": 2,
+    "skill": 256,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "ruoyi",
+    "round": 2,
+    "skill": 257,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "ruoyi",
+    "round": 2,
+    "skill": 258,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "jeecg",
+    "round": 1,
+    "skill": 269,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "jeecg",
+    "round": 1,
+    "skill": 270,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "jeecg",
+    "round": 1,
+    "skill": 271,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "jeecg",
+    "round": 2,
+    "skill": 269,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "jeecg",
+    "round": 2,
+    "skill": 270,
+    "status": "error:Page.goto: Connection closed while readi"
+  },
+  {
+    "system": "jeecg",
+    "round": 2,
+    "skill": 271,
+    "status": "error:Page.goto: Connection closed while readi"
+  }
+]

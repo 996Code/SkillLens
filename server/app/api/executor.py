@@ -179,19 +179,24 @@ async def executor_step(run_id: int, body: ExecutorStepReport,
     nxt = instructions[cursor + 1] if cursor + 1 < len(instructions) \
         else instructions[-1] if instructions else None
 
-    # 协议 §4 当轮 LLM 介入：定位 miss → 快照文本喂 LLM 提案（LLM 只提案）
-    # → 提案 label 重编译候选 → heal 重试当前步（判定=插件端 resolve 实测，
-    # 确定性）；每 run 上限 2 次；提案落 LocateProposal（C3）
-    if (body.result == "miss" and nxt is not None
+    # 协议 §4 当轮 LLM 介入：miss 的是**当前步**（instructions[cursor]，
+    # cursor 已推进故当前步=state.cursor-1）——heal/超限都作用当前步
+    cur_idx = cursor  # = state["cursor"] - 1（推进前的当前步）
+    cur_ins = instructions[cur_idx] if cur_idx < len(instructions) else None
+
+    if (body.result == "miss" and cur_ins is not None
             and state.get("interventions", 0) < 2
-            and nxt.get("label")):
+            and cur_ins.get("label")):
+        # 计数先行：介入是"尝试"——LLM 不可达/提案为空也占额度（超限
+        # 判 fail 语义不依赖网关可用性）
+        state["interventions"] = state.get("interventions", 0) + 1
         try:
             from app.models import LocateProposal
             from app.llm.gateway import acomplete
             import json as _json
             texts = [str(t) for t in (body.evidence.get("page_texts") or [])]
             forms = [str(f) for f in (body.evidence.get("form_labels") or [])]
-            label = nxt["label"]
+            label = cur_ins["label"]
             prompt = (
                 f"自动化回放中按钮定位失败。原标签：{label}\n"
                 f"当前页面可见文本元素：{_json.dumps(texts + forms, ensure_ascii=False)}\n"
@@ -204,13 +209,27 @@ async def executor_step(run_id: int, body: ExecutorStepReport,
                                       proposed_label=proposed, status="proposed"))
                 db.commit()
                 from app.replay.resolver import compile_resolve_candidates
-                healed = compile_resolve_candidates(proposed, nxt.get("labels"))
-                state["interventions"] = state.get("interventions", 0) + 1
-                nxt = {**nxt, "label": proposed,
-                       "resolve_candidates": healed, "healed": True}
-                state["cursor"] = cursor  # 重试当前步（seq 不推进）
+                healed = compile_resolve_candidates(proposed, cur_ins.get("labels"))
+                # heal 当前步：指令改写+游标回退重试（seq 不推进）
+                instructions[cur_idx] = {**cur_ins, "label": proposed,
+                                         "resolve_candidates": healed,
+                                         "healed": True}
+                plan["executor_instructions"] = instructions
+                state["cursor"] = cursor
+                nxt = instructions[cur_idx]
         except Exception:
             pass  # 介入失败不破坏步循环（fail-open；C3 已留痕 received）
+
+    # 协议 §4 超限语义：介入已用满再 miss → 判 fail 留下轮（跨 run 自愈）
+    if (body.result == "miss"
+            and state.get("interventions", 0) >= 2
+            and cur_ins is not None and cur_ins.get("label")):
+        run.plan = {**plan, "executor_state": state}
+        run.status = "fail"
+        db.commit()
+        db.refresh(run)
+        return {"instruction": {"seq": None, "op": "detach"},
+                "intervention_exhausted": True}
 
     run.plan = {**plan, "executor_state": state}
     db.commit()

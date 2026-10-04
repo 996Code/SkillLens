@@ -1,0 +1,38 @@
+[
+  {
+    "system": "ruoyi",
+    "round": 1,
+    "skill": 256,
+    "status": "fail"
+  },
+  {
+    "system": "ruoyi",
+    "round": 1,
+    "skill": 257,
+    "status": "fail"
+  },
+  {
+    "system": "ruoyi",
+    "round": 1,
+    "skill": 258,
+    "status": "fail"
+  },
+  {
+    "system": "ruoyi",
+    "round": 2,
+    "skill": 256,
+    "status": "timeout"
+  },
+  {
+    "system": "ruoyi",
+    "round": 2,
+    "skill": 257,
+    "status": "fail"
+  },
+  {
+    "system": "ruoyi",
+    "round": 2,
+    "skill": 258,
+    "status": "fail"
+  }
+]

@@ -135,6 +135,51 @@ async def test_executor_finish_lands_run_with_executor_mark(client, monkeypatch)
     assert body["status"] == "aborted" and body["executor"] == "extension"
 
 
+async def test_executor_intervention_exhausted_fails(client, monkeypatch):
+    """协议 §4 超限语义：介入用满（=2）后再 miss → detach+intervention_
+    exhausted+run fail。手工造 label 首步 run（真实 plan 首步是 goto 无
+    label，测不到介入链——ASGI 复现实证）。"""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    from app.db import SessionLocal
+    from app.models import ReplayRun
+    db = SessionLocal()
+    run = ReplayRun(
+        skill_id=1, mode="execute", status="running",
+        plan={"steps": [], "url": "http://t/",
+              "executor_instructions": [
+                  {"seq": 1, "op": "click", "label": "保存", "labels": [],
+                   "timeout_ms": 5},
+                  {"seq": 2, "op": "detach", "timeout_ms": 5}],
+              "executor_state": {"cursor": 0, "received": [],
+                                 "interventions": 0, "overrides": {}}},
+        executor="extension")
+    db.add(run)
+    db.commit()
+    run_id = run.id
+    db.close()
+    exhausted = False
+    for i in range(3):
+        resp = await client.post(f"/api/v1/executor/runs/{run_id}/step",
+                                 json={"seq": 1, "result": "miss",
+                                       "evidence": {"page_texts": ["保存"]}})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        if body.get("intervention_exhausted"):
+            exhausted = True
+            ins = body.get("instruction") or {}
+            assert ins.get("op") == "detach" or ins.get("seq") is None
+            break
+    assert exhausted, "3 次 miss 后未触发超限"
+    db = SessionLocal()
+    try:
+        from sqlalchemy import text as _t
+        st = db.execute(_t("SELECT status FROM replay_run WHERE id=:i"),
+                        {"i": run_id}).scalar()
+        assert st == "fail"
+    finally:
+        db.close()
+
+
 async def test_executor_finish_evaluates_assertions(client, monkeypatch):
     """AG4：done finish 吃证据跑 evaluate_assertions——判定语义=执行+断言，
     断言结果落 run.assertion_results；status 由断言重判（pass/fail）。"""

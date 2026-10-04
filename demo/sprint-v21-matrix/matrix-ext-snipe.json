@@ -1,0 +1,38 @@
+[
+  {
+    "system": "snipe",
+    "round": 1,
+    "skill": 154,
+    "status": "pass"
+  },
+  {
+    "system": "snipe",
+    "round": 1,
+    "skill": 155,
+    "status": "timeout"
+  },
+  {
+    "system": "snipe",
+    "round": 1,
+    "skill": 156,
+    "status": "pass"
+  },
+  {
+    "system": "snipe",
+    "round": 2,
+    "skill": 154,
+    "status": "pass"
+  },
+  {
+    "system": "snipe",
+    "round": 2,
+    "skill": 155,
+    "status": "pass"
+  },
+  {
+    "system": "snipe",
+    "round": 2,
+    "skill": 156,
+    "status": "pass"
+  }
+]
