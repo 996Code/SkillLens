@@ -150,6 +150,18 @@ export async function runSkill(
   let steps = 0;
   try {
     while (instruction && instruction.op !== "detach") {
+      // 导航失败（目标站不可达）即中止——不再执行后续步骤（错误页上
+      // 的点击是假执行）
+      if (instruction.op === "goto") {
+        const probe = await chrome.debugger.sendCommand(debuggee,
+          "Runtime.evaluate", {
+            expression: "location.href.startsWith('chrome-error://')",
+            returnByValue: true }).catch(() => null);
+        if (probe?.result?.value === true) {
+          onProgress("目标站不可达——中止执行");
+          break;
+        }
+      }
       // after 快照执行后留晚到响应窗口（写后的异步拉取如 Odoo mail
       // thread 实证晚 1-2s——web_save 已过而 messages 晚到漏采）
       if (instruction.op === "snapshot" && instruction.phase === "after") {
@@ -157,6 +169,24 @@ export async function runSkill(
       }
       const ev = await execute(debuggee, tabId, instruction, networkLog, onProgress);
       steps++;
+      // 导航失败即中止（错误页上的后续步骤是假执行——UX 评审致命 2）
+      if (ev.result === "error") {
+        await Promise.race([
+          api(`/executor/runs/${runId}/step`, {
+            method: "POST", body: JSON.stringify(ev) }),
+          new Promise((res) => setTimeout(res, 8000)),
+        ]).catch(() => {});
+        await Promise.race([
+          api(`/executor/runs/${runId}/finish`, {
+            method: "POST",
+            body: JSON.stringify({ status: "fail",
+              summary: { error: ev.evidence?.error || "导航失败",
+                         executed: [], observed: [] } }) }),
+          new Promise((res) => setTimeout(res, 8000)),
+        ]).catch(() => {});
+        onProgress(`中止：${ev.evidence?.error || "导航失败"}`);
+        return { status: "fail" };
+      }
       // AG3：步 POST 加 8s race——任何卡点浮出为错误而非静默挂死
       const resp = await Promise.race([
         api(`/executor/runs/${runId}/step`, {
@@ -234,16 +264,45 @@ async function execute(
     try {
       const u = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
         expression: "location.href", returnByValue: true });
-      onProgress(`导航后实际页面: ${(u?.result?.value || "").slice(0, 60)}`);
+      const finalUrl = String(u?.result?.value || "");
+      onProgress(`导航后实际页面: ${finalUrl.slice(0, 60)}`);
+      // 目标站不可达判定（UX 评审致命 2：chrome-error 页仍判 pass）——
+      // 导航落错误页即中止，如实 fail
+      if (finalUrl.startsWith("chrome-error://") || finalUrl === "about:blank") {
+        return { seq: ins.seq, result: "error",
+                 evidence: { ...evidence, error: `目标站不可达: ${ins.url}` } };
+      }
     } catch { /* fail-open */ }
     return { seq: ins.seq, result: "ok", evidence };
   }
   if (ins.op === "snapshot") {
-    const r = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
-      expression: "JSON.stringify({url: location.href, title: document.title})",
-      returnByValue: true,
-    });
-    try { evidence.page = JSON.parse(r?.result?.value || "{}"); } catch { /* noop */ }
+    // 证据链对齐服务端（S33）：before/after 页面快照（采集端同 schema
+    // 精简版——forms 带脱敏）+ 截图（base64，服务端落盘 artifacts）
+    try {
+      const r = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+        expression: `JSON.stringify((function(){
+          const forms = [...document.querySelectorAll('input, select, textarea')]
+            .filter(e => e.getBoundingClientRect().width > 0)
+            .slice(0, 30).map(e => ({
+              label: ((e.closest('.form-group, .ant-form-item, .cgf-item') || {})
+                .querySelector ? e.closest('.form-group, .ant-form-item, .cgf-item')
+                  .querySelector('label')?.textContent : '') || e.placeholder || e.name || '',
+              value: e.type === 'password' ? '[REDACTED]' : String(e.value || '')}))
+            .map(f => ({label: String(f.label || '').trim().slice(0, 40),
+                        value: String(f.value || '').slice(0, 60)}));
+          const toasts = [...document.querySelectorAll(
+            '.toast, .toast-message, .ant-message-notice, .el-message, [role=alert]')]
+            .filter(e => e.offsetParent !== null)
+            .map(e => (e.textContent || '').trim().slice(0, 80)).filter(Boolean);
+          return {url: location.href, title: document.title, forms, toasts};
+        })())`, returnByValue: true });
+      try { evidence.page = JSON.parse(r?.result?.value || "{}"); } catch { /* noop */ }
+    } catch { /* fail-open */ }
+    try {
+      const shot = await chrome.debugger.sendCommand(debuggee, "Page.captureScreenshot",
+        { format: "png" });
+      evidence.screenshot = String(shot?.data || "").slice(0, 300000);
+    } catch { /* fail-open */ }
     onProgress(`快照（${ins.phase}）`);
     return { seq: ins.seq, result: "ok", evidence };
   }

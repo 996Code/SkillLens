@@ -1,4 +1,6 @@
 // 标记为 ES module：避免顶层 const 与 DOM 全局冲突
+// AG3：技能列表直调 executor 模块（popup 只做选择+跳转 executor tab）
+import { listExecutorSkills } from "./background/executor";
 export {};
 
 const note = document.getElementById("note") as HTMLInputElement;

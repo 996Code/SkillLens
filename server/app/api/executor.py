@@ -174,10 +174,40 @@ async def executor_step(run_id: int, body: ExecutorStepReport,
     state = copy.deepcopy(state)
     state.setdefault("received", []).append(
         {"seq": body.seq, "result": body.result,
-         "evidence": body.evidence})
+         "evidence": {k: v for k, v in body.evidence.items()
+                      if k != "screenshot"}})
     state["cursor"] = cursor + 1
     nxt = instructions[cursor + 1] if cursor + 1 < len(instructions) \
         else instructions[-1] if instructions else None
+
+    # 证据链对齐服务端（S33）：截图落盘 artifacts/<run>-<seq>.png +
+    # plan 记 step_screenshots（工作台出图白名单同源）；快照进
+    # before/after_snapshot（对齐服务端 run.plan 形态）
+    ev = body.evidence or {}
+    cur_ins2 = instructions[cursor] if cursor < len(instructions) else {}
+    if ev.get("screenshot"):
+        try:
+            import base64
+            import os
+            from pathlib import Path as _P
+            art = os.environ.get(
+                "REPLAY_ARTIFACT_DIR",
+                str(_P(__file__).resolve().parents[3] / "artifacts"))
+            d = _P(art) / f"ext-run-{run_id}"
+            os.makedirs(d, exist_ok=True)
+            fname = f"step-{body.seq}.png"
+            (d / fname).write_bytes(base64.b64decode(ev["screenshot"]))
+            meta = plan.get("step_screenshots") or {"dir": str(d), "files": []}
+            if fname not in meta["files"]:
+                meta["files"] = list(meta["files"]) + [fname]
+            plan = {**plan, "step_screenshots": meta}
+            run.artifact_path = str(d / fname)
+        except Exception:
+            pass  # 截图落盘失败不破坏步循环（C3 主体已留痕）
+    if ev.get("page") and cur_ins2.get("op") == "snapshot":
+        phase = cur_ins2.get("phase")
+        if phase in ("before", "after"):
+            plan = {**plan, f"{phase}_snapshot": ev["page"]}
 
     # 协议 §4 当轮 LLM 介入：miss 的是**当前步**（instructions[cursor]，
     # cursor 已推进故当前步=state.cursor-1）——heal/超限都作用当前步
@@ -230,6 +260,18 @@ async def executor_step(run_id: int, body: ExecutorStepReport,
         db.refresh(run)
         return {"instruction": {"seq": None, "op": "detach"},
                 "intervention_exhausted": True}
+
+    # 目标站不可达（UX 评审致命 2）：goto error → run 判 fail（不再让
+    # 后续步骤在错误页上假执行）
+    if (body.result == "error" and cur_ins is not None
+            and cur_ins.get("op") == "goto"):
+        run.plan = {**plan, "executor_state": state}
+        run.status = "fail"
+        run.attribution = str(body.evidence.get("error", ""))[:500]
+        db.commit()
+        db.refresh(run)
+        return {"instruction": {"seq": None, "op": "detach"},
+                "navigation_failed": True}
 
     run.plan = {**plan, "executor_state": state}
     db.commit()
