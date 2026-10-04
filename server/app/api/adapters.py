@@ -1,0 +1,88 @@
+"""AF6 清单管理 API：工作台读/校验/保存 adapters/*.yaml（向导后端）。
+
+- GET  /adapters → 清单摘要列表（含 lint）
+- POST /adapters/validate → YAML 校验（不落盘，向导实时反馈）
+- PUT  /adapters/{id} → 保存（校验通过才写盘）
+"""
+from pathlib import Path
+
+import yaml
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.adapters.manifest import load_manifest_text, load_adapter_dir
+from app.db import SessionLocal
+
+router = APIRouter()
+
+ADAPTERS_DIR = Path(__file__).resolve().parents[3] / "server" / "adapters"
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@router.get("/adapters")
+async def list_adapters(db: Session = Depends(get_db)) -> list:
+    manifests, lints = load_adapter_dir(ADAPTERS_DIR)
+    lint_map: dict[str, list] = {}
+    for l in lints:
+        lint_map.setdefault(l.file, []).append(l.message)
+    out = []
+    for m in manifests:
+        out.append({
+            "id": m.id, "label": m.label or m.id,
+            "base_url": m.target.base_url,
+            "has_login": m.login is not None,
+            "probe_count": len(m.probes),
+            "flow_count": len(m.flows or []),
+            "chain_count": len(m.chains),
+            "lints": lint_map.get(f"{m.id}.yaml", []),
+        })
+    return out
+
+
+class ValidateRequest(BaseModel):
+    yaml: str
+
+
+@router.post("/adapters/validate")
+async def validate_adapter(body: ValidateRequest,
+                           db: Session = Depends(get_db)) -> dict:
+    try:
+        _, lints = load_manifest_text(body.yaml)
+        return {"valid": True, "lints": [l.message for l in lints]}
+    except Exception as e:
+        return {"valid": False, "error": str(e)[:300]}
+
+
+@router.get("/adapters/{adapter_id}/yaml")
+async def get_adapter_yaml(adapter_id: str,
+                           db: Session = Depends(get_db)) -> dict:
+    f = ADAPTERS_DIR / f"{adapter_id}.yaml"
+    if not f.is_file():
+        raise HTTPException(404, "adapter not found")
+    return {"yaml": f.read_text(encoding="utf-8")}
+
+
+class SaveRequest(BaseModel):
+    yaml: str
+
+
+@router.put("/adapters/{adapter_id}")
+async def save_adapter(adapter_id: str, body: SaveRequest,
+                       db: Session = Depends(get_db)) -> dict:
+    try:
+        m, lints = load_manifest_text(body.yaml)
+    except Exception as e:
+        raise HTTPException(422, f"清单校验失败: {str(e)[:200]}")
+    if m.id != adapter_id:
+        raise HTTPException(422, f"id 不匹配（body={m.id}, path={adapter_id}）")
+    dest = ADAPTERS_DIR / f"{adapter_id}.yaml"
+    dest.write_text(body.yaml, encoding="utf-8", newline="\n")
+    return {"saved": str(dest), "lints": [l.message for l in lints]}

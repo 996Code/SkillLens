@@ -131,6 +131,7 @@ async function doLogout(): Promise<void> {
       <RouterLink to="/graph/reports/1" class="gw-tree-leaf">⌕ 报告</RouterLink>
       <RouterLink to="/graph/reviews-portal" class="gw-tree-leaf">✓ 评审</RouterLink>
       <RouterLink to="/graph/field-types" class="gw-tree-leaf">⌗ 字段类型</RouterLink>
+      <RouterLink to="/graph/adapters" class="gw-tree-leaf">⚙ 系统接入</RouterLink>
 
       <div class="gw-tree-foot">
         <button class="logout-btn" data-testid="logout-btn" @click="doLogout">

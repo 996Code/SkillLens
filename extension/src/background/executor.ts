@@ -211,7 +211,7 @@ export async function runSkill(
       }),
     });
     onProgress(`完成：${finish.status}（${steps} 步）`);
-    return { status: finish.status };
+    return { status: finish.status, runId };
   } catch (e: any) {
     onProgress(`中断：${e.message}`);
     // 诊断核心：错误必须落库（race 保护 finish 自身也不挂死）

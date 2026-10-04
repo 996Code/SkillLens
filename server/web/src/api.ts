@@ -75,7 +75,7 @@ function authHeaders(): Record<string, string> {
 }
 
 /** 统一出口：带 token；401 清会话跳登录（token 过期/被登出）。 */
-async function authedFetch(path: string, init?: RequestInit): Promise<Response> {
+export async function authedFetch(path: string, init?: RequestInit): Promise<Response> {
   const resp = await fetch(BASE + path, {
     ...init,
     headers: { ...authHeaders(), ...(init?.headers as Record<string, string> | undefined) },

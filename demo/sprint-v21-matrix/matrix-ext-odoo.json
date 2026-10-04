@@ -3,7 +3,7 @@
     "system": "odoo",
     "round": 1,
     "skill": 178,
-    "status": "pass"
+    "status": "fail"
   },
   {
     "system": "odoo",
@@ -21,13 +21,13 @@
     "system": "odoo",
     "round": 2,
     "skill": 178,
-    "status": "pass"
+    "status": "fail"
   },
   {
     "system": "odoo",
     "round": 2,
     "skill": 179,
-    "status": "timeout"
+    "status": "fail"
   },
   {
     "system": "odoo",
