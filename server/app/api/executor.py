@@ -40,25 +40,19 @@ def get_db():
 
 
 def _reap_stale_runs(db: Session) -> int:
-    """协议 §5 心跳兜底：extension run 卡 running 超 120s（无 step 上报）
-    → lost。在 /executor/skills 与 step 访问时顺带收割（无独立进程）。"""
+    """协议 §5 心跳兜底：extension run 卡 running 超 10 分钟（无新步
+    上报——矩阵实证 885/888 卡死）→ lost。在 /executor/skills 访问时
+    顺带收割（无独立进程）。"""
     from datetime import datetime, timedelta, timezone
-    import json as _j
-    cutoff = datetime.now(timezone.utc) - timedelta(seconds=120)
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
     rows = db.query(ReplayRun).filter(
         ReplayRun.executor == "extension",
-        ReplayRun.status == "running").all()
+        ReplayRun.status == "running",
+        ReplayRun.created_at < cutoff).all()
     n = 0
     for r in rows:
-        st = (r.plan or {}).get("executor_state") or {}
-        received = st.get("received") or []
-        last_ts = r.created_at
-        if received:
-            # 无逐步时间戳——用 created_at+步数近似；保守 120s 总时长
-            pass
-        if r.created_at < cutoff and not received:
-            r.status = "lost"
-            n += 1
+        r.status = "lost"
+        n += 1
     if n:
         db.commit()
     return n

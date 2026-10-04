@@ -126,6 +126,16 @@ async def ext_rounds(token, out):
                                 f"?skill={sid}&token={token}&auto=1",
                                 timeout=15000)
                             await page.wait_for_timeout(2000)
+                            # 点击前快照全局最新 extension run id（点击后
+                            # 取会被本轮前面 run 推高——判定失真实证）
+                            from app.db import SessionLocal as _S0
+                            from app.models import ReplayRun as _RR0
+                            _db0 = _S0()
+                            _p0 = (_db0.query(_RR0)
+                                   .filter(_RR0.executor == "extension")
+                                   .order_by(_RR0.id.desc()).first())
+                            _prev_id = _p0.id if _p0 else 0
+                            _db0.close()
                             await page.locator("#go").click()
                             launched = True
                         except Exception as e:
@@ -141,15 +151,8 @@ async def ext_rounds(token, out):
                                 pass
                         if not launched:
                             continue
-                    # 连接已断——纯 DB 轮询 run 终态
-                    from app.db import SessionLocal as _S
-                    from app.models import ReplayRun as _RR
-                    _db = _S()
-                    _prev = (_db.query(_RR)
-                             .filter(_RR.executor == "extension")
-                             .order_by(_RR.id.desc()).first())
-                    _prev_id = _prev.id if _prev else 0
-                    _db.close()
+                    # 连接已断——纯 DB 轮询 run 终态（_prev_id 已在点击前
+                    # 快照——见上方）
                     status = "timeout"
                     for _ in range(90):
                         await asyncio.sleep(3)
