@@ -268,7 +268,7 @@ M4 交付       ── S16-S18 ── 全闭环贯通 + 加固 + 试点运行【
 | AF3 | 登录+例程库 | ✅ 六原语解释器+例程五件套+幂等登录（已登录直通）；**7 系统真机登录全 PASS**（2026-10-03：禅道/Odoo 经本地容器凭据重置后补验——重置操作经 DB/odoo shell，凭据入清单 literal+lint 标注） | TDD+真机 |
 | AF4 | flow 步骤解释器 | ✅ 禅道 Story/Case/Testtask 3 流学成 learned #272-274（4b326c0）；CaseRun iframe 二级行操作=采集层窗口限制，走人工走查（原则③） | TDD+真机 |
 | AF5 | 链编排器 | ✅ af5_chain.py（4fca744）：幂等登录+id 直引+换参回放+探针 verify（异步窗口）；JeecG 270/271 pass（269 UI 态漂移已知项，探针如实检出） | TDD+真机 |
-| AF6 | 接入向导 UI | 工作台读清单/表单生成清单，新系统接入零手写编排脚本 | 浏览器实操 |
+| AF6 | 接入向导 UI | ✅（8617bd3）工作台 /graph/adapters：7 系统卡+YAML 编辑器+实时校验/保存（API TDD 6 用例）+executor UX 整改（确认卡带技能名+结果卡带工作台链接——用户代理评审驱动）；浏览器实操验收+截图入库 | 浏览器实操 |
 
 ### 块 AG：扩展执行后端（chrome.debugger 桥接，v2.1 新增）
 
@@ -355,4 +355,4 @@ AG1 协议 server 侧 ✅（端点组+迁移+4 用例；契约文档 docs/arch/e
 - 2026-10-01/02 v2.0（用户："把开源系统全部走一遍闭环，完善的流程业务测试，不要光知道基础数据，每个系统都有核心流程，多个角度走几遍"）：**新增块 AE「全系统核心业务多角度闭环」**（S43-4）——七系统（Snipe-IT 资产/禅道 QA/Odoo 销售/Dolibarr 订单/JeecgBoot 字典+在线表单/ERPNext CRM/若依权限）每系统核心业务链 2 轮录制→学习→换参回放→实体级验证；23 技能学成、22 回放全 PASS（JeecG 表单链 Create 全 PASS、Sync/Fill 步骤层过+物理表建出，链式 override 列未竟项）。**同步固化「成熟项目对照」开发纪律**（用户强制：遇坑先查目标系统官方 harness——Frappe cypress intercept+wait/check(force)、Odoo tour 种数据、Healenium LCS 评分，已入 AGENTS.md §二）。功能点 79→86。测试基线 server 447 / web 54 / extension 76。验收：demo/sprint43/user-test-report.md。
 - 2026-10-02 v2.0.1：S43-5 收尾——JeecG 链式 override 修复（row-anchor 换参注入+动态 id 断言归一，commit 246b752），七系统 **23 技能 23 回放全 PASS**。测试基线 server 452 / web 54 / extension 76。lessons #29。
 - 2026-10-03 v2.1（用户方向裁定："做一套基座，系统适配作为插件支持自定义"+"回放不都在服务器上，用 Chrome 插件作桥梁调用客户端"）：**新增块 AF「适配器架构」**（P3b 升级：manifest 清单+探针运行时+例程库+链编排器+向导 UI，7 片含 AF0 schema 定稿）+ **块 AG「扩展执行后端」**（chrome.debugger 桥接客户端执行：瘦执行器架构+微指令协议+双后端一致性，6 片含 AG0 spike）。功能点 86→99。
-- 2026-10-03 v2.1 落地：AF0-AF5+AG0-AG5 全完成（AG5 验收 3ca080a：JeecG #271/Odoo #1 双端 pass 一致+真实登录态 3/3；架构定局=插件执行节点/服务器管理不下发）。测试基线 server 482 / web 54 / extension 76。剩余：AF6 向导 UI；P2 待办（心跳 lost/停止真接/repair_map 插件端/介入超限判 fail 细化）。七系统核心链矩阵（插件端全技能×2 轮）进行中。
+- 2026-10-03 v2.1 落地完成（13/13 片）：AF0-AF6+AG0-AG5 全完成（AG5 验收 3ca080a：JeecG #271/Odoo #1 双端 pass 一致+真实登录态 3/3；架构定局=插件执行节点/服务器管理不下发）。测试基线 server 482 / web 54 / extension 76。剩余：AF6 向导 UI；P2 待办（心跳 lost/停止真接/repair_map 插件端/介入超限判 fail 细化）。七系统核心链矩阵（插件端全技能×2 轮）进行中。

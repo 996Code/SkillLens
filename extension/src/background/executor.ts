@@ -149,6 +149,7 @@ export async function runSkill(
   const t0 = Date.now();
   let instruction: Instruction | null = plan.instruction;
   let steps = 0;
+  let stepsSinceGoto = 0;
   try {
     while (instruction && instruction.op !== "detach") {
       // 用户停止（当前步完成后中断——UX 评审 P2：真停）
@@ -180,7 +181,9 @@ export async function runSkill(
       if (instruction.op === "snapshot" && instruction.phase === "after") {
         await sleep(2500);
       }
-      const ev = await execute(debuggee, tabId, instruction, networkLog, onProgress);
+      const ev = await execute(debuggee, tabId, instruction, networkLog,
+        onProgress, stepsSinceGoto);
+      stepsSinceGoto = instruction.op === "goto" ? 0 : stepsSinceGoto + 1;
       steps++;
       // 导航失败即中止（错误页上的后续步骤是假执行——UX 评审致命 2）
       if (ev.result === "error") {
@@ -257,6 +260,7 @@ async function pageTitle(debuggee: any): Promise<string> {
 async function execute(
   debuggee: any, tabId: number, ins: Instruction,
   networkLog: any[], onProgress: (m: string) => void,
+  stepsSinceGoto = 0,
 ): Promise<{ seq: number; result: string; evidence: any }> {
   const evidence: any = { network: [], toasts: [] };
   if (ins.op === "goto") {
@@ -273,7 +277,19 @@ async function execute(
         expression: "try { localStorage.clear(); } catch (e) {}" });
     } catch { /* fail-open */ }
     await chrome.debugger.sendCommand(debuggee, "Page.navigate", { url: ins.url });
-    await sleep(2500);
+    // SPA 渲染+hydration 余量（JeecG 实证：表格行渲染≠React 事件挂载
+    // ——elClick ok 但 onClick 未绑模态不开；就绪信号后固定 2s 余量）
+    for (let w = 0; w < 8; w++) {
+      await sleep(500);
+      try {
+        const ready = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+          expression: "!!(document.querySelector('.ant-table-row, tr, .ant-table-tbody') "
+            + "&& document.querySelectorAll('.ant-table-row, tbody tr').length >= 0)",
+          returnByValue: true });
+        if (ready?.result?.value === true) break;
+      } catch { /* fail-open */ }
+    }
+    await sleep(2000);
     try {
       const u = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
         expression: "location.href", returnByValue: true });
@@ -328,7 +344,7 @@ async function execute(
       // 直通+重试（模态/抽屉渲染窗口——JeecG 新增点击后模态 1-2s 才开，
       // 首次查找空实证）
       let setVal: any = null;
-      for (let tryN = 0; tryN < 3; tryN++) {
+      for (let tryN = 0; tryN < 5; tryN++) {
         setVal = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
           expression: `(function(){
             const label = ${JSON.stringify(label)};
@@ -347,24 +363,49 @@ async function execute(
               }
             }
             if (!target) {
+              // ③ form-item label 匹配。同 label 双处命中时 modal/抽屉内
+              // 优先（真机铁证：modal 开着时列表页查询栏同 label form-item
+              // 文档序在前——值写进搜索框，保存必 miss）
               const bare = label.replace(/[*\\s]/g, '');
               const groups = [...document.querySelectorAll(
                 '.ant-form-item, .cgf-item, .form-group')];
+              const hits = [];
               for (const g of groups) {
                 const lbl = (g.querySelector('label')?.textContent || '')
                   .replace(/[*\\s]/g, '');
                 if (lbl === bare) {
                   const inp = g.querySelector('input');
-                  if (inp && inp.getBoundingClientRect().width > 0) { target = inp; break; }
+                  if (inp && inp.getBoundingClientRect().width > 0) hits.push(inp);
                 }
               }
+              const inModal = hits.find(e => e.closest(
+                '.ant-modal-content, .ant-drawer-content, .el-dialog, [role=dialog]'));
+              target = inModal || hits[0] || null;
+            }
+            if (!target) {
+              // ④ 原生 name/id 匹配（禅道 zentao 表单 input[name=title]——
+              // 无 data-fieldname/placeholder/form-item 标记的裸表单）
+              const byName = document.querySelector(
+                'input[name="' + label + '"], textarea[name="' + label + '"], #' + label);
+              if (byName && byName.getBoundingClientRect().width > 0) target = byName;
             }
             if (!target) return '';
-            const setter = Object.getOwnPropertyDescriptor(
-              window.HTMLInputElement.prototype, 'value').set;
-            setter.call(target, ${JSON.stringify(String(ins.value))});
-            target.dispatchEvent(new Event('input', {bubbles: true}));
-            target.dispatchEvent(new Event('change', {bubbles: true}));
+            // ZCode harness 模式：focus+execCommand insertText（真实输入，
+            // isTrusted 事件框架全兼容）；失败回退 native setter。
+            // focus 后验证 activeElement（ZCode inputTargetToken 同语义
+            // ——模态 autofocus 抢夺时 insertText 会打到错误元素）
+            target.focus();
+            if (document.activeElement !== target) return '';
+            target.select?.();
+            const okCmd = document.execCommand('insertText', false,
+              ${JSON.stringify(String(ins.value))});
+            if (!okCmd) {
+              const setter = Object.getOwnPropertyDescriptor(
+                window.HTMLInputElement.prototype, 'value').set;
+              setter.call(target, ${JSON.stringify(String(ins.value))});
+              target.dispatchEvent(new Event('input', {bubbles: true}));
+              target.dispatchEvent(new Event('change', {bubbles: true}));
+            }
             return target.value;
           })()`, returnByValue: true });
         if (setVal?.result?.value) break;
@@ -379,17 +420,78 @@ async function execute(
         onProgress(`fill ${label}（JS 设值）`);
         return { seq: ins.seq, result: "ok", evidence: { network: [], toasts: [], value_after: val } };
       }
+      // 主 frame 三级+name 查找全空——iframe 表单兜底（禅道 272 铁证：
+      // story/create 表单在外壳页的内嵌 iframe——zcode domSnapshot 同样
+      // 递归 iframe；走 CDP frame context 求值）
+      try {
+        const tree = await chrome.debugger.sendCommand(debuggee, "Page.getFrameTree");
+        const frames: any[] = [];
+        (function walk(n: any) {
+          if (n?.frame) frames.push(n.frame);
+          (n?.childFrames || []).forEach(walk);
+        })(tree?.frameTree);
+        for (const f of frames) {
+          if (!f.parentId) continue;
+          try {
+            const world = await chrome.debugger.sendCommand(debuggee,
+              "Page.createIsolatedWorld",
+              { frameId: f.id, grantUniveralAccess: true });
+            const cid = world?.executionContextId;
+            if (!cid) continue;
+            const fv = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+              contextId: cid, returnByValue: true,
+              expression: `(function(){
+                const label = ${JSON.stringify(label)};
+                let t = document.querySelector('input[name="' + label + '"], textarea[name="' + label + '"], #' + label);
+                if (!t) {
+                  const phs = [...document.querySelectorAll('input')]
+                    .filter(e => e.placeholder === label
+                      && e.getBoundingClientRect().width > 0);
+                  t = phs[0] || null;
+                }
+                if (!t || t.getBoundingClientRect().width === 0) return '';
+                t.focus();
+                t.select?.();
+                const ok = document.execCommand('insertText', false,
+                  ${JSON.stringify(String(ins.value))});
+                if (!ok) {
+                  const set = Object.getOwnPropertyDescriptor(
+                    window.HTMLInputElement.prototype, 'value').set;
+                  set.call(t, ${JSON.stringify(String(ins.value))});
+                  t.dispatchEvent(new Event('input', {bubbles: true}));
+                  t.dispatchEvent(new Event('change', {bubbles: true}));
+                }
+                return t.value;
+              })()` });
+            const v = fv?.result?.value;
+            if (v) {
+              await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+                contextId: cid,
+                expression: "(document.activeElement || {}).blur && document.activeElement.blur()" })
+                .catch(() => {});
+              await sleep(300);
+              onProgress(`fill ${label}（iframe 内设值）`);
+              return { seq: ins.seq, result: "ok",
+                       evidence: { network: [], toasts: [], value_after: v } };
+            }
+          } catch { /* 此 frame 不可入——继续下一个 */ }
+        }
+      } catch { /* getFrameTree 失败 fail-open */ }
       // JS 设值未命中——落回 resolver 路径（重试+介入）
     }
-    // 对齐 locate 语义：异步渲染重试（服务端 12 轮×1s；插件端 8 轮×1s
-    // ——首版真机实证：goto 后 2.5s 禅道 iframe/JeecG 列表未渲染完即 miss；
-    // 第 4 轮插一次 reload——SPA 视图状态病（Odoo kanban/list 记忆等）
-    // 重载即愈，服务端新 tab 无此病史）
+    // 对齐 locate 语义：异步渲染重试。zcode 纪律（3s 短预算快失败+错误即
+    // 导航）：miss 快速上报让服务端介入/豁免接住——重试轮次里绝不 reload
+    // （reload 会摧毁已开的 modal——JeecG #269 铁证：seq3 开 modal 后 seq4
+    // 聚焦步 miss 轮 reload 把 modal 摧毁，fill 无处可写死循环）。reload
+    // 只保留给 goto 首指令后的首个定位（SPA 视图状态病重载即愈，且此时
+    // 无已开 modal 可摧毁）
+    const firstLocateAfterGoto = stepsSinceGoto === 0;
+    const maxAttempts = firstLocateAfterGoto ? 8 : 3;
     let resolved: any = null;
-    for (let attempt = 0; attempt < 8; attempt++) {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       resolved = await resolve(debuggee, ins, label, onProgress);
       if (resolved?.hit) break;
-      if (attempt === 3) {
+      if (attempt === 3 && firstLocateAfterGoto) {
         try {
           await chrome.debugger.sendCommand(debuggee, "Page.reload");
           await sleep(2500);
@@ -501,7 +603,9 @@ async function execute(
     }
     // 保存/确定类点击+模态开着：模态 footer primary 优先（JeecG 实证
     // 保存步 ok 但 addAll 未发——点中列表页同名按钮；官方 harness 模式
-    // =模态上下文的提交按钮）
+    // =模态上下文的提交按钮）。真机铁证：JeecG cgform modal footer 有
+    // 多个同名"保存"（各配置 tab 的隐藏 footer 都在 DOM）——必须过滤
+    // 可见（rect>0）且取**最后一个**（页面级 footer 在 DOM 尾部）
     if (ins.op === "click" && /保存|确定|提\s*交/.test(label)) {
       const modalBtn = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
         expression: `(function(){
@@ -510,7 +614,7 @@ async function execute(
           const btns = [...modal.querySelectorAll('button')]
             .filter(e => /保存|确定|提\\s*交/.test((e.textContent||'').trim())
               && e.getBoundingClientRect().width > 0);
-          if (btns.length) { btns[0].click(); return 'ok'; }
+          if (btns.length) { btns[btns.length - 1].click(); return 'ok'; }
           return '';
         })()`, returnByValue: true });
       if (modalBtn?.result?.value === "ok") {
@@ -534,6 +638,133 @@ async function execute(
     }
     const rect = resolved.rect;
     const x = rect.x + rect.width / 2, y = rect.y + rect.height / 2;
+    // zcode actionProbe 模式（browserPlaywrightLocatorExecutor 一手源码）：
+    // ①探针（visible+稳定双帧+hit-target）不 actionable 不点——JeecG 实证
+    // 直点 4/5（hydration 窗口假 ok）探针 5/5 全开；②探针过先 elClick
+    // （modal 类按钮 React onClick 明确；trusted 坐标流在 ant mask 上有
+    // mousePressed 开 modal 后 mouseReleased 落 mask 触发关闭的时序风险
+    // ——run943 实证 trusted 开了 modal 又被吞）③效果验证失败→trusted
+    // 坐标点击兜底（双通道互补）④仍未开如实 miss（服务端介入）
+    const probeAndClick = async (): Promise<{ clicked: boolean; reason?: string }> => {
+      const ALIGN = ["center", "end", "start", "nearest"];
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const probe = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+          expression: `(async () => {
+            const label = ${JSON.stringify(label)};
+            const els = [...document.querySelectorAll('button, [role=button]')]
+              .filter(e => (e.textContent||'').trim() === label
+                && e.isConnected);
+            if (els.length !== 1) return {count: els.length, actionable: false};
+            const el = els[0];
+            const st = getComputedStyle(el);
+            if (st.display === 'none' || st.visibility === 'hidden' || st.opacity === '0')
+              return {count: 1, actionable: false, reason: 'hidden'};
+            el.scrollIntoView({block: ${JSON.stringify(ALIGN[attempt % 4])},
+              inline: 'center', behavior: 'instant'});
+            const waitRaf = () => new Promise(res =>
+              requestAnimationFrame(() => res()));
+            let r = el.getBoundingClientRect(), stable = 0;
+            for (let i = 0; i < 10 && stable < 2; i++) {
+              await waitRaf();
+              const cur = el.isConnected ? el.getBoundingClientRect() : null;
+              if (!cur) return {count: 0, actionable: false};
+              const same = r.left===cur.left && r.top===cur.top
+                && r.width===cur.width && r.height===cur.height;
+              stable = same ? stable + 1 : 0;
+              r = cur;
+            }
+            if (stable < 2) return {count: 1, actionable: false, reason: 'not-stable'};
+            const cx = r.left + r.width/2, cy = r.top + r.height/2;
+            if (cx < 0 || cy < 0 || cx > innerWidth || cy > innerHeight)
+              return {count: 1, actionable: false, reason: 'outside-viewport'};
+            const hit = document.elementsFromPoint(cx, cy);
+            if (!(hit.includes(el) || (hit[0] && el.contains(hit[0]))))
+              return {count: 1, actionable: false, reason: 'covered'};
+            return {count: 1, actionable: true, x: cx, y: cy};
+          })()`, returnByValue: true, awaitPromise: true }).catch(() => null);
+        const p = probe?.result?.value;
+        if (p?.actionable) {
+          // elClick 首选（React onClick 直触发，无坐标事件流的 mask 副作用）
+          const el = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+            expression: `(async () => {
+              const label = ${JSON.stringify(label)};
+              const els = [...document.querySelectorAll('button, [role=button]')]
+                .filter(e => (e.textContent||'').trim() === label && e.isConnected);
+              if (els.length !== 1) return '';
+              els[0].click();
+              return 'ok';
+            })()`, returnByValue: true, awaitPromise: true }).catch(() => null);
+          if (el?.result?.value === "ok") return { clicked: true };
+          // trusted 坐标兜底（elClick 未命中时）
+          await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+            type: "mouseMoved", x: p.x, y: p.y });
+          await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+            type: "mousePressed", x: p.x, y: p.y, button: "left", clickCount: 1 });
+          await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+            type: "mouseReleased", x: p.x, y: p.y, button: "left", clickCount: 1 });
+          return { clicked: true };
+        }
+        await sleep(250);
+      }
+      return { clicked: false, reason: "probe-budget" };
+    };
+    if (ins.op === "click") {
+      const pc = await probeAndClick();
+      if (pc.clicked) {
+        await sleep(1200);
+        // 效果验证（zcode setChecked 读回模式）：点击前无 modal、label 是
+        // 新增/新建类时点击后应有 modal——无则 elClick 双通道重试（真机
+        // 实证：trusted 坐标点击在 JeecG 偶发落空[run943]，elClick 同钮
+        // 必开——两通道互补；重试仍无 modal 才如实 miss）
+        const expectModal = /新增|新建|添加|创建|New|Create|Add/i.test(label)
+          && !/取消|关闭/.test(label);
+        if (expectModal) {
+          const modalOpen = async (): Promise<boolean> => {
+            const m = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+              expression: `!!(document.querySelector(
+                '.ant-modal-content, .ant-drawer-content, .el-dialog, [role=dialog]')
+                && document.querySelector('.ant-modal-content, .ant-drawer-content, .el-dialog, [role=dialog]').getBoundingClientRect().width > 0)`,
+              returnByValue: true }).catch(() => null);
+            return !!m?.result?.value;
+          };
+          if (!(await modalOpen())) {
+            const retry = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+              expression: `(function(){
+                const els = [...document.querySelectorAll('button, [role=button]')]
+                  .filter(e => (e.textContent||'').trim() === ${JSON.stringify(label)}
+                    && e.getBoundingClientRect().width > 0);
+                if (els.length === 1) { els[0].click(); return 'ok'; }
+                return '';
+              })()`, returnByValue: true });
+            if (retry?.result?.value === "ok") {
+              await sleep(1500);
+              if (await modalOpen()) {
+                onProgress(`click ${label}（重试通道兜住）`);
+                return { seq: ins.seq, result: "ok", evidence };
+              }
+            }
+            onProgress(`click ${label}（双通道后 modal 仍未开——miss）`);
+            return { seq: ins.seq, result: "miss", evidence };
+          }
+        }
+        onProgress(`click ${label}（探针+trusted）`);
+        return { seq: ins.seq, result: "ok", evidence };
+      }
+      // 探针预算尽：回退旧元素级（label 转发等场景）
+      const elClick = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+        expression: `(function(){
+          const els = [...document.querySelectorAll('button, [role=button]')]
+            .filter(e => (e.textContent||'').trim() === ${JSON.stringify(label)}
+              && e.getBoundingClientRect().width > 0);
+          if (els.length === 1) { els[0].click(); return 'ok'; }
+          return '';
+        })()`, returnByValue: true });
+      if (elClick?.result?.value === "ok") {
+        await sleep(1200);
+        onProgress(`click ${label}（元素级兜底）`);
+        return { seq: ins.seq, result: "ok", evidence };
+      }
+    }
     // hover 先行：mouseenter 态组件先展开；随后正常 click（服务端
     // row-trigger 即 JS click——ant-dropdown 的 onClick 含 open 逻辑，
     // hover-only 假设被服务端 pass 行为证伪）
@@ -570,25 +801,49 @@ async function execute(
           }
           if (!target) {
             // ant form-item label 匹配（JeecG "*表名"——label 去星号后
-            // 与 form-item label 文本匹配，取组内 input）
+            // 与 form-item label 文本匹配，取组内 input）。同 label 双处
+            // 命中时 modal/抽屉内优先（真机铁证：modal 开着时列表页查询
+            // 栏同 label form-item 文档序在前——value 写进搜索框假 ok，
+            // 保存必 miss）
             const bare = label.replace(/[*\s]/g, '');
             const groups = [...document.querySelectorAll(
               '.ant-form-item, .cgf-item, .form-group')];
+            const hits = [];
             for (const g of groups) {
               const lbl = (g.querySelector('label')?.textContent || '')
                 .replace(/[*\s]/g, '');
               if (lbl === bare) {
                 const inp = g.querySelector('input');
-                if (inp && inp.getBoundingClientRect().width > 0) { target = inp; break; }
+                if (inp && inp.getBoundingClientRect().width > 0) hits.push(inp);
               }
             }
+            const inModal = hits.find(e => e.closest(
+              '.ant-modal-content, .ant-drawer-content, .el-dialog, [role=dialog]'));
+            target = inModal || hits[0] || null;
+          }
+          if (!target) {
+            // ④ 原生 name/id 匹配（禅道 zentao 表单 input[name=title]——
+            // 无 data-fieldname/placeholder/form-item 标记的裸表单）
+            const byName = document.querySelector(
+              'input[name="' + label + '"], textarea[name="' + label + '"], #' + label);
+            if (byName && byName.getBoundingClientRect().width > 0) target = byName;
           }
           if (!target) return '';
-          const setter = Object.getOwnPropertyDescriptor(
-            window.HTMLInputElement.prototype, 'value').set;
-          setter.call(target, ${JSON.stringify(String(ins.value))});
-          target.dispatchEvent(new Event('input', {bubbles: true}));
-          target.dispatchEvent(new Event('change', {bubbles: true}));
+          // ZCode harness 模式（browserVirtualClipboard 一手源码）：
+          // focus + execCommand("insertText")——浏览器原生命令产生
+          // isTrusted input 事件，框架全兼容（React/Vue/Frappe）；
+          // 失败时回退 native setter+dispatchEvent（快速路径）
+          target.focus();
+          target.select?.();
+          const okCmd = document.execCommand('insertText', false,
+            ${JSON.stringify(String(ins.value))});
+          if (!okCmd) {
+            const setter = Object.getOwnPropertyDescriptor(
+              window.HTMLInputElement.prototype, 'value').set;
+            setter.call(target, ${JSON.stringify(String(ins.value))});
+            target.dispatchEvent(new Event('input', {bubbles: true}));
+            target.dispatchEvent(new Event('change', {bubbles: true}));
+          }
           return target.value;
         })()`, returnByValue: true });
       evidence.value_after = setVal?.result?.value || "";
@@ -714,6 +969,20 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
     for (const f of frames) {
       if (!f.parentId) continue; // 跳过主 frame
       frameIndex += 1;
+      try {
+        // 隐藏 frame 跳过（JeecG 隐藏 iframe 同名"新增"抢先命中实证
+        // ——frame 元素级 click 点隐藏按钮无效；隐藏 frame 的
+        // innerWidth/Height 为 0）
+        const world0 = await chrome.debugger.sendCommand(debuggee,
+          "Page.createIsolatedWorld", { frameId: f.id });
+        const cid0 = world0?.executionContextId;
+        if (cid0 !== undefined) {
+          const fv = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+            expression: "window.innerWidth > 0 && window.innerHeight > 0",
+            contextId: cid0, returnByValue: true });
+          if (fv?.result?.value !== true) continue;
+        }
+      } catch { /* fail-open */ }
       try {
         const world = await chrome.debugger.sendCommand(debuggee,
           "Page.createIsolatedWorld", { frameId: f.id });

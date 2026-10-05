@@ -65,6 +65,21 @@ async def test_executor_plan_compiles_and_returns_first_instruction(client, monk
     assert first["op"] == "goto" and first["url"].startswith("http")
     assert first["seq"] == 1 and first["timeout_ms"] > 0
 
+    # 换参注入：fill 步 value 被替成 overrides 新值（JeecG 269 铁证回归——
+    # 旧值已存在致唯一性校验拒绝，回放写场景必须可换参）
+    from app.db import SessionLocal
+    from app.models import ReplayRun
+    db = SessionLocal()
+    try:
+        run = db.get(ReplayRun, body["run_id"])
+        fills = [i for i in (run.plan or {}).get("executor_instructions", [])
+                 if i.get("op") == "fill"]
+        assert fills, "无 fill 指令"
+        assert any(i.get("value") == "新值" for i in fills), \
+            "overrides 未注入 fill value"
+    finally:
+        db.close()
+
 
 async def test_executor_step_loop_and_idempotency(client, monkeypatch):
     skill_id = await _seed_skill(client, monkeypatch)
@@ -178,6 +193,57 @@ async def test_executor_intervention_exhausted_fails(client, monkeypatch):
         assert st == "fail"
     finally:
         db.close()
+
+
+async def test_focus_step_skip_persists_cursor(client, monkeypatch):
+    """聚焦步豁免必须持久化推进（JeecG 941 铁证）：豁免响应返回 fill 指令，
+    但 cursor/received 不落库——下一条 fill 上报被幂等判 duplicate、领回聚焦
+    步，形成豁免死循环（fill ok→duplicate→click miss→豁免→…）。"""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    from app.db import SessionLocal
+    from app.models import ReplayRun
+    db = SessionLocal()
+    run = ReplayRun(
+        skill_id=1, mode="execute", status="running",
+        plan={"steps": [], "url": "http://t/",
+              "executor_instructions": [
+                  {"seq": 1, "op": "click", "label": "*表名", "labels": [],
+                   "timeout_ms": 5},
+                  {"seq": 2, "op": "fill", "name": "*表名", "value": "v1",
+                   "timeout_ms": 5},
+                  {"seq": 3, "op": "detach", "timeout_ms": 5}],
+              "executor_state": {"cursor": 0, "received": [],
+                                 "interventions": 0, "overrides": {}}},
+        executor="extension")
+    db.add(run)
+    db.commit()
+    run_id = run.id
+    db.close()
+
+    # 聚焦步 miss → 豁免：响应给 fill（seq 2），标记 focus_step_skipped
+    resp = await client.post(f"/api/v1/executor/runs/{run_id}/step",
+                             json={"seq": 1, "result": "miss", "evidence": {}})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body.get("focus_step_skipped") is True
+    assert body["instruction"]["seq"] == 2 and body["instruction"]["op"] == "fill"
+
+    # 豁免后状态必须已落库：cursor=1（聚焦步消费）、received 含 miss 证据
+    db = SessionLocal()
+    try:
+        fresh = db.get(ReplayRun, run_id)
+        st = (fresh.plan or {}).get("executor_state") or {}
+        assert st.get("cursor") == 1, "豁免未持久化 cursor——会触发 duplicate 死循环"
+        assert len(st.get("received", [])) == 1
+    finally:
+        db.close()
+
+    # fill 上报 ok → 不应被幂等挡回（duplicate=False），推进到 detach
+    resp2 = await client.post(f"/api/v1/executor/runs/{run_id}/step",
+                              json={"seq": 2, "result": "ok", "evidence": {}})
+    assert resp2.status_code == 200, resp2.text
+    assert resp2.json().get("duplicate") is False
+    assert resp2.json()["instruction"]["op"] == "detach"
 
 
 async def test_executor_finish_evaluates_assertions(client, monkeypatch):

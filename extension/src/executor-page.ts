@@ -99,7 +99,14 @@ go.addEventListener("click", async () => {
     } else if (skillWrites && autoConfirm) {
       log("auto 模式：C1 授权由调用方持有，跳过确认卡");
     }
-    const r = await runSkill(skillId, {}, log, () => stopRequested);
+    // 换参注入：URL ?fill_<原值>=<新值> 映射进 overrides（回放写场景防
+    // 唯一性冲突——JeecG 269 铁证：旧值已存在致 duplicate/check 拒绝，
+    // addAll 永不发）
+    const overrides: Record<string, string> = {};
+    for (const [k, v] of params.entries()) {
+      if (k.startsWith("fill_") && v) overrides[k.slice(5)] = v;
+    }
+    const r = await runSkill(skillId, overrides, log, () => stopRequested);
     log(`完成：${r.status}`);
     showResultCard(r.status, r.runId ?? null);
   } catch (e: any) {

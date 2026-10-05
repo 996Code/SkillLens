@@ -146,6 +146,15 @@ async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
 
     plan = _load_plan_input(db, skill)
     instructions = compile_executor_plan(plan)
+    # 换参注入（服务端 replay 的 compile_replay_plan 语义等效）：fill 步
+    # 的 value 按 overrides 替换（回放写场景防唯一性冲突——JeecG 269 铁证：
+    # 旧表名已存在致 duplicate/check 拒绝、addAll 永不发）。此前 overrides
+    # 只存 state 不应用，插件端换参形同虚设
+    for ins in instructions:
+        if ins.get("op") == "fill" and ins.get("value") is not None:
+            for old, new in body.overrides.items():
+                if ins.get("value") == old or (ins.get("name") or "") == old:
+                    ins["value"] = new
     # P2：自愈数据链插件端等效——活跃提案（verified/promoted）的
     # proposed_label 编译进对应 click 步候选首位（服务端 runner 的
     # repair_map 语义）
@@ -262,6 +271,11 @@ async def executor_step(run_id: int, body: ExecutorStepReport,
             and cur_ins.get("op") == "click" and next_ins is not None
             and next_ins.get("op") == "fill"
             and (cur_ins.get("label") or "") == (next_ins.get("name") or "")):
+        # 豁免也要持久化推进（received/cursor+1）——只在响应里跳过不发
+        # seq：不落库则下一条 fill 上报被幂等判 duplicate、领回聚焦步，
+        # 形成豁免死循环（JeecG 941 铁证：fill ok→duplicate→seq4 再来）
+        run.plan = {**plan, "executor_state": state}
+        db.commit()
         return {"instruction": nxt, "duplicate": False,
                 "focus_step_skipped": True}
 
@@ -285,7 +299,14 @@ async def executor_step(run_id: int, body: ExecutorStepReport,
                 "只输出标签文本本身，不要任何解释。")
             result = await acomplete(db, "locate_repair", prompt)
             proposed = (result.text or "").strip().strip('"').splitlines()[0].strip()[:100]
-            if proposed and proposed != label:
+            # 网关故障防线：LLM 配额页/错误串会以 HTTP 200 的 content 形态
+            # 返回（"您的Token额度已用完"实证）——把基础设施错误文本当
+            # label 提案会让插件去找该"按钮"必然 miss 耗尽介入。错误串
+            # 不采纳=介入失败（fail-open，额度已计数）
+            _infra_error = ("Token额度" in proposed or "token 额度" in proposed
+                            or "Rate limit" in proposed or "rate_limit" in proposed
+                            or "quota" in proposed.lower())
+            if proposed and proposed != label and not _infra_error:
                 db.add(LocateProposal(skill_id=run.skill_id, step_label=label,
                                       proposed_label=proposed, status="proposed"))
                 db.commit()
