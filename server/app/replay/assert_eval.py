@@ -133,6 +133,14 @@ def evaluate_assertions(assertions: list[dict], observed: list[dict],
                       ("POST", "PUT", "PATCH", "DELETE")]
             terminal = (writes or matched)[-1] if matched else None
             value = _extract_field(terminal.get("body", ""), p["field"]) if terminal else None
+            # 空响应体语义（若依 258 铁证：logout 返回 200 空 body——
+            # body 里永远没有 code 字段）：field=code 且 expect=数字时
+            # 回退用 HTTP status 判定（body 空才回退——有 body 仍走原语义）
+            if (value is None and terminal
+                    and not (terminal.get("body") or "").strip()
+                    and p.get("field") == "code"
+                    and str(p.get("expect_value")) == str(terminal.get("status"))):
+                value = terminal.get("status")
             # S43-5：期望值本身是动态实体标识（纯数字≥12/hex≥16）——
             # 跨轮回放实体必然新 id，observed≠expect 不是回归信号
             if _DYNAMIC_EXPECT.match(str(p.get("expect_value") or "")):

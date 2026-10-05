@@ -290,6 +290,26 @@ async function execute(
       } catch { /* fail-open */ }
     }
     await sleep(2000);
+    // 残留弹窗清理（若依 257 实证：上一技能的确认弹窗跨 tab 罩住后续
+    // goto 页面——texts 只剩 返回首页/取消/确定，新增按钮全被遮）。
+    // 可见 el-message-box/el-dialog 的确定/取消按钮逐个点掉（幂等）
+    try {
+      await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+        expression: `(async function(){
+          for (let i = 0; i < 3; i++) {
+            const boxes = [...document.querySelectorAll(
+              '.el-message-box, .el-overlay:not([style*="display: none"])')]
+              .filter(b => b.getBoundingClientRect().width > 0);
+            if (!boxes.length) return i;
+            const btn = [...boxes[0].querySelectorAll('button')]
+              .find(b => /确\s*定|Cancel|取消/.test((b.textContent||'').trim()));
+            if (!btn) return i;
+            btn.click();
+            await new Promise(r => setTimeout(r, 600));
+          }
+          return 3;
+        })()`, returnByValue: true, awaitPromise: true });
+    } catch { /* fail-open */ }
     try {
       const u = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
         expression: "location.href", returnByValue: true });
@@ -651,13 +671,28 @@ async function execute(
         const probe = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
           expression: `(async () => {
             const label = ${JSON.stringify(label)};
-            let els = [...document.querySelectorAll('button, [role=button]')]
+            // span 类触发器也算（若依 258 铁证：.user-nickname 是 span——
+            // hover dropdown 的触发器常非 button）
+            let els = [...document.querySelectorAll(
+              'button, [role=button], .user-nickname, .el-dropdown > *, span')]
               .filter(e => (e.textContent||'').trim() === label
                 && e.isConnected);
             // 可见过滤后再判唯一（ERPNext 铁证：页面有隐藏模板副本+真按钮
             // =2 命中直接 miss——隐藏者不参与唯一性竞争）
             const vis = els.filter(e => e.getBoundingClientRect().width > 0);
             if (vis.length >= 1) els = vis;
+            // span 多命中常态（表格单元 span 同文本）——若命中者在
+            // el-dropdown 容器内（hover 触发器语义），取**最内层叶子**
+            // （若依 258 铁证：avatar-wrapper 容器与 nickname span 同文本
+            // 同在 dropdown——容器嵌套 span，取无命中子孙的嵌套最深者）
+            const inDd = els.filter(e => e.closest('.el-dropdown, .ant-dropdown'));
+            if (inDd.length > 1) {
+              const leaves = inDd.filter(e =>
+                !inDd.some(x => x !== e && e.contains(x)));
+              if (leaves.length >= 1) els = leaves;
+            } else if (inDd.length === 1) {
+              els = inDd;
+            }
             if (els.length !== 1) return {count: els.length, actionable: false};
             const el = els[0];
             const st = getComputedStyle(el);
@@ -688,6 +723,27 @@ async function execute(
           })()`, returnByValue: true, awaitPromise: true }).catch(() => null);
         const p = probe?.result?.value;
         if (p?.actionable) {
+          // hover-dropdown 触发器检测：命中元素在 el-dropdown 容器内
+          // （trigger:"hover"）——elClick 无效（JS click 不触发 hover 菜单，
+          // 若依 258 铁证），必须 trusted mouseMoved 停留等菜单挂载
+          const isHoverTrigger = await chrome.debugger.sendCommand(debuggee,
+            "Runtime.evaluate", {
+              expression: `(() => {
+                const label = ${JSON.stringify(label)};
+                let els = [...document.querySelectorAll(
+                  '.user-nickname, .el-dropdown > *, span')]
+                  .filter(e => (e.textContent||'').trim() === label && e.isConnected);
+                const vis = els.filter(e => e.getBoundingClientRect().width > 0);
+                const inDd = vis.filter(e => e.closest('.el-dropdown, .ant-dropdown'));
+                return inDd.length >= 1;
+              })()`, returnByValue: true }).catch(() => null);
+          if (isHoverTrigger?.result?.value === true) {
+            // trusted hover 停留（菜单挂载窗口）
+            await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+              type: "mouseMoved", x: p.x, y: p.y });
+            await sleep(1200);
+            return { clicked: true };
+          }
           // elClick 首选（React onClick 直触发，无坐标事件流的 mask 副作用）
           const el = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
             expression: `(async () => {
@@ -700,10 +756,20 @@ async function execute(
               els[0].click();
               return 'ok';
             })()`, returnByValue: true, awaitPromise: true }).catch(() => null);
-          if (el?.result?.value === "ok") return { clicked: true };
-          // trusted 坐标兜底（elClick 未命中时）
+          if (el?.result?.value === "ok") {
+            // hover-dropdown 检测（若依 258 铁证）：span 触发器 elClick 后
+            // hover 菜单可能已被 trusted mouseMoved 段前序展开——等菜单
+            // 挂载后鼠标流入保持（不流入则菜单即将自动关）
+            await sleep(600);
+            return { clicked: true };
+          }
+          // trusted 坐标兜底（elClick 未命中时）——**hover 流入版**：
+          // 先 mouseMoved 到触发器（hover dropdown 的开闸信号）等菜单
+          // 挂载，无菜单再普通三事件点击（若依 trigger:"hover" 铁证：
+          // 单 click 不开 hover 菜单，必须 hover 停留）
           await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
             type: "mouseMoved", x: p.x, y: p.y });
+          await sleep(1000);
           await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
             type: "mousePressed", x: p.x, y: p.y, button: "left", clickCount: 1 });
           await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
@@ -773,10 +839,52 @@ async function execute(
     }
     // hover 先行：mouseenter 态组件先展开；随后正常 click（服务端
     // row-trigger 即 JS click——ant-dropdown 的 onClick 含 open 逻辑，
-    // hover-only 假设被服务端 pass 行为证伪）
+    // hover-only 假设被服务端 pass 行为证伪）。
+    // dropdown 流入点击（若依 258 铁证）：hover 触发的 el-dropdown（trigger:
+    // "hover"）在菜单出现后**鼠标须连续流入菜单项**——移出即关。步骤：
+    // hover 触发器→等待菜单项出现（rect>0）→沿直线 move 到菜单项→click。
+    // 菜单项查询覆盖 el-dropdown-menu__item/li 精确文本匹配
     await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
       type: "mouseMoved", x, y });
-    await sleep(800);
+    await sleep(1000);
+    const ddItem = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+      expression: `(function(){
+        const items = [...document.querySelectorAll(
+          '.el-dropdown-menu__item, .ant-dropdown-menu-item, li [role=menuitem], li')]
+          .filter(e => (e.textContent||'').trim() === ${JSON.stringify(label)}
+            && e.getBoundingClientRect().width > 0);
+        if (!items.length) return '';
+        const r = items[0].getBoundingClientRect();
+        return JSON.stringify({x: r.x + r.width/2, y: r.y + r.height/2});
+      })()`, returnByValue: true }).catch(() => null);
+    let ddPos: {x: number, y: number} | null = null;
+    try { ddPos = JSON.parse(ddItem?.result?.value || "") || null; } catch { /* 无菜单 */ }
+    if (ddPos) {
+      // 连续流入（中途移出=菜单关）
+      await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+        type: "mouseMoved", x: ddPos.x, y: ddPos.y });
+      await sleep(400);
+      await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+        type: "mousePressed", x: ddPos.x, y: ddPos.y, button: "left", clickCount: 1 });
+      await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+        type: "mouseReleased", x: ddPos.x, y: ddPos.y, button: "left", clickCount: 1 });
+      await sleep(1200);
+      // 确认弹窗（el-message-box 的确定按钮——退出类操作的二段确认）
+      await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+        expression: `(function(){
+          const btns = [...document.querySelectorAll(
+            '.el-message-box button, .el-message-box__btns button')];
+          const btn = btns.find(x => (x.textContent||'').includes('确'));
+          if (btn) { btn.click(); return 'ok'; }
+          return '';
+        })()`, returnByValue: true }).catch(() => {});
+      await sleep(800);
+      onProgress(`click ${label}（dropdown 流入）`);
+      if (ins.op === "click") {
+        return { seq: ins.seq, result: "ok", evidence };
+      }
+    }
+    await sleep(0);
     await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
       type: "mousePressed", x, y, button: "left", clickCount: 1 });
     await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {

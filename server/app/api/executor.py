@@ -149,12 +149,18 @@ async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
     # 换参注入（服务端 replay 的 compile_replay_plan 语义等效）：fill 步
     # 的 value 按 overrides 替换（回放写场景防唯一性冲突——JeecG 269 铁证：
     # 旧表名已存在致 duplicate/check 拒绝、addAll 永不发）。此前 overrides
-    # 只存 state 不应用，插件端换参形同虚设
+    # 只存 state 不应用，插件端换参形同虚设。click 步 label 内联旧值时
+    # 同步替换（258 铁证：换参后登录昵称变新值，录制 label=旧用户名的
+    # 头像点击步 miss——label 与 fill 值同源）
     for ins in instructions:
         if ins.get("op") == "fill" and ins.get("value") is not None:
             for old, new in body.overrides.items():
                 if ins.get("value") == old or (ins.get("name") or "") == old:
                     ins["value"] = new
+        elif ins.get("op") == "click" and ins.get("label"):
+            for old, new in body.overrides.items():
+                if old and old in (ins.get("label") or ""):
+                    ins["label"] = (ins.get("label") or "").replace(old, new)
     # P2：自愈数据链插件端等效——活跃提案（verified/promoted）的
     # proposed_label 编译进对应 click 步候选首位（服务端 runner 的
     # repair_map 语义）

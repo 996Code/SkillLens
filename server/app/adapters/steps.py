@@ -73,16 +73,39 @@ async def run_steps(page: Page, manifest: Manifest, steps: list[Step]) -> None:
 
 async def login(page: Page, manifest: Manifest) -> bool:
     """按清单登录（幂等）：已登录（访问 base_url 不落 login 路径）直接通过；
-    未登录执行 login.steps → post_login 例程 → success 判定（确定性）。"""
+    未登录执行 login.steps → post_login 例程 → success 判定（确定性）。
+    已登录但**身份不符**（nickname≠期望账号的昵称——矩阵轮间上个技能换参
+    登录了新用户，权限不足 404——若依 258 实证）不算通过，先强制退出。"""
     if manifest.login is None:
         return True
+    expect_nick = (manifest.credentials or None) and None  # 默认无昵称断言
     try:
         await page.goto(manifest.target.base_url, wait_until="domcontentloaded",
                         timeout=20000)
         await page.wait_for_timeout(2500)
         probe = manifest.login.success.url_not_contains
         if probe and probe not in page.url:
-            return True  # 已登录
+            if getattr(manifest.login, "admin_nickname", None):
+                nick = await page.evaluate(
+                    "(() => (document.querySelector("
+                    "'.user-nickname')||{textContent:''})"
+                    ".textContent.trim())()")
+                if nick and nick != manifest.login.admin_nickname:
+                    ok = await _force_logout(page)
+                    if not ok:
+                        return False
+            else:
+                # 通用身份校验：发现非期望账号痕迹（昵称为换参风格的
+                # E数字/SL 开头）则强制退出——写链矩阵的登录必须回 admin
+                nick = await page.evaluate(
+                    "(() => (document.querySelector("
+                    "'.user-nickname')||{textContent:''})"
+                    ".textContent.trim())()")
+                if nick and _looks_like_swapped_user(nick):
+                    ok = await _force_logout(page)
+                    if not ok:
+                        return False
+            return await _recheck_or_login(page, manifest)
     except Exception:
         pass
     await run_steps(page, manifest, manifest.login.steps)
@@ -98,4 +121,50 @@ async def login(page: Page, manifest: Manifest) -> bool:
             return await page.get_by_text(succ.text_contains).first.is_visible()
         except Exception:
             return False
+    return True
+
+
+def _looks_like_swapped_user(nick: str) -> bool:
+    """昵称呈换参产物特征（E+数字/SL/M+大写标记开头）——非演示管理员。"""
+    import re
+    return bool(re.match(r"^[ES][L0-9]", nick)) or nick.startswith("SL")
+
+
+async def _force_logout(page: Page) -> bool:
+    """强制退出当前账号：清 cookie+storage 直达登录页（UI 退出链的
+    el-dropdown hover 时序不稳——清态等效且确定性；Redis 会话随 token
+    cookie 消失自然失效）。"""
+    try:
+        await page.evaluate(
+            "(() => { localStorage.clear(); sessionStorage.clear();"
+            " document.cookie.split(';').forEach(c => {"
+            " const n = c.split('=')[0].trim();"
+            " document.cookie = n + '=;expires=Thu, 01 Jan 1970"
+            " 00:00:00 GMT;path=/'; }); })()")
+        await page.goto(page.url.split("?")[0], wait_until="domcontentloaded")
+        await page.wait_for_timeout(2000)
+        return True
+    except Exception:
+        return False
+
+
+async def _recheck_or_login(page: Page, manifest: Manifest) -> bool:
+    """退出/清态后复核：未登录则走正常登录步。"""
+    try:
+        await page.goto(manifest.target.base_url, wait_until="domcontentloaded",
+                        timeout=20000)
+        await page.wait_for_timeout(2000)
+        probe = manifest.login.success.url_not_contains
+        if probe and probe not in page.url:
+            return True
+    except Exception:
+        pass
+    await run_steps(page, manifest, manifest.login.steps)
+    for name in manifest.login.post_login:
+        from app.adapters.routines import run_routine
+        await run_routine(page, name)
+    await page.wait_for_timeout(1500)
+    succ = manifest.login.success
+    if succ.url_not_contains and succ.url_not_contains in page.url:
+        return False
     return True

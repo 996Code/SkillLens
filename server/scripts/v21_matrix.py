@@ -70,7 +70,38 @@ def skill_vars(token, skill_id):
     with httpx.Client(timeout=30) as c:
         c.headers["Authorization"] = f"Bearer {token}"
         r = c.get(f"{SERVER}/skills/{skill_id}/card")
-        return [v["name"] for v in r.json().get("input_variables", [])]
+        vs = [v["name"] for v in r.json().get("input_variables", [])]
+        if vs:
+            declared = set(vs)
+        else:
+            declared = set()
+    # fill 换参 key 用**fill 指令的 value 本身**（服务端 overrides 按
+    # value/name 精确替换——258 跨技能数据依赖实证：变量名≠value 时
+    # fill_ 变量名匹配不上 ins.value）。声明变量（其 value 即变量默认值）
+    # 与未声明 value 一并覆盖；密码 [REDACTED] 跳过
+    from app.db import SessionLocal
+    from app.models import Skill
+    db = SessionLocal()
+    try:
+        from app.api.executor import _load_plan_input, compile_executor_plan
+        ins = compile_executor_plan(_load_plan_input(db, db.get(Skill, skill_id)))
+        vals = [str(i["value"]) for i in ins
+                if i.get("op") == "fill" and i.get("value")
+                and not str(i["value"]).startswith("[REDACTED]")]
+        # click label 里的**实例值**并入（258 铁证：录制的头像点击 label=
+        # 昵称实例——换参后页面昵称是新值，旧 label 永远 miss）。只收
+        # 含数字后缀的实例类 label——通用操作词（新增/确定/保存…）换参会
+        # 毁掉整链（256 全 label 被替换实证）
+        import re as _re
+        labels = [str(i["label"]) for i in ins
+                  if i.get("op") == "click" and i.get("label")
+                  and _re.search(r"[a-zA-Z]\d{3,}", str(i["label"]))]
+        merged = list(declared | set(vals) | set(labels))
+        return merged[:10]
+    except Exception:
+        return list(declared)
+    finally:
+        db.close()
 
 
 async def server_rounds(token, out):
@@ -118,6 +149,21 @@ async def ext_rounds(token, out):
         except Exception as e:
             print(f"[{sys_id}] 登录异常: {str(e)[:50]}", flush=True)
         for rnd in (1, 2):
+            chain_ts = int(time.time()) % 100000
+            # 轮前身份守卫（258 轮1 fail 时换参用户残登录——轮2 全程权限
+            # 不足 404 实证）：每轮重跑清单登录（identity 检出非 admin 时
+            # 清态重登——steps.login 已内建）
+            try:
+                async with async_playwright() as pw:
+                    b = await pw.chromium.connect_over_cdp(CDP)
+                    m = _by_id.get(sys_id)
+                    if m and m.login:
+                        ok = await _alogin(b.contexts[0].pages[0], m)
+                        print(f"[{sys_id}] 轮{rnd} 登录守卫: "
+                              f"{'PASS' if ok else 'FAIL'}", flush=True)
+            except Exception as e:
+                print(f"[{sys_id}] 轮{rnd} 登录守卫异常: {str(e)[:40]}",
+                      flush=True)
             for sid in cfg["skills"]:
                     # attach 期间宿主 Playwright 连接会被永久打断（AG5 矩阵
                     # 实证）——每技能独立连接生命周期：连→开页→点 go→断开→
@@ -137,9 +183,19 @@ async def ext_rounds(token, out):
                         page.on("dialog", on_dialog)
                         launched = False
                         try:
+                            # 换参注入（ext 轮与服务端轮同语义）：技能卡
+                            # input_variables+fill value 换成**链级统一**
+                            # ts 值（257 建→258 登的跨技能数据依赖要求
+                            # 同链同轮同名；写技能防唯一性冲突同语义）
+                            vs = skill_vars(token, sid)
+                            ts = chain_ts
+                            new_val = f"E{rnd}{ts}"
+                            fill_qs = "&".join(
+                                f"fill_{v}={new_val}" for v in vs)
                             await page.goto(
                                 f"chrome-extension://{EXT}/executor.html"
-                                f"?skill={sid}&token={token}&auto=1",
+                                f"?skill={sid}&token={token}&auto=1"
+                                + (f"&{fill_qs}" if fill_qs else ""),
                                 timeout=15000)
                             await page.wait_for_timeout(2000)
                             # 点击前快照全局最新 extension run id（点击后
