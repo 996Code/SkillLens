@@ -322,6 +322,28 @@
   系统同源库生成（passlib 之于 Odoo，如同官方 harness 之于回放）。禅道
   反例：md5 直写即可（无盐无 crypt 管线）——逐系统核实密码栈再动手。
 
+### 35. 动作成功≠效果成功——交互原语要"探针准入+效果验证"（zcode 学习落地，2026-10-05）
+- **现象**：JeecG #269 插件端十余轮死循环——click 报 ok 但 modal 没开、
+  fill 报 ok（value_after 有值）但值写进了列表页搜索框、保存 ok 但 addAll
+  请求从未发出。每层都"成功"，链路整体全错。
+- **根因群**（六条独立但叠加）：①hydration 窗口（按钮 DOM 在、React
+  onClick 未绑）直点约 1/5 假 ok；②resolver miss 重试轮里的 Page.reload
+  摧毁已开的 modal；③fill form-item 匹配多命中时文档序在前的是列表页
+  查询栏（modal 挂 body 尾部）；④`!!querySelector('.ant-modal-content')`
+  是假信号——ant 关闭后残留 0×0 隐藏 wrapper，判定必须带 rect.width>0；
+  ⑤聚焦豁免分支 return 不落库 cursor，下一条 fill 上报被幂等判 duplicate
+  领回聚焦步成死循环；⑥LLM 网关配额错误串（HTTP 200 content 形态）被
+  当 locate_repair 提案注入。
+- **修复**（=zcode browserPlaywrightLocatorExecutor 模式逐条真机实证后
+  移植）：actionProbe 探针准入（visible+稳定双帧 rAF+elementsFromPoint
+  hit-target）；click 双通道（elClick 首选/trusted 坐标兜底）+modal 效果
+  读回验证；resolver 禁 reload（goto 后首轮除外）；fill modal 内优先+
+  name/id 级+iframe 兜底（createIsolatedWorld）；豁免分支补持久化；
+  配额错误串防线（Token额度/quota 关键词弃用提案）。
+- **预防**：写一个交互原语必须配一个"效果读回"；多层重试里的副作用
+  （reload）先问会不会摧毁上游成果；querySelector 存在性≠可见性。
+  网关 200 的错误串也是错误——提案注入前过基础设施错误词筛。
+
 ---
 
 *更新记录：2026-09-24 初版（Sprint 0-4 + Sprint 4.5 全自动闭环的踩坑汇总）；
@@ -332,4 +354,5 @@
 2026-10-03 六版（#31 声明式清单不塞复杂 shell——AF2 禅道探针实证）；
 2026-10-03 七版（#32 persistent_context 双驱动冲突——AF3 登录验证实证）；
 2026-10-03 八版（#33 Odoo 17 密码栈——passlib 权威生成实证）；
-2026-10-03 九版（#34 扩展执行器三层坑——AG3 十轮排障实录）。*
+2026-10-03 九版（#34 扩展执行器三层坑——AG3 十轮排障实录）；
+2026-10-05 十版（#35 动作成功≠效果成功——探针准入+效果验证，zcode 学习落地）。*

@@ -169,6 +169,8 @@ async def ext_rounds(token, out):
                             continue
                     # 连接已断——纯 DB 轮询 run 终态（_prev_id 已在点击前
                     # 快照——见上方）
+                    from app.db import SessionLocal as _S
+                    from app.models import ReplayRun as _RR
                     status = "timeout"
                     for _ in range(90):
                         await asyncio.sleep(3)
