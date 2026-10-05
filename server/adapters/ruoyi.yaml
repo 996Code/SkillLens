@@ -13,6 +13,9 @@ login:
     - fill: ["[placeholder=密码]", "${password}"]
     - click: "button:has-text(\"登\")"
   post_login: [confirm_el_box]
+  success:
+    url_not_contains: login
+    text_contains: 首页
 probes:
   - id: role_count
     kind: docker-exec

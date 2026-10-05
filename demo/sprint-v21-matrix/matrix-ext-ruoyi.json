@@ -3,13 +3,13 @@
     "system": "ruoyi",
     "round": 1,
     "skill": 256,
-    "status": "fail"
+    "status": "pass"
   },
   {
     "system": "ruoyi",
     "round": 1,
     "skill": 257,
-    "status": "fail"
+    "status": "pass"
   },
   {
     "system": "ruoyi",
@@ -21,13 +21,13 @@
     "system": "ruoyi",
     "round": 2,
     "skill": 256,
-    "status": "timeout"
+    "status": "fail"
   },
   {
     "system": "ruoyi",
     "round": 2,
     "skill": 257,
-    "status": "fail"
+    "status": "pass"
   },
   {
     "system": "ruoyi",

@@ -3,7 +3,7 @@
     "system": "erpnext",
     "round": 1,
     "skill": 234,
-    "status": "fail"
+    "status": "pass"
   },
   {
     "system": "erpnext",
@@ -21,7 +21,7 @@
     "system": "erpnext",
     "round": 2,
     "skill": 234,
-    "status": "fail"
+    "status": "pass"
   },
   {
     "system": "erpnext",

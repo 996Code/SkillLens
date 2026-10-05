@@ -651,9 +651,13 @@ async function execute(
         const probe = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
           expression: `(async () => {
             const label = ${JSON.stringify(label)};
-            const els = [...document.querySelectorAll('button, [role=button]')]
+            let els = [...document.querySelectorAll('button, [role=button]')]
               .filter(e => (e.textContent||'').trim() === label
                 && e.isConnected);
+            // 可见过滤后再判唯一（ERPNext 铁证：页面有隐藏模板副本+真按钮
+            // =2 命中直接 miss——隐藏者不参与唯一性竞争）
+            const vis = els.filter(e => e.getBoundingClientRect().width > 0);
+            if (vis.length >= 1) els = vis;
             if (els.length !== 1) return {count: els.length, actionable: false};
             const el = els[0];
             const st = getComputedStyle(el);
@@ -688,8 +692,10 @@ async function execute(
           const el = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
             expression: `(async () => {
               const label = ${JSON.stringify(label)};
-              const els = [...document.querySelectorAll('button, [role=button]')]
+              let els = [...document.querySelectorAll('button, [role=button]')]
                 .filter(e => (e.textContent||'').trim() === label && e.isConnected);
+              const vis = els.filter(e => e.getBoundingClientRect().width > 0);
+              if (vis.length >= 1) els = vis;
               if (els.length !== 1) return '';
               els[0].click();
               return 'ok';
@@ -921,6 +927,21 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
             const trig = [...row.querySelectorAll("a, span, button, [role=button]")]
               .filter(el => visible(el) && (el.textContent || "").trim() === label);
             if (trig.length) { els = [trig[0]]; rowAnchor = c.anchor || ""; break; }
+          }
+        } else if (c.strategy === "text" && (c.selector || "").startsWith("//")) {
+          // text 类候选是 XPath（normalize-space 精确匹配）——
+          // querySelectorAll 不支持会静默空（Odoo 行内 <a>S00001</a> 实证：
+          // 唯一命中通道）。等价语义：全可见元素精确文本匹配，优先可
+          // 交互元素（a/button）再泛元素
+          const exact = (el) => (el.textContent || "").trim() === label;
+          const interact = [...document.querySelectorAll("a, button, [role=button]")]
+            .filter(el => visible(el) && exact(el));
+          if (interact.length) { els = [interact[0]]; }
+          else {
+            const any = [...document.querySelectorAll("a, button, span, td, div")]
+              .filter(el => visible(el) && exact(el)
+                && ![...el.children].some(ch => exact(ch)));
+            if (any.length) els = [any[0]];
           }
         } else {
           els = [...document.querySelectorAll(c.selector)].filter(visible);
