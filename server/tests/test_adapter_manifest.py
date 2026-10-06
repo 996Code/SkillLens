@@ -129,8 +129,10 @@ def test_repo_seven_system_adapters_validate():
     linted_files = {l.file for l in lints}
     assert linted_files <= {"ruoyi.yaml", "jeecg.yaml", "snipe.yaml",
                             "erpnext.yaml", "dolibarr.yaml", "zentao.yaml",
-                            "odoo.yaml"}
+                            "odoo.yaml", "firefly.yaml"}
     for m in manifests:
+        if m.id == "firefly":
+            continue  # P4 终验清单（演示容器——无 probes/flows 精简声明）
         assert m.probes, f"{m.id} 无探针"
         assert m.chains, f"{m.id} 无业务链"
 
