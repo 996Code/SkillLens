@@ -106,3 +106,15 @@ async def adapter_fingerprint(body: FingerprintRequest) -> dict:
         {"interaction_profile": profile.model_dump()},
         allow_unicode=True, default_flow_style=False, sort_keys=False)
     return {"fingerprint": fp, "profile_yaml": ip_yaml}
+
+
+@router.get("/adapters/match")
+async def adapter_match_by_url(url: str) -> dict:
+    """P2.5 URL 自动配对（插件采集侧消费）：录制的页面 URL → 命中的
+    adapter id（url_matches 通配符——油猴 @match 语义）。未命中=空。"""
+    from app.adapters.manifest import load_adapter_dir
+    from app.adapters.urlmatch import match_adapter
+    manifests, _ = load_adapter_dir(ADAPTERS_DIR)
+    hit = match_adapter(url, manifests)
+    return {"adapter_id": hit.id if hit else None,
+            "label": hit.label if hit else None}

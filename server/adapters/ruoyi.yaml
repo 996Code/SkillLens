@@ -40,6 +40,8 @@ chains:
       - skill: RuoYiRoleCreate
         overrides: {"请输入角色名称": "SL回放${ts}", "请输入权限字符": "sl_replay_${ts}"}
         verify: {probe: role_count, expect: increased}
+url_matches: ["http://127.0.0.1:8093/*"]   # P2.5 油猴式接管声明：URL 命中即配对本系统
+
 
 # P1 交互画像（平台化组件化）
 interaction_profile:

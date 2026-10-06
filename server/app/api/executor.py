@@ -220,19 +220,25 @@ async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
     db.commit()
     db.refresh(run)
     # P1 交互画像随 plan 下发（执行器解释——系统交互差异声明式适配）；
-    # 同时落 run.plan（复现/诊断可查）
+    # 同时落 run.plan（复现/诊断可查）。
+    # P2.5 定位方式：goto URL → url_matches 通配符自动配对（油猴 @match
+    # 语义——新系统接入零改代码）；URL 未命中回退 skill.system 映射
     ip_dump = None
     try:
         from app.adapters.manifest import load_adapter_dir as _lad
+        from app.adapters.urlmatch import match_adapter as _ma
         from pathlib import Path as _P
         _mans, _ = _lad(_P(__file__).resolve().parents[2] / "adapters")
-        _sys = {("禅道项目"): "zentao", ("若依权限"): "ruoyi", ("JeecG 表单"): "jeecg",
-                ("ERPNext 客户"): "erpnext", ("Snipe 资产"): "snipe",
-                ("Dolibarr 订单"): "dolibarr", ("Odoo 销售"): "odoo"}.get(skill.system or "")
-        if _sys:
-            _m = next((x for x in _mans if x.id == _sys), None)
-            if _m and _m.interaction_profile:
-                ip_dump = _m.interaction_profile.model_dump()
+        _goto_url = next((i.get("url") for i in instructions
+                          if i.get("op") == "goto"), "")
+        _m = _ma(_goto_url, _mans) if _goto_url else None
+        if _m is None:
+            _sys = {("禅道项目"): "zentao", ("若依权限"): "ruoyi", ("JeecG 表单"): "jeecg",
+                    ("ERPNext 客户"): "erpnext", ("Snipe 资产"): "snipe",
+                    ("Dolibarr 订单"): "dolibarr", ("Odoo 销售"): "odoo"}.get(skill.system or "")
+            _m = next((x for x in _mans if x.id == _sys), None) if _sys else None
+        if _m and _m.interaction_profile:
+            ip_dump = _m.interaction_profile.model_dump()
     except Exception:
         pass
     if ip_dump:

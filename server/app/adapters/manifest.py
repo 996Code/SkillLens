@@ -187,6 +187,10 @@ class Manifest(BaseModel):
     probes: list[Probe] = []
     chains: list[Chain] = []
     interaction_profile: InteractionProfile | None = None
+    # P2.5 URL 通配符匹配（油猴 @match 语义）：声明此清单接管哪些 URL——
+    # goto/采集 URL 命中即自动配对该系统的画像/链路/组件（自动隔离）；
+    # specificity=去通配符长度（具体规则胜过通配）
+    url_matches: list[str] = Field(default_factory=list)
 
 
 def _steps_from_raw(raw: list) -> list[Step]:

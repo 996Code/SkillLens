@@ -16,11 +16,25 @@ export async function startRecording(
   note: string,
   source: string = "real_traffic",
 ): Promise<{ id: string }> {
-  // popup 用户手动开录 = 真实用户流量（S10 C2 标记）；auto_record 经消息显式传 demo
+  // popup 用户手动开录 = 真实用户流量（S10 C2 标记）；auto_record 经消息显式传 demo。
+  // P2.5 自动隔离：当前活动页 URL → 服务端 url_matches 通配符配对
+  // （油猴 @match 语义）——命中 adapter 即以该系统建会话；未命中回退 njmind
+  let targetSystem = "njmind";
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.url?.startsWith("http")) {
+      const m = await fetch(
+        `${AGENT_URL}/adapters/match?url=${encodeURIComponent(tab.url)}`);
+      if (m.ok) {
+        const body = await m.json();
+        if (body.adapter_id) targetSystem = body.adapter_id;
+      }
+    }
+  } catch { /* 配对失败回退默认——不阻塞录制 */ }
   const res = await fetch(`${AGENT_URL}/sessions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ target_system: "njmind", note, source }),
+    body: JSON.stringify({ target_system: targetSystem, note, source }),
   });
   if (!res.ok) throw new Error(`create session failed: ${res.status}`);
   const session = await res.json();
