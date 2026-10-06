@@ -131,6 +131,52 @@ class Chain(BaseModel):
     replay: list[ReplayWithVerify] = []
 
 
+class DropdownProfile(BaseModel):
+    """下拉菜单交互（ant-dropdown/el-dropdown 家族差异声明）。"""
+    engine: str = "generic"                 # ant-design | element-plus | generic
+    menu_item_match: str = "exact"          # exact | includes（图标文本混入）
+    menu_item_click: str = "trusted"        # trusted（React mousedown 委托）| elclick
+    mount_wait_ms: int = 400                # 菜单挂载重试窗口
+
+
+class ModalSubmitProfile(BaseModel):
+    """模态提交按钮（footer 多同名/隐藏副本的选取规则）。"""
+    selector: str = ".ant-modal-content, .modal-content, [role=dialog]"
+    button_regex: str = "保存|确定|提\\s*交"
+    pick: str = "last_visible"              # last_visible | first_visible
+    render_wait_ms: int = 800
+
+
+class FormFillProfile(BaseModel):
+    """表单填充定位器序与框架通道。"""
+    framework: str = "generic"              # generic | frappe
+    field_locators: list[str] = Field(default_factory=lambda: [
+        "data-fieldname", "placeholder", "form-item-label", "name-attr"])
+    same_label_priority: str = "modal_first"  # modal_first | first
+
+
+class RowActionProfile(BaseModel):
+    """表格行操作（行锚/滚入）。"""
+    anchor_match: str = "sensitive"          # insensitive（存储层 lowercase）
+    scroll_into_view: bool = True
+
+
+class RouteGuardProfile(BaseModel):
+    """SPA 路由守卫（异步 set_route 跳变防护+实例 URL 归一）。"""
+    async_set_route: bool = False
+    normalize_new_suffix: bool = False       # /new-xxx 随机后缀剥离
+
+
+class InteractionProfile(BaseModel):
+    """交互画像（P1 平台化组件化）：执行器特化分支的声明式载体——
+    新系统接入改 YAML 不改执行器源码。"""
+    dropdown: DropdownProfile | None = None
+    modal_submit: ModalSubmitProfile | None = None
+    form_fill: FormFillProfile | None = None
+    row_action: RowActionProfile | None = None
+    route_guard: RouteGuardProfile | None = None
+
+
 class Manifest(BaseModel):
     id: str
     label: str = ""
@@ -140,6 +186,7 @@ class Manifest(BaseModel):
     flows: list[FlowDef] | None = None
     probes: list[Probe] = []
     chains: list[Chain] = []
+    interaction_profile: InteractionProfile | None = None
 
 
 def _steps_from_raw(raw: list) -> list[Step]:

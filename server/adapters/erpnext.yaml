@@ -23,3 +23,26 @@ chains:
   - name: crm-chain
     rounds: 2
     skills: [CustomerCreate, QuotationCreate, SalesOrderCreate]
+
+# P1 交互画像（平台化组件化）
+interaction_profile:
+  dropdown:
+    engine: generic
+    menu_item_match: includes
+    menu_item_click: trusted
+    mount_wait_ms: 300
+  modal_submit:
+    selector: .modal-content, [role=dialog]
+    button_regex: 'Save|Submit|Yes'
+    pick: first_visible
+    render_wait_ms: 600
+  form_fill:
+    framework: frappe                  # cur_frm.set_value/model.set_value 通道
+    field_locators: [data-fieldname, placeholder, name-attr]
+    same_label_priority: modal_first
+  row_action:
+    anchor_match: sensitive
+    scroll_into_view: true
+  route_guard:
+    async_set_route: true              # SPA 异步跳变防护（236 铁证）
+    normalize_new_suffix: true         # /new-xxx 随机后缀归一

@@ -131,3 +131,56 @@ def test_repo_seven_system_adapters_validate():
     for m in manifests:
         assert m.probes, f"{m.id} 无探针"
         assert m.chains, f"{m.id} 无业务链"
+
+
+def test_interaction_profile_roundtrip():
+    """P1 交互画像（平台化组件化）：dropdown/modal_submit/form_fill/row_action/
+    route_guard 五维声明——执行器特化分支的声明式载体。"""
+    doc = """
+id: demo
+label: 演示系统
+target: {base_url: "http://t"}
+credentials: {username: u, password_literal: p}
+interaction_profile:
+  dropdown:
+    engine: ant-design
+    menu_item_match: includes
+    menu_item_click: trusted
+    mount_wait_ms: 400
+  modal_submit:
+    selector: .ant-modal-content
+    button_regex: '保存|确定|提\s*交|同步'
+    pick: last_visible
+    render_wait_ms: 800
+  form_fill:
+    framework: generic
+    field_locators: [placeholder, form-item-label, name-attr]
+    same_label_priority: modal_first
+  row_action:
+    anchor_match: insensitive
+    scroll_into_view: true
+  route_guard:
+    async_set_route: true
+    normalize_new_suffix: true
+"""
+    m, lints = load_manifest_text(doc)
+    ip = m.interaction_profile
+    assert ip is not None
+    assert ip.dropdown.engine == "ant-design"
+    assert ip.dropdown.menu_item_match == "includes"
+    assert ip.dropdown.menu_item_click == "trusted"
+    assert ip.modal_submit.pick == "last_visible"
+    assert "placeholder" in ip.form_fill.field_locators
+    assert ip.row_action.anchor_match == "insensitive"
+    assert ip.route_guard.async_set_route is True
+
+
+def test_interaction_profile_defaults():
+    """无画像（存量 7 清单）——None 容错（执行器走通用默认）。"""
+    doc = """
+id: demo2
+target: {base_url: "http://t"}
+credentials: {username: u, password_literal: p}
+"""
+    m, _ = load_manifest_text(doc)
+    assert m.interaction_profile is None

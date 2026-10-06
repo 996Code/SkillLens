@@ -76,6 +76,9 @@ export async function runSkill(
     body: JSON.stringify({ overrides, confirm_side_effect: true }),
   });
   const runId: number = plan.run_id;
+  // P1 交互画像（平台化组件化）：系统交互差异的声明式载体——执行器
+  // 特化行为改为画像解释（无画像走内置默认=通用行为）
+  (globalThis as any).__ip = plan.interaction_profile || null;
   onProgress(`已创建执行 #${runId}（${plan.total_instructions} 条指令）`);
 
   // 执行页签获取：优先复用已存在的空白页签（CDP 托管浏览器里
@@ -448,17 +451,22 @@ async function execute(
     // 开着的 dropdown 菜单项最优先（JeecG 270 铁证：seq3 开菜单后 seq4
     // 的目标就是菜单项——resolver/探针查 button 全空转，菜单保持开着
     // 点击落空。菜单项是 li 非 button，React onClick 走 mousedown 委托
-    // 必须 trusted 坐标点击。菜单挂载 ~200ms——带重试窗口）
+    // 必须 trusted 坐标点击。P1：匹配模式/挂载窗口由画像 dropdown 驱动）
+    const ipDD = (globalThis as any).__ip?.dropdown;
+    const ddMatch = ipDD?.menu_item_match || "includes";
+    const ddWaitMs = ipDD?.mount_wait_ms || 400;
     if (ins.op === "click") {
       for (let ddWait = 0; ddWait < 3; ddWait++) {
         const ddItem = await chrome.debugger.sendCommand(debuggee,
           "Runtime.evaluate", {
             expression: `(() => {
               const label = ${JSON.stringify(label)};
+              const match = (t) => ${JSON.stringify(ddMatch)} === 'exact'
+                ? t === label : t.includes(label);
               const items = [...document.querySelectorAll(
                 '.ant-dropdown-menu-item, .el-dropdown-menu__item')]
                 .filter(e => e.getBoundingClientRect().width > 0
-                  && (e.textContent||'').trim().includes(label));
+                  && match((e.textContent||'').trim()));
               if (!items.length) return '';
               const r = items[0].getBoundingClientRect();
               return JSON.stringify({x: r.x + r.width/2, y: r.y + r.height/2});
@@ -477,7 +485,7 @@ async function execute(
           onProgress(`click ${label}（菜单项）`);
           return { seq: ins.seq, result: "ok", evidence };
         }
-        await sleep(400);
+        await sleep(ddWaitMs);
       }
     }
     // fill 直通 JS 设值（官方 harness 本质：data-fieldname/placeholder/
@@ -769,18 +777,27 @@ async function execute(
     }
     // 模态提交分支前置（270 铁证：「开始同步」在同步确认 modal 里——
     // resolver 对 modal footer 按钮必 miss，miss return 后模态分支永远
-    // 执行不到）。modal 渲染窗口重试（dropdown 项点击后 1-2s 才可见）
-    if (ins.op === "click" && /保存|确定|提\s*交|同步/.test(label)) {
+    // 执行不到）。P1：按钮正则/选择器/取位由交互画像 modal_submit 驱动
+    // （无画像走默认）
+    const ipMS = (globalThis as any).__ip?.modal_submit;
+    const msRegex = ipMS?.button_regex || "保存|确定|提\\s*交|同步";
+    const msSelector = ipMS?.selector || ".ant-modal-content, .ant-drawer-content";
+    const msPick = ipMS?.pick || "last_visible";
+    if (ins.op === "click" && new RegExp(msRegex).test(label)) {
       let modalBtn: any = null;
       for (let w = 0; w < 4 && modalBtn?.result?.value !== "ok"; w++) {
         modalBtn = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
           expression: `(function(){
-            const modal = document.querySelector('.ant-modal-content, .ant-drawer-content');
+            const modal = document.querySelector(${JSON.stringify(msSelector)});
             if (!modal || modal.getBoundingClientRect().width === 0) return '';
+            const re = new RegExp(${JSON.stringify(msRegex)});
             const btns = [...modal.querySelectorAll('button')]
-              .filter(e => /保存|确定|提\\s*交|同步/.test((e.textContent||'').trim())
+              .filter(e => re.test((e.textContent||'').trim())
                 && e.getBoundingClientRect().width > 0);
-            if (btns.length) { btns[btns.length - 1].click(); return 'ok'; }
+            if (btns.length) {
+              (${JSON.stringify(msPick)} === 'first_visible' ? btns[0] : btns[btns.length - 1]).click();
+              return 'ok';
+            }
             return '';
           })()`, returnByValue: true }).catch(() => null);
         if (modalBtn?.result?.value !== "ok") await sleep(800);

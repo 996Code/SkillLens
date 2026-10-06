@@ -36,3 +36,26 @@ chains:
         overrides: {"*表名": "sl_rp${ts}", "*表描述": "SL回放表单${ts}"}
       - skill: "271"
         overrides: {"*表名": "sl_rp${ts}", "*表描述": "SL回放表单${ts}"}
+
+# P1 交互画像（平台化组件化——executor 特化分支的声明式载体）
+interaction_profile:
+  dropdown:
+    engine: ant-design
+    menu_item_match: includes          # 图标文本混入——精确===不中（270 铁证）
+    menu_item_click: trusted           # React onClick 走 mousedown 委托
+    mount_wait_ms: 400
+  modal_submit:
+    selector: .ant-modal-content, .ant-drawer-content
+    button_regex: '保存|确定|提\s*交|同步'
+    pick: last_visible                 # footer 多同名隐藏副本（JeecG 实证）
+    render_wait_ms: 800
+  form_fill:
+    framework: generic
+    field_locators: [placeholder, form-item-label, name-attr]
+    same_label_priority: modal_first   # 查询栏与 modal 同 label（269 铁证）
+  row_action:
+    anchor_match: insensitive          # 表名 lowercase 存储（270 铁证）
+    scroll_into_view: true
+  route_guard:
+    async_set_route: false
+    normalize_new_suffix: false
