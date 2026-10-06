@@ -357,6 +357,41 @@ async function execute(
   }
   if (ins.op === "click" || ins.op === "fill") {
     const label = ins.label || ins.name || "";
+    // 开着的 dropdown 菜单项最优先（JeecG 270 铁证：seq3 开菜单后 seq4
+    // 的目标就是菜单项——resolver/探针查 button 全空转，菜单保持开着
+    // 点击落空。菜单项是 li 非 button，React onClick 走 mousedown 委托
+    // 必须 trusted 坐标点击。菜单挂载 ~200ms——带重试窗口）
+    if (ins.op === "click") {
+      for (let ddWait = 0; ddWait < 3; ddWait++) {
+        const ddItem = await chrome.debugger.sendCommand(debuggee,
+          "Runtime.evaluate", {
+            expression: `(() => {
+              const label = ${JSON.stringify(label)};
+              const items = [...document.querySelectorAll(
+                '.ant-dropdown-menu-item, .el-dropdown-menu__item')]
+                .filter(e => e.getBoundingClientRect().width > 0
+                  && (e.textContent||'').trim().includes(label));
+              if (!items.length) return '';
+              const r = items[0].getBoundingClientRect();
+              return JSON.stringify({x: r.x + r.width/2, y: r.y + r.height/2});
+            })()`, returnByValue: true }).catch(() => null);
+        let ddPos: {x: number, y: number} | null = null;
+        try { ddPos = JSON.parse(ddItem?.result?.value || "") || null; } catch { /* null */ }
+        if (ddPos) {
+          await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+            type: "mouseMoved", x: ddPos.x, y: ddPos.y });
+          await sleep(300);
+          await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+            type: "mousePressed", x: ddPos.x, y: ddPos.y, button: "left", clickCount: 1 });
+          await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+            type: "mouseReleased", x: ddPos.x, y: ddPos.y, button: "left", clickCount: 1 });
+          await sleep(1200);
+          onProgress(`click ${label}（菜单项）`);
+          return { seq: ins.seq, result: "ok", evidence };
+        }
+        await sleep(400);
+      }
+    }
     // fill 直通 JS 设值（官方 harness 本质：data-fieldname/placeholder/
     // form-item label 三级查找+input 事件派发——ERPNext 234 PASS 实证；
     // resolver 候选对 fill 的 form-group 命中错元素/多元素 miss 实证）
@@ -740,6 +775,31 @@ async function execute(
           })()`, returnByValue: true, awaitPromise: true }).catch(() => null);
         const p = probe?.result?.value;
         if (p?.actionable) {
+          // 行内 ant-dropdown 触发器前置检测（JeecG 270 铁证：行内「更多」
+          // button 在表格行内且页面有同名多行——elClick 开不了 ant-dropdown
+          // 菜单，且**elClick+trusted 连点会 toggle 抵消**（JS click 先翻转
+          // React 状态，trusted 再点=关）。命中行内元素时直接 trusted 点击）
+          const isRowDropdownTrigger = await chrome.debugger.sendCommand(debuggee,
+            "Runtime.evaluate", {
+              expression: `(() => {
+                const label = ${JSON.stringify(label)};
+                const els = [...document.querySelectorAll('button, [role=button]')]
+                  .filter(e => (e.textContent||'').trim() === label
+                    && e.getBoundingClientRect().width > 0);
+                if (els.length < 1) return false;
+                return els.some(e => !!e.closest('.ant-table-row, .list-item, .grid-row, tr'));
+              })()`, returnByValue: true }).catch(() => null);
+          if (isRowDropdownTrigger?.result?.value === true) {
+            await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+              type: "mouseMoved", x: p.x, y: p.y });
+            await sleep(400);
+            await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+              type: "mousePressed", x: p.x, y: p.y, button: "left", clickCount: 1 });
+            await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+              type: "mouseReleased", x: p.x, y: p.y, button: "left", clickCount: 1 });
+            await sleep(900);
+            return { clicked: true };
+          }
           // hover-dropdown 触发器检测：命中元素在 el-dropdown 容器内
           // （trigger:"hover"）——elClick 无效（JS click 不触发 hover 菜单，
           // 若依 258 铁证），必须 trusted mouseMoved 停留等菜单挂载
@@ -762,6 +822,34 @@ async function execute(
             return { clicked: true };
           }
           // elClick 首选（React onClick 直触发，无坐标事件流的 mask 副作用）
+          // **ant-dropdown 菜单项例外**（JeecG 270 铁证：菜单项 li 的 JS click
+          // 不触发 onClick（React 事件委托在 li 的 mousedown），必须 trusted
+          // 坐标——elClick 点后 dropdown 不关、modal 不开）
+          const ddItem = await chrome.debugger.sendCommand(debuggee,
+            "Runtime.evaluate", {
+              expression: `(() => {
+                const label = ${JSON.stringify(label)};
+                const items = [...document.querySelectorAll(
+                  '.ant-dropdown-menu-item, .el-dropdown-menu__item')]
+                  .filter(e => (e.textContent||'').trim() === label
+                    && e.getBoundingClientRect().width > 0);
+                if (!items.length) return '';
+                const r = items[0].getBoundingClientRect();
+                return JSON.stringify({x: r.x + r.width/2, y: r.y + r.height/2});
+              })()`, returnByValue: true }).catch(() => null);
+          let ddPos: {x: number, y: number} | null = null;
+          try { ddPos = JSON.parse(ddItem?.result?.value || "") || null; } catch { /* null */ }
+          if (ddPos) {
+            await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+              type: "mouseMoved", x: ddPos.x, y: ddPos.y });
+            await sleep(300);
+            await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+              type: "mousePressed", x: ddPos.x, y: ddPos.y, button: "left", clickCount: 1 });
+            await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+              type: "mouseReleased", x: ddPos.x, y: ddPos.y, button: "left", clickCount: 1 });
+            await sleep(1000);
+            return { clicked: true };
+          }
           const el = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
             expression: `(async () => {
               const label = ${JSON.stringify(label)};
@@ -774,10 +862,38 @@ async function execute(
               return 'ok';
             })()`, returnByValue: true, awaitPromise: true }).catch(() => null);
           if (el?.result?.value === "ok") {
-            // hover-dropdown 检测（若依 258 铁证）：span 触发器 elClick 后
-            // hover 菜单可能已被 trusted mouseMoved 段前序展开——等菜单
-            // 挂载后鼠标流入保持（不流入则菜单即将自动关）
-            await sleep(600);
+            // ant-dropdown 触发器检测（JeecG 270 铁证：行内「更多」button
+            // elClick 后 ant-dropdown 菜单**不展开**（需 trusted 事件）——
+            // elClick 后验证菜单挂载，未挂载则改 trusted 坐标点击）
+            await sleep(900);
+            const ddOpen = await chrome.debugger.sendCommand(debuggee,
+              "Runtime.evaluate", {
+                expression: `(() => {
+                  const items = [...document.querySelectorAll(
+                    '.ant-dropdown-menu-item, .el-dropdown-menu__item')]
+                    .filter(e => e.getBoundingClientRect().width > 0);
+                  return items.length;
+                })()`, returnByValue: true }).catch(() => null);
+            const menuCount = Number(ddOpen?.result?.value || 0);
+            const inDropdownHost = await chrome.debugger.sendCommand(debuggee,
+              "Runtime.evaluate", {
+                expression: `(() => {
+                  const label = ${JSON.stringify(label)};
+                  return [...document.querySelectorAll(
+                    '.ant-table-row, .ant-dropdown, .el-dropdown')]
+                    .some(host => (host.textContent||'').includes(label));
+                })()`, returnByValue: true }).catch(() => null);
+            if (menuCount === 0 && inDropdownHost?.result?.value === true) {
+              // trusted 坐标点击同元素（开 ant-dropdown 菜单）
+              await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+                type: "mouseMoved", x: p.x, y: p.y });
+              await sleep(300);
+              await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+                type: "mousePressed", x: p.x, y: p.y, button: "left", clickCount: 1 });
+              await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+                type: "mouseReleased", x: p.x, y: p.y, button: "left", clickCount: 1 });
+              await sleep(900);
+            }
             return { clicked: true };
           }
           // trusted 坐标兜底（elClick 未命中时）——**hover 流入版**：
@@ -1073,11 +1189,22 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
         }
       } catch (e) { continue; }
       // role 精确匹配放宽：多个同名可见按钮时取第一个（ERPNext Save
-      // 实证 texts 有 Save 但唯一性判定 miss——主按钮通常文档序最前）
+      // 实证 texts 有 Save 但唯一性判定 miss——主按钮通常文档序最前）。
+      // 行锚存在时优先锚行内的命中（JeecG 270 铁证：9 行各有「更多」
+      // button——放宽取第一行=错行，dropdown 开在别的表上，同步链全断）
       if (els.length === 1 || (els.length > 1 && c.kind === "role")) {
-        const r = els[0].getBoundingClientRect();
-        return {hit: true, strategy: c.strategy, tagCls: (els[0].className || ""),
-          tagName: (els[0].tagName || "").toLowerCase(),
+        let pick = els[0];
+        if (els.length > 1 && rowAnchor) {
+          const inRow = els.filter(e => {
+            const row = e.closest('.ant-table-row, .list-item, .grid-row, tr');
+            return row && (row.textContent || "").toLowerCase()
+              .includes(rowAnchor.toLowerCase());
+          });
+          if (inRow.length >= 1) pick = inRow[0];
+        }
+        const r = pick.getBoundingClientRect();
+        return {hit: true, strategy: c.strategy, tagCls: (pick.className || ""),
+          tagName: (pick.tagName || "").toLowerCase(),
           anchorTxt: rowAnchor || "",
           rect: {x: r.x, y: r.y, width: r.width, height: r.height}};
       }
