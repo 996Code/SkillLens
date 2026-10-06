@@ -47,3 +47,12 @@ interaction_profile:
   route_guard:
     async_set_route: false
     normalize_new_suffix: false
+
+flows:
+  - name: model-chain
+    steps:
+      - goto: /hardware/models
+      - click: "a:has-text(\"Create New\")"
+      - wait: "4"
+      - fill: ["input[name=name]", "SL模型${data}"]
+      - click: "button:has-text(\"Save\")"

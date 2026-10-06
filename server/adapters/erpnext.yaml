@@ -48,3 +48,10 @@ interaction_profile:
   route_guard:
     async_set_route: true              # SPA 异步跳变防护（236 铁证）
     normalize_new_suffix: true         # /new-xxx 随机后缀归一
+
+flows:
+  - name: supplier-chain
+    steps:
+      - goto: /app/supplier/new
+      - fill: ["[data-fieldname=supplier_name] input", "SL供应商${data}"]
+      - click: "button[data-label=Save]"

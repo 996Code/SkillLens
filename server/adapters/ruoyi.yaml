@@ -65,3 +65,11 @@ interaction_profile:
   route_guard:
     async_set_route: false
     normalize_new_suffix: false
+
+flows:
+  - name: dept-chain
+    steps:
+      - goto: /system/dept
+      - click: "button:has-text(\"新增\")"
+      - fill: ["input[placeholder=请输入部门名称]", "SL部门${data}"]
+      - click: ".el-dialog .el-button--primary"

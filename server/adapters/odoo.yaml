@@ -47,3 +47,10 @@ interaction_profile:
   route_guard:
     async_set_route: false
     normalize_new_suffix: false
+
+flows:
+  - name: crm-lead-chain
+    steps:
+      - goto: /odoo/crm/new
+      - fill: ["input[name=name]", "SL线索${data}"]
+      - click: "button:has-text(\"Save\")"

@@ -3,36 +3,42 @@
     "system": "jeecg",
     "round": 1,
     "skill": 269,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1512
   },
   {
     "system": "jeecg",
     "round": 1,
     "skill": 270,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1513
   },
   {
     "system": "jeecg",
     "round": 1,
     "skill": 271,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1514
   },
   {
     "system": "jeecg",
     "round": 2,
     "skill": 269,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1515
   },
   {
     "system": "jeecg",
     "round": 2,
     "skill": 270,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1516
   },
   {
     "system": "jeecg",
     "round": 2,
     "skill": 271,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1517
   }
 ]

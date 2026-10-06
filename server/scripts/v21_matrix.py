@@ -33,15 +33,15 @@ CHAINS = {
     # 169 排除（录制语义歧义：label「执行」匹配到左侧导航菜单而非 CaseRun
     # 行操作——与 AF4 归档的 iframe 二级操作采集限制同源；菜单点击导航到
     # 别的页面致后续步必然 miss）
-    "zentao": {"name": "QA 链", "skills": [166, 167, 168],
+    "zentao": {"name": "QA 链", "skills": [166, 167, 168, 285],
                "ext_pick": 166},
-    "erpnext": {"name": "CRM 链", "skills": [234, 235, 236],
+    "erpnext": {"name": "CRM 链", "skills": [234, 235, 236, 287],
                 "ext_pick": 234},
     "snipe": {"name": "资产链", "skills": [154, 155, 156],
               "ext_pick": 154},
-    "ruoyi": {"name": "权限链", "skills": [256, 257, 258],
+    "ruoyi": {"name": "权限链", "skills": [256, 257, 258, 277],
               "ext_pick": 256},
-    "jeecg": {"name": "表单链", "skills": [269, 270, 271],
+    "jeecg": {"name": "表单链", "skills": [269, 270, 271, 276],
               "ext_pick": 271},
 }
 

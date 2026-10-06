@@ -47,3 +47,11 @@ interaction_profile:
   route_guard:
     async_set_route: false
     normalize_new_suffix: false
+
+flows:
+  - name: product-chain
+    steps:
+      - goto: /product/card.php?action=create
+      - fill: ["input[name=ref]", "SLPROD${data}"]
+      - fill: ["input[name=label]", "SL产品${data}"]
+      - click: "button:has-text(\"Create\")"

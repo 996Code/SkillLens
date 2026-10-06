@@ -61,3 +61,12 @@ interaction_profile:
   route_guard:
     async_set_route: false
     normalize_new_suffix: false
+
+flows:
+  - name: dict-chain
+    steps:
+      - goto: /system/dict
+      - click: "button:has-text(\"新增\")"
+      - fill: ["input#form_item_dictName", "SL字典${data}"]
+      - fill: ["input#form_item_dictCode", "sl_dict_${data}"]
+      - click: ".ant-modal .ant-btn-primary"
