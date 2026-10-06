@@ -10,7 +10,7 @@ import type { AgentRunDetail, CanvasEdge, CanvasNode } from "../api";
 const NODE_TYPES = [
   { type: "change_source", label: "变更集源", desc: "api_templates", icon: "◈", color: "#4f46e5" },
   { type: "impact_select", label: "Impact", desc: "反查受影响 skill", icon: "⬡", color: "#0ea5e9" },
-  { type: "replay_batch", label: "批回放", desc: "批量回放", icon: "▶", color: "#16a34a" },
+  { type: "replay_batch", label: "批量执行", desc: "批量自动执行", icon: "▶", color: "#16a34a" },
   { type: "aggregate", label: "聚合", desc: "结果计数", icon: "Σ", color: "#d97706" },
   { type: "review_output", label: "评审输出", desc: "markdown 摘要", icon: "✓", color: "#7c3aed" },
 ];

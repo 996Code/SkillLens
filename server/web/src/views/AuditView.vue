@@ -127,7 +127,7 @@ onMounted(async () => {
   <section>
     <h1>审计</h1>
     <p class="muted page-desc">
-      C3 全链路落库的可视化入口：会话 → 窗口过滤 → 语义动作 → 对齐 → Skill → 回放，
+      C3 全链路落库的可视化入口：会话 → 窗口过滤 → 语义动作 → 对齐 → Skill → 自动执行，
       以及证据边与 LLM 调用摘要（均为只读视图）。
     </p>
 
@@ -248,9 +248,9 @@ onMounted(async () => {
           </li>
         </ul>
 
-        <!-- 回放历史 -->
-        <h3>回放历史（{{ trace.replay_runs.length }}）</h3>
-        <p v-if="trace.replay_runs.length === 0" class="muted">未回放</p>
+        <!-- 执行历史 -->
+        <h3>执行历史（{{ trace.replay_runs.length }}）</h3>
+        <p v-if="trace.replay_runs.length === 0" class="muted">未执行</p>
         <table v-else class="tbl">
           <thead><tr><th>id</th><th>状态</th><th>模式</th><th>时间</th></tr></thead>
           <tbody>

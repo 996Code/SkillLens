@@ -90,11 +90,11 @@ async function doLogout(): Promise<void> {
 
       <!-- 流水线 -->
       <div class="gw-tree-group">流水线（{{ suites.length }}）</div>
-      <RouterLink to="/graph/suites" class="gw-tree-leaf">▤ 套件管理</RouterLink>
+      <RouterLink to="/graph/suites" class="gw-tree-leaf">▤ 分组管理</RouterLink>
 
-      <!-- 操作流程：按系统分组可折叠 -->
+      <!-- 自动化流程：按系统分组可折叠 -->
       <div class="gw-tree-group">
-        操作流程（{{ skills.length }}）
+        自动化流程（{{ skills.length }}）
       </div>
       <div class="gw-tree-scroll">
         <div v-for="[sys, list] in grouped" :key="sys" class="gw-group">

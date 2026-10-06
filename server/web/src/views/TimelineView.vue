@@ -5,7 +5,7 @@
 //   - 类型过滤 chip（带计数）
 //   - 竖向时间轴：类型色点 + 时间 + 标题 + 摘要
 //   - test_run 项展开：步骤截图墙 + 下钻 run 详情页
-//   - recording 项展开：学到的操作流程清单（链接详情页）
+//   - recording 项展开：学到的自动化流程清单（链接详情页）
 //   - LLM 项展开：完整 prompt/response（IO 全留存）
 import { computed, onMounted, ref } from "vue";
 import { getLlmLogDetail, getReplayRun, getTimeline } from "../api";
@@ -152,7 +152,7 @@ onMounted(() => void load());
   <section>
     <h1>测试活动</h1>
     <p class="muted page-desc">
-      每一次自动测试与录制学习的完整记录：点开看步骤截图、学到的操作流程与
+      每一次自动测试与录制学习的完整记录：点开看步骤截图、学到的自动化流程与
       LLM 输入输出。内部事件（对齐/LLM 调用等）可按需展开。
     </p>
 
@@ -252,14 +252,14 @@ onMounted(() => void load());
               </template>
             </div>
 
-            <!-- 录制学习：学到的操作流程清单 -->
+            <!-- 录制学习：学到的自动化流程清单 -->
             <div
               v-else-if="expandedKey === `recording:${it.id}`"
               class="rec-detail"
               data-testid="rec-detail"
               @click.stop
             >
-              <p class="muted shot-hint">学到的操作流程（{{ (it.skills || []).length }}）</p>
+              <p class="muted shot-hint">学到的自动化流程（{{ (it.skills || []).length }}）</p>
               <ul class="skill-list">
                 <li v-for="s in it.skills || []" :key="s.id">
                   <RouterLink :to="`/graph/skill/${s.id}`">{{ s.name }}</RouterLink>
@@ -267,7 +267,7 @@ onMounted(() => void load());
               </ul>
               <div class="shot-links">
                 <RouterLink to="/graph" class="btn btn-secondary">
-                  查看全部操作流程
+                  查看全部自动化流程
                 </RouterLink>
               </div>
             </div>

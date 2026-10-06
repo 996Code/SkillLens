@@ -9,19 +9,19 @@
     "system": "jeecg",
     "round": 1,
     "skill": 270,
-    "status": "pass"
+    "status": "fail"
   },
   {
     "system": "jeecg",
     "round": 1,
     "skill": 271,
-    "status": "pass"
+    "status": "fail"
   },
   {
     "system": "jeecg",
     "round": 2,
     "skill": 269,
-    "status": "fail"
+    "status": "pass"
   },
   {
     "system": "jeecg",
@@ -33,6 +33,6 @@
     "system": "jeecg",
     "round": 2,
     "skill": 271,
-    "status": "pass"
+    "status": "fail"
   }
 ]

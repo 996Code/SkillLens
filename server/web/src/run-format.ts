@@ -1,4 +1,4 @@
-// S34：回放 run 展示共享格式化（ReplayLaunch / ReplayRunView 两处同源）。
+// S34：执行 run 展示共享格式化（ReplayLaunch / ReplayRunView 两处同源）。
 import type { AssertionResult, PageSnapshot, ReplayPlan } from "./api";
 
 /** 断言明细的人读期望。 */

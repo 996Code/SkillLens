@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // S40 系统总览 v2：真正的图渲染——流水线内嵌 SVG 流程图 +
-// 操作流程按系统分组卡片（含节点色条预览）。不是文字链接假装是图。
+// 自动化流程按系统分组卡片（含节点色条预览）。不是文字链接假装是图。
 import { computed, onMounted, ref } from "vue";
 import { getSkills, listSuites } from "../../api";
 import type { SkillListItem, SuiteItem } from "../../api";
@@ -19,7 +19,7 @@ const bySystem = computed(() => {
     if (!groups.has(sys)) groups.set(sys, []);
     groups.get(sys)!.push(s);
   }
-  const order = ["njmind", "Odoo", "Dolibarr", "ERPNext"];
+  const order = ["njmind 内网", "Odoo 销售", "Dolibarr 订单", "ERPNext 客户", "Snipe 资产", "禅道项目", "若依权限", "JeecG 表单"];
   return [...groups.entries()].sort((a, b) => {
     const ai = order.indexOf(a[0]), bi = order.indexOf(b[0]);
     return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
@@ -41,7 +41,7 @@ onMounted(async () => {
   <section>
     <h1>系统总览</h1>
     <p class="muted page-desc">
-      流水线与操作流程以图组织。点流水线进入执行；点流程查看流程图。
+      流水线与自动化流程以图组织。点流水线进入执行；点流程查看流程图。
     </p>
 
     <p v-if="loading" class="muted">加载中…</p>
@@ -53,7 +53,7 @@ onMounted(async () => {
         <h2>流水线（{{ suites.length }}）</h2>
         <p v-if="!suites.length" class="muted">
           暂无流水线，去
-          <RouterLink to="/graph/suites">套件管理</RouterLink> 创建
+          <RouterLink to="/graph/suites">分组管理</RouterLink> 创建
         </p>
         <div v-else class="pipe-grid">
           <div v-for="s in suites" :key="s.id" class="pipe-card"
@@ -71,7 +71,7 @@ onMounted(async () => {
                 </text>
                 <line x1="80" y1="30" x2="110" y2="30" stroke="var(--color-gray-4)" stroke-width="1.5"
                       marker-end="url(#arrow)"/>
-                <!-- S43-2：点"批量测试"展开流程子图（图内下钻，不跳套件页） -->
+                <!-- S43-2：点"批量测试"展开流程子图（图内下钻，不跳分组页） -->
                 <g class="pipe-batch" :data-testid="`pipe-batch-${s.id}`"
                    @click="expanded[s.id] = !expanded[s.id]">
                   <rect x="115" y="15" width="70" height="30" rx="6"
@@ -113,9 +113,9 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- 操作流程：按系统分组，卡片含节点色条预览 -->
+      <!-- 自动化流程：按系统分组，卡片含节点色条预览 -->
       <div class="block" data-testid="overview-skills">
-        <h2>操作流程（{{ skills.length }}）</h2>
+        <h2>自动化流程（{{ skills.length }}）</h2>
         <div v-for="[sys, list] in bySystem" :key="sys" class="sys-group">
           <div class="sys-head">
             <span class="sys-dot" :data-sys="sys"></span>
@@ -141,7 +141,7 @@ onMounted(async () => {
           </div>
         </div>
         <p v-if="skills.length === 0" class="muted">
-          暂无操作流程，先录制一轮操作
+          暂无自动化流程，先录制一轮操作
         </p>
       </div>
     </template>

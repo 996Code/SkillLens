@@ -128,6 +128,9 @@ class Skill(Base):
     version: Mapped[int] = mapped_column(default=1, server_default="1")
     superseded_by: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    # UX 整改：技能按目标系统分类（对齐 session 首导航 URL 的端口推导；
+    # 「通用」=未识别系统的兜底分类）
+    system: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
 class SkillStrategy(Base):

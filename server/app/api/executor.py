@@ -65,6 +65,7 @@ async def list_executor_skills(db: Session = Depends(get_db)) -> list:
     for s in db.query(Skill).filter(Skill.status != "superseded").all():
         items.append({
             "id": s.id, "name": s.name, "status": s.status,
+            "system": s.system or "通用",
             "requires_confirmation": requires_confirmation(s.skeleton or []),
         })
     return items
@@ -151,16 +152,34 @@ async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
     # 旧表名已存在致 duplicate/check 拒绝、addAll 永不发）。此前 overrides
     # 只存 state 不应用，插件端换参形同虚设。click 步 label 内联旧值时
     # 同步替换（258 铁证：换参后登录昵称变新值，录制 label=旧用户名的
-    # 头像点击步 miss——label 与 fill 值同源）
+    # 头像点击步 miss——label 与 fill 值同源）。
+    # label 替换只允许**实例值类 key**：与某 fill 步 value 同串且 name≠value
+    # ——字段名类 key（JeecG '*表名' 既是变量名又是输入框 label）替换会毁
+    # 聚焦步（豁免条件 label==next.name 断裂——269 双轮 fail 实证）
+    instance_keys = {old for old in body.overrides
+                     if any(i.get("op") == "fill" and i.get("value") == old
+                            and (i.get("name") or "") != old
+                            for i in instructions)}
     for ins in instructions:
         if ins.get("op") == "fill" and ins.get("value") is not None:
             for old, new in body.overrides.items():
                 if ins.get("value") == old or (ins.get("name") or "") == old:
                     ins["value"] = new
         elif ins.get("op") == "click" and ins.get("label"):
-            for old, new in body.overrides.items():
+            for old in instance_keys:
                 if old and old in (ins.get("label") or ""):
-                    ins["label"] = (ins.get("label") or "").replace(old, new)
+                    ins["label"] = (ins.get("label") or "").replace(
+                        old, body.overrides[old])
+        # row-anchor 换参（S43-5 服务端 override 注入行过滤同款语义）：
+        # 行操作候选的 anchor 含旧实例值时替换（270 铁证：行锚=
+        # 上游技能建的表名——换参后列表行是新值，旧锚行匹配空→
+        # 更多菜单开不了→同步链全 miss）
+        for cand in ins.get("resolve_candidates") or []:
+            if cand.get("anchor"):
+                for old, new in body.overrides.items():
+                    if old and old in str(cand.get("anchor")):
+                        cand["anchor"] = str(cand.get("anchor")).replace(
+                            old, new)
     # P2：自愈数据链插件端等效——活跃提案（verified/promoted）的
     # proposed_label 编译进对应 click 步候选首位（服务端 runner 的
     # repair_map 语义）

@@ -88,15 +88,28 @@ def skill_vars(token, skill_id):
         vals = [str(i["value"]) for i in ins
                 if i.get("op") == "fill" and i.get("value")
                 and not str(i["value"]).startswith("[REDACTED]")]
+        # 变量名类 key（value 与 fill name 同串——JeecG '*表名' 既是字段
+        # 名又是输入框 label）从 label 替换集排除：替换会毁聚焦步（豁免
+        # 条件 label==next.name 断裂——269 实证）
+        label_safe = [v for v in vals
+                      if not any(str(i.get("name") or "") == v for i in ins
+                                 if i.get("op") == "fill")]
         # click label 里的**实例值**并入（258 铁证：录制的头像点击 label=
-        # 昵称实例——换参后页面昵称是新值，旧 label 永远 miss）。只收
-        # 含数字后缀的实例类 label——通用操作词（新增/确定/保存…）换参会
-        # 毁掉整链（256 全 label 被替换实证）
+        # 昵称实例——换参后页面昵称是新值，旧 label 永远 miss）。只收与
+        # 本技能 fill 值**同数字后缀**的 label（同源实例）——系统生成值
+        # （Odoo 订单号 S00001 无 fill 源）不换（179 全 label 被误换实证）
         import re as _re
         labels = [str(i["label"]) for i in ins
                   if i.get("op") == "click" and i.get("label")
-                  and _re.search(r"[a-zA-Z]\d{3,}", str(i["label"]))]
-        merged = list(declared | set(vals) | set(labels))
+                  and any(_re.search(r'\d{3,}', str(i["label"]))
+                          and _re.search(r'\d{3,}', str(i["label"])).group(0) in v
+                          for v in label_safe)]
+        # row-anchor 实例值并入（270 铁证：行锚=上游技能建的表名——本技能
+        # 无 fill 但行操作依赖链内换参值；含数字后缀的 anchor 即实例）
+        anchors = [str(c.get("anchor")) for i in ins
+                   for c in i.get("resolve_candidates") or []
+                   if c.get("anchor") and _re.search(r'\d{3,}', str(c.get("anchor")))]
+        merged = list(declared | set(vals) | set(labels) | set(anchors))
         return merged[:10]
     except Exception:
         return list(declared)

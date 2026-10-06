@@ -210,7 +210,7 @@ watch(() => route.params.deltaId, (v) => {
         <h3>性能基线</h3>
         <dl class="meta">
           <div><dt>基线中位数</dt><dd class="mono">{{ perf.baseline.median }}ms（{{ perf.baseline.n }} 次）</dd></div>
-          <div><dt>本次回放</dt><dd class="mono">{{ perf.current_ms ?? "—" }}ms</dd></div>
+          <div><dt>本次执行</dt><dd class="mono">{{ perf.current_ms ?? "—" }}ms</dd></div>
         </dl>
         <div class="perf-trend" data-testid="perf-trend">
           <span
@@ -227,7 +227,7 @@ watch(() => route.params.deltaId, (v) => {
             :title="`本次 ${perf.current_ms}ms`"
           ></span>
         </div>
-        <p class="muted">趋势：最近 {{ perf.history_ms.length }} 次回放耗时（右端亮色为本次）</p>
+        <p class="muted">趋势：最近 {{ perf.history_ms.length }} 次执行耗时（右端亮色为本次）</p>
       </div>
 
       <p class="muted footer">

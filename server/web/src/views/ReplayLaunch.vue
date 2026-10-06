@@ -118,9 +118,9 @@ onMounted(async () => {
 
     <template v-else-if="card">
       <header>
-        <h1>自动测试 · 操作流程 #{{ card.id }}：{{ card.name }}</h1>
+        <h1>自动测试 · 自动化流程 #{{ card.id }}：{{ card.name }}</h1>
         <p class="muted">
-          通过目标 delta 执行自动测试观测（observe）：server 会真实执行回放，
+          通过目标 delta 执行自动测试观测（observe）：server 会真实自动执行，
           结果与 delta 观测一并落库。
         </p>
       </header>
@@ -130,7 +130,7 @@ onMounted(async () => {
         <div class="block">
           <h2>参数覆盖（overrides）</h2>
           <p class="muted hint">
-            留空表示沿用录制时采集的值；填写则回放时覆盖该变量。
+            留空表示沿用录制时采集的值；填写则执行时覆盖该变量。
           </p>
           <p v-if="card.input_variables.length === 0" class="muted">无输入变量</p>
           <div v-else class="override-list">
@@ -165,7 +165,7 @@ onMounted(async () => {
           <h2>目标 delta</h2>
           <p class="muted hint">
             填写已确认（confirmed）的 expected_delta id。提交走
-            POST /expected-deltas/{id}/observe——shadow 回放不产生观测会被 409 拒绝，
+            POST /expected-deltas/{id}/observe——shadow 执行不产生观测会被 409 拒绝，
             需要观测数据请选 execute；未确认的 delta 同样 409。
           </p>
           <input v-model="deltaId" type="text" inputmode="numeric"
@@ -173,7 +173,7 @@ onMounted(async () => {
         </div>
 
         <button type="submit" class="btn btn-primary" :disabled="!canSubmit">
-          {{ submitting ? "测试中…（回放在常驻浏览器窗口执行，完成后此处显示结果）" : "执行自动测试" }}
+          {{ submitting ? "测试中…（自动执行在常驻浏览器窗口执行，完成后此处显示结果）" : "执行自动测试" }}
         </button>
         <p v-if="mode === 'execute' && !confirmed" class="muted gate-hint">
           勾选副作用确认后才能提交（C1 安全门控）。

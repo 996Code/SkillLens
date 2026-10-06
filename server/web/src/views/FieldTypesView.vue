@@ -111,7 +111,7 @@ const sourceBadge: Record<string, string> = {
   <section>
     <h1>字段类型知识库</h1>
     <p class="muted page-desc">
-      表单校验自愈资产：回放遇 JS 校验拦截时按字段类型生成合法值换值重试；
+      表单校验自愈资产：自动执行遇 JS 校验拦截时按字段类型生成合法值换值重试；
       自愈成功自动沉淀（learned）并累计成功次数。人工可维护补充领域规则。
     </p>
 
@@ -139,7 +139,7 @@ const sourceBadge: Record<string, string> = {
       <div class="block" data-testid="ft-list">
         <h2>规则（{{ items.length }}）</h2>
         <p v-if="!items.length" class="muted">
-          暂无沉淀规则——回放自愈成功后会自动出现在这里
+          暂无沉淀规则——自动执行自愈成功后会自动出现在这里
         </p>
         <table v-else class="tbl">
           <thead>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// S34 块 1：回放 run 详情页（竞品差距补齐——run 级下钻：步骤+截图墙+
+// S34 块 1：执行 run 详情页（竞品差距补齐——run 级下钻：步骤+截图墙+
 // 断言明细+归因+前后快照对比，一页全览）。
 // 入口：时间线 replay 项"下钻查看"；数据 GET /replay-runs/{id}。
 import { computed, onMounted, ref } from "vue";
@@ -63,13 +63,13 @@ onMounted(async () => {
     <div v-else-if="notFound" class="empty">
       <span class="empty-icon">∅</span>
       <h1 class="empty-title">404</h1>
-      <p class="empty-sub">回放 run 不存在（<RouterLink to="/graph/timeline">返回时间线</RouterLink>）。</p>
+      <p class="empty-sub">执行 run 不存在（<RouterLink to="/graph/timeline">返回时间线</RouterLink>）。</p>
     </div>
     <p v-else-if="error" class="error">加载失败：{{ error }}</p>
 
     <template v-else-if="run">
       <header>
-        <h1>回放 run #{{ run.id }}</h1>
+        <h1>执行 run #{{ run.id }}</h1>
         <p class="run-line">
           <RouterLink :to="`/graph/skill/${run.skill_id}`">Skill #{{ run.skill_id }}</RouterLink>
           <span class="run-status" :class="`st-${run.status}`">{{ run.status }}</span>
@@ -154,7 +154,7 @@ onMounted(async () => {
 
       <!-- 前后快照对比 -->
       <div v-if="snapshotDiff.length" class="block">
-        <h2>回放前后快照对比（forms）</h2>
+        <h2>执行前后快照对比（forms）</h2>
         <p class="muted hint">只显示有差异的字段（前 10 行）。</p>
         <table class="tbl">
           <thead><tr><th>字段</th><th>before → after</th></tr></thead>

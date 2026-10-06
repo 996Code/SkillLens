@@ -368,6 +368,18 @@ async function execute(
         setVal = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
           expression: `(function(){
             const label = ${JSON.stringify(label)};
+            // Frappe Link 字段优先走 cur_frm.set_value（Frappe 官方
+            // harness 同源：Link 字段的 customer 联动只有 set_value 触发
+            // 服务端解析——JS 设 input.value 不进 Link 事件链，保存时
+            // Customer 空 Missing Fields——ERPNext 235 铁证）
+            try {
+              if (window.cur_frm && cur_frm.doc
+                  && cur_frm.fields_dict[label]
+                  && (cur_frm.fields_dict[label].df || {}).fieldtype === 'Link') {
+                cur_frm.set_value(label, ${JSON.stringify(String(ins.value))});
+                return (cur_frm.doc[label] || '') + '|frm';
+              }
+            } catch (e) { /* 非 Frappe 页面——走通用链 */ }
             let target = null;
             const df = document.querySelector('[data-fieldname="' + label + '"] input');
             if (df && df.getBoundingClientRect().width > 0) target = df;
@@ -499,6 +511,30 @@ async function execute(
       } catch { /* getFrameTree 失败 fail-open */ }
       // JS 设值未命中——落回 resolver 路径（重试+介入）
     }
+    // 模态提交分支前置（270 铁证：「开始同步」在同步确认 modal 里——
+    // resolver 对 modal footer 按钮必 miss，miss return 后模态分支永远
+    // 执行不到）。modal 渲染窗口重试（dropdown 项点击后 1-2s 才可见）
+    if (ins.op === "click" && /保存|确定|提\s*交|同步/.test(label)) {
+      let modalBtn: any = null;
+      for (let w = 0; w < 4 && modalBtn?.result?.value !== "ok"; w++) {
+        modalBtn = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+          expression: `(function(){
+            const modal = document.querySelector('.ant-modal-content, .ant-drawer-content');
+            if (!modal || modal.getBoundingClientRect().width === 0) return '';
+            const btns = [...modal.querySelectorAll('button')]
+              .filter(e => /保存|确定|提\\s*交|同步/.test((e.textContent||'').trim())
+                && e.getBoundingClientRect().width > 0);
+            if (btns.length) { btns[btns.length - 1].click(); return 'ok'; }
+            return '';
+          })()`, returnByValue: true }).catch(() => null);
+        if (modalBtn?.result?.value !== "ok") await sleep(800);
+      }
+      if (modalBtn?.result?.value === "ok") {
+        await sleep(2000);
+        onProgress(`click ${label}（模态提交）`);
+        return { seq: ins.seq, result: "ok", evidence };
+      }
+    }
     // 对齐 locate 语义：异步渲染重试。zcode 纪律（3s 短预算快失败+错误即
     // 导航）：miss 快速上报让服务端介入/豁免接住——重试轮次里绝不 reload
     // （reload 会摧毁已开的 modal——JeecG #269 铁证：seq3 开 modal 后 seq4
@@ -536,13 +572,10 @@ async function execute(
       return { seq: ins.seq, result: "miss",
                evidence: { ...evidence, miss: label, page_texts: texts } };
     }
-    // row-trigger：scrollIntoView 后坐标 trusted click（元素级 el.click()
-    // 不开 ant-dropdown——React 需可信事件；服务端 click(force) 也是 CDP
-    // trusted。scroll 实证有效：cx 1439→1212 入视口）
-    // scrollIntoView 先行：行操作触发器常在视口右缘外（AG5 铁证：
-    // rect.x=1409 > 视口 1280——坐标点击全落空）。滚入后重取 rect。
-    // row-anchor 场景按 anchor+label 行内定位（与坐标重取同源——SW
-    // 复刻实证该链路开菜单）
+    // 通用滚入：行操作触发器常在视口右缘外（AG5 铁证 rect.x=1409>视口
+    // 1280——坐标点击落空）。不限 row-trigger——role 命中的行内「更多」
+    // 同病（270 铁证：rect 未滚 x=1438 落空，滚后 dropdown 才开）。
+    // scrollIntoView 后重取 rect（cx 1439→1212 实证）
     try {
       const anchorJson = JSON.stringify(resolved.anchorTxt || "");
       const req = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
@@ -552,7 +585,7 @@ async function execute(
           let el = null;
           if (anchor) {
             const rows = [...document.querySelectorAll('.ant-table-row, .list-item, .grid-row, tr')]
-              .filter(r => (r.textContent || '').includes(anchor));
+              .filter(r => (r.textContent || '').toLowerCase().includes(anchor.toLowerCase()));
             for (const row of rows) {
               const t = [...row.querySelectorAll('a, span, button')]
                 .find(e => (e.textContent||'').trim() === label
@@ -579,7 +612,7 @@ async function execute(
             let el = null;
             if (anchor) {
               const rows = [...document.querySelectorAll('.ant-table-row, .list-item, .grid-row, tr')]
-                .filter(r => (r.textContent || '').includes(anchor));
+                .filter(r => (r.textContent || '').toLowerCase().includes(anchor.toLowerCase()));
               for (const row of rows) {
                 const t = [...row.querySelectorAll('a, span, button')]
                   .find(e => (e.textContent||'').trim() === label
@@ -621,28 +654,12 @@ async function execute(
       onProgress(`${ins.op} ${label}（frame 元素级）`);
       return { seq: ins.seq, result: "ok", evidence };
     }
-    // 保存/确定类点击+模态开着：模态 footer primary 优先（JeecG 实证
+    // 保存/确定/提交/同步类点击+模态开着：模态 footer primary 优先（JeecG 实证
     // 保存步 ok 但 addAll 未发——点中列表页同名按钮；官方 harness 模式
     // =模态上下文的提交按钮）。真机铁证：JeecG cgform modal footer 有
     // 多个同名"保存"（各配置 tab 的隐藏 footer 都在 DOM）——必须过滤
-    // 可见（rect>0）且取**最后一个**（页面级 footer 在 DOM 尾部）
-    if (ins.op === "click" && /保存|确定|提\s*交/.test(label)) {
-      const modalBtn = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
-        expression: `(function(){
-          const modal = document.querySelector('.ant-modal-content, .ant-drawer-content');
-          if (!modal || modal.getBoundingClientRect().width === 0) return '';
-          const btns = [...modal.querySelectorAll('button')]
-            .filter(e => /保存|确定|提\\s*交/.test((e.textContent||'').trim())
-              && e.getBoundingClientRect().width > 0);
-          if (btns.length) { btns[btns.length - 1].click(); return 'ok'; }
-          return '';
-        })()`, returnByValue: true });
-      if (modalBtn?.result?.value === "ok") {
-        await sleep(2000);
-        onProgress(`click ${label}（模态提交）`);
-        return { seq: ins.seq, result: "ok", evidence };
-      }
-    }
+    // 可见（rect>0）且取**最后一个**（页面级 footer 在 DOM 尾部）；
+    // 「开始同步」在同步确认 modal footer（270 铁证）
     if (resolved.tagName === "label") {
       await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
         expression: `(function(){
@@ -1030,7 +1047,7 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
         } else if (c.kind === "row-trigger") {
           // AG5 行锚：含 anchor 词的行内找 label 文本触发器
           const rows = [...document.querySelectorAll(c.selector)]
-            .filter(r => (r.textContent || "").includes(c.anchor || ""));
+            .filter(r => (r.textContent || "").toLowerCase().includes((c.anchor || "").toLowerCase()));
           for (const row of rows) {
             const trig = [...row.querySelectorAll("a, span, button, [role=button]")]
               .filter(el => visible(el) && (el.textContent || "").trim() === label);

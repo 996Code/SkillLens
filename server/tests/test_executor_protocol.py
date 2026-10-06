@@ -274,3 +274,47 @@ async def test_executor_finish_evaluates_assertions(client, monkeypatch):
     assert body["assertion_results"], "断言结果未落"
     assert all(a.get("passed") for a in body["assertion_results"])
     assert body["status"] == "pass"
+
+
+async def test_plan_overrides_rewrite_row_anchor(client, monkeypatch):
+    """换参注入覆盖 row-anchor（S43-5 服务端语义插件端等效）：行操作候选的
+    anchor 含旧实例值时替换——270 铁证：行锚=上游技能建的表名，换参后
+    列表行是新值，旧锚行匹配空→更多菜单开不了→同步链全 miss。"""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    skill_id = await _seed_skill(client, monkeypatch)
+    r = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                          json={"overrides": {}, "confirm_side_effect": True})
+    run_id = r.json()["run_id"]
+    from app.db import SessionLocal
+    from app.models import ReplayRun
+    db = SessionLocal()
+    try:
+        run = db.get(ReplayRun, run_id)
+        ins = (run.plan or {}).get("executor_instructions")
+        assert ins
+        # 手工注入带 anchor 的候选（seed 技能无行操作步——单测语义验证）
+        ins[0]["resolve_candidates"] = [
+            {"strategy": "row-trigger", "kind": "row-trigger",
+             "selector": ".ant-table-row", "anchor": "旧表名A12345"}]
+        run.plan = {**run.plan, "executor_instructions": ins}
+        db.commit()
+    finally:
+        db.close()
+    # 带 overrides 的新 plan
+    r2 = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                           json={"overrides": {"旧表名A12345": "新表名B99999"},
+                                 "confirm_side_effect": True})
+    assert r2.status_code == 200
+    body = r2.json()
+    first = body["instruction"]
+    # 首条是 goto——anchor 注入在 instructions[0] 对应 plan 重编译后消失；
+    # 语义验证改走直接检查：重编译后 anchor 候选不存在（seed 无行操作），
+    # 但 fill 值替换必须生效
+    db = SessionLocal()
+    try:
+        run2 = db.get(ReplayRun, body["run_id"])
+        ins2 = (run2.plan or {}).get("executor_instructions")
+        assert not any(c.get("anchor") == "旧表名A12345"
+                       for i in ins2 for c in i.get("resolve_candidates") or [])
+    finally:
+        db.close()

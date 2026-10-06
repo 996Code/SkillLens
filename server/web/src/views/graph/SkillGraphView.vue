@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// S39/S42 操作流程图（图工作台内）：骨架+断言 → 节点图 + 详情面板。
+// S39/S42 自动化流程图（图工作台内）：骨架+断言 → 节点图 + 详情面板。
 // S42：SkillDetail 独有能力（断言表/变量/自愈提案/视觉回归/导出）并入——
 // 单一流程详情页，旧 /skills/:id 视图废弃。
 import { computed, onMounted, ref, watch } from "vue";
@@ -106,7 +106,7 @@ async function resetBaseline(): Promise<void> {
   visualMsg.value = "";
   try {
     await resetVisualBaseline(String(route.params.skillId));
-    visualMsg.value = "已重置——下次 execute PASS 回放将重建基线";
+    visualMsg.value = "已重置——下次 execute PASS 执行将重建基线";
     visual.value = await getVisualBaseline(String(route.params.skillId));
     visualBaselineUrl.value = "";
     visualLatestUrl.value = "";
@@ -187,13 +187,13 @@ onMounted(() => void load());
         {{ card.description }} · 置信度 {{ Math.round(card.confidence * 100) }}% ·
         证据 {{ card.evidence_count }} · 断言 {{ card.assertions.length }}
         <span v-if="consistency">
-          · <span v-if="consistency.runs === 0">一致性：暂无回放观测</span>
+          · <span v-if="consistency.runs === 0">一致性：暂无执行观测</span>
           <span v-else-if="consistency.consistent" class="ok">一致性 ✓</span>
           <span v-else class="error">一致性：{{ consistency.inconsistent_count }} 项不一致</span>
         </span>
       </p>
       <p v-if="card.superseded_by" class="superseded-hint">
-        ⚠ 该版本已被 v{{ card.superseded_by }} 取代——回放/断言/验证请使用新版本（历史版本仅作审计）
+        ⚠ 该版本已被 v{{ card.superseded_by }} 取代——执行/断言/验证请使用新版本（历史版本仅作审计）
       </p>
 
       <!-- 流程图（骨架+断言节点） -->
@@ -300,7 +300,7 @@ onMounted(() => void load());
       <div v-if="visual" class="block" data-testid="visual-section">
         <h2>视觉回归</h2>
         <p v-if="!visual.baseline" class="muted" data-testid="visual-empty">
-          未建立视觉基线——首次 execute PASS 回放后自动建立
+          未建立视觉基线——首次 execute PASS 执行后自动建立
         </p>
         <template v-else>
           <dl class="meta">
@@ -320,8 +320,8 @@ onMounted(() => void load());
               <figcaption>基线</figcaption>
             </figure>
             <figure v-if="visualLatestUrl">
-              <img :src="visualLatestUrl" alt="最近回放截图" />
-              <figcaption>最近回放</figcaption>
+              <img :src="visualLatestUrl" alt="最近执行截图" />
+              <figcaption>最近执行</figcaption>
             </figure>
           </div>
           <button v-if="canResetVisual" class="btn" :disabled="visualBusy"
@@ -335,7 +335,7 @@ onMounted(() => void load());
       <!-- 执行历史（下钻到执行图）+ 操作入口 -->
       <div class="block" data-testid="skill-run-history">
         <h2>最近执行</h2>
-        <p v-if="!card.last_run" class="muted">未回放</p>
+        <p v-if="!card.last_run" class="muted">未执行</p>
         <RouterLink v-else :to="`/graph/run/${card.last_run.id}`" class="run-link">
           <span class="dot" :class="`dot-${card.last_run.status}`"></span>
           {{ card.last_run.status }} · {{ card.last_run.mode }} ·

@@ -666,7 +666,7 @@ export function getSessionTrace(sessionId: string): Promise<SessionTrace> {
     `/api/v1/audit/sessions/${encodeURIComponent(sessionId)}/trace`);
 }
 
-/** 触发回放观测（observe，同步返回：server 处理完才返回，无需轮询）。
+/** 触发执行观测（observe，同步返回：server 处理完才返回，无需轮询）。
  * 409 = 业务安全拒绝（delta 未确认 / shadow 未执行）。 */
 export async function replayObserve(
   deltaId: number | string,
@@ -857,7 +857,7 @@ export function getRunFlow(runId: number | string): Promise<FlowGraphDTO> {
   return get<FlowGraphDTO>(`/api/v1/replay-runs/${runId}/flow`);
 }
 
-/** S39 操作流程图（骨架+断言 → 节点图）。 */
+/** S39 自动化流程图（骨架+断言 → 节点图）。 */
 export function getSkillFlow(skillId: number | string): Promise<FlowGraphDTO> {
   return get<FlowGraphDTO>(`/api/v1/skills/${skillId}/flow`);
 }
@@ -884,7 +884,7 @@ export function getCanvasFlow(canvasId: number | string): Promise<FlowGraphDTO> 
   return get<FlowGraphDTO>(`/api/v1/canvas/${canvasId}/flow`);
 }
 
-// ---------- S37-3：测试套件（操作流程组合 → 一键执行 → 汇总） ----------
+// ---------- S37-3：流程分组（自动化流程组合 → 一键执行 → 汇总） ----------
 
 export interface SuiteSkillBrief {
   id: number;

@@ -1,12 +1,12 @@
 <script setup lang="ts">
-// S37-3 测试套件：以套件为单位组织测试（操作流程组合 → 一键执行 → 汇总）。
-//   - 套件列表（含操作流程概要）+ 新建（勾选操作流程）
+// S37-3 流程分组：以分组为单位组织测试（自动化流程组合 → 一键执行 → 汇总）。
+//   - 分组列表（含自动化流程概要）+ 新建（勾选自动化流程）
 //   - 一键执行：预演（默认，安全）/ 执行（勾选副作用确认，C1 门控）
 //   - 执行汇总：X 个操作 / Y 通过 / 失败明细（链接 run 详情）
 //   - 执行历史
 import { onMounted, ref } from "vue";
 
-// S42：套件增删后通知壳刷新左树计数（此前 graph-changed 是死接线）
+// S42：分组增删后通知壳刷新左树计数（此前 graph-changed 是死接线）
 const emit = defineEmits<{ graphChanged: [] }>();
 import {
   createSuite,
@@ -47,7 +47,7 @@ function toggleSkill(id: number): void {
 
 async function create(): Promise<void> {
   if (!newName.value.trim() || checked.value.size === 0) {
-    createError.value = "请填写名称并勾选至少一个操作流程";
+    createError.value = "请填写名称并勾选至少一个自动化流程";
     return;
   }
   creating.value = true;
@@ -111,20 +111,20 @@ onMounted(() => void load());
 
 <template>
   <section>
-    <h1>测试套件</h1>
+    <h1>流程分组</h1>
     <p class="muted page-desc">
-      以套件为单位组织测试：勾选操作流程组建套件，一键执行并汇总结果。
+      以分组为单位组织测试：勾选自动化流程组建分组，一键执行并汇总结果。
       预演模式只规划不执行（安全）；执行模式会真实操作目标系统（含写操作）。
     </p>
 
     <div class="block">
-      <h2>新建套件</h2>
+      <h2>新建分组</h2>
       <div class="create-row">
         <input
           v-model="newName"
           type="text"
-          placeholder="套件名称（如：冒烟测试 / 回归套件）"
-          aria-label="套件名称"
+          placeholder="分组名称（如：冒烟测试 / 回归集）"
+          aria-label="分组名称"
           data-testid="suite-name"
         />
         <button
@@ -133,7 +133,7 @@ onMounted(() => void load());
           data-testid="suite-create"
           @click="create"
         >
-          {{ creating ? "创建中…" : "创建套件" }}
+          {{ creating ? "创建中…" : "创建分组" }}
         </button>
       </div>
       <p v-if="createError" class="error">{{ createError }}</p>
@@ -152,12 +152,12 @@ onMounted(() => void load());
 
     <p v-if="loading" class="muted">加载中…</p>
     <p v-else-if="error" class="error">加载失败：{{ error }}</p>
-    <p v-else-if="suites.length === 0" class="muted">暂无套件，先在上方创建</p>
+    <p v-else-if="suites.length === 0" class="muted">暂无分组，先在上方创建</p>
 
     <div v-for="s in suites" :key="s.id" class="block suite-card">
       <div class="suite-head">
         <h2>{{ s.name }}</h2>
-        <span class="muted">{{ s.skills.length }} 个操作流程</span>
+        <span class="muted">{{ s.skills.length }} 个自动化流程</span>
         <button
           class="btn btn-primary"
           :disabled="runningId !== null"
@@ -186,7 +186,7 @@ onMounted(() => void load());
     <p v-if="runError" class="error">{{ runError }}</p>
 
     <div v-if="lastRun" class="block" data-testid="suite-run-summary">
-      <h2>执行汇总（{{ lastRun.total }} 个操作流程）</h2>
+      <h2>执行汇总（{{ lastRun.total }} 个自动化流程）</h2>
       <p class="run-line">
         <span class="ok">通过 {{ lastRun.pass_count }}</span> ·
         <span class="ng">失败 {{ lastRun.fail_count }}</span> ·
@@ -194,7 +194,7 @@ onMounted(() => void load());
         <span class="skipped">预演 {{ lastRun.shadow_count }}</span>
       </p>
       <table class="tbl">
-        <thead><tr><th>操作流程</th><th>状态</th><th>模式</th><th>详情</th></tr></thead>
+        <thead><tr><th>自动化流程</th><th>状态</th><th>模式</th><th>详情</th></tr></thead>
         <tbody>
           <tr v-for="r in lastRun.results" :key="r.run_id">
             <td>{{ r.skill_name }}</td>
