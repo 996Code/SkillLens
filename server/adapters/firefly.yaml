@@ -1,0 +1,45 @@
+# P4 零代码接入终验：Firefly III（全新系统——仅此 YAML，零代码改动）
+id: firefly
+label: Firefly III 记账
+target:
+  base_url: http://127.0.0.1:8096
+credentials:
+  username: admin@local.test
+  password_literal: "Firefly2026!P4Test!!"   # 本地演示容器
+url_matches: ["http://127.0.0.1:8096/*"]
+login:
+  steps:
+    - goto: /login
+    - fill: ["input[name=email]", "${username}"]
+    - fill: ["input[name=password]", "${password}"]
+    - click: "button[type=submit]"
+  success:
+    url_not_contains: login
+flows:
+  - name: account-chain
+    steps:
+      - goto: /accounts/create/asset
+      - wait: "3"
+      - fill: ["input[name=name]", "SL账户${data}"]
+      - click: "button[type=submit]"
+interaction_profile:
+  dropdown:
+    engine: generic
+    menu_item_match: includes
+    menu_item_click: trusted
+    mount_wait_ms: 300
+  modal_submit:
+    selector: .modal, [role=dialog]
+    button_regex: '保存|确定|Save|Submit'
+    pick: first_visible
+    render_wait_ms: 600
+  form_fill:
+    framework: generic
+    field_locators: [name-attr, placeholder, form-item-label]
+    same_label_priority: first
+  row_action:
+    anchor_match: sensitive
+    scroll_into_view: true
+  route_guard:
+    async_set_route: false
+    normalize_new_suffix: false
