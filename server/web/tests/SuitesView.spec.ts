@@ -13,7 +13,7 @@ const skills = [
 ];
 
 const suites = [
-  { id: 1, name: "冒烟套件", skill_ids: [5, 8],
+  { id: 1, name: "冒烟分组", skill_ids: [5, 8],
     skills: [
       { id: 5, name: "SaveForm", status: "learned" },
       { id: 8, name: "CreateRole", status: "learned" },
@@ -94,8 +94,8 @@ describe("SuitesView", () => {
     await flush();
     await flush();
 
-    expect(root.textContent).toContain("冒烟套件");
-    expect(root.textContent).toContain("2 个操作流程");
+    expect(root.textContent).toContain("冒烟分组");
+    expect(root.textContent).toContain("2 个自动化流程");
     expect(root.textContent).toContain("SaveForm");
     // 操作流程选择器（新建区）
     expect(root.querySelectorAll(".pick-row").length).toBe(2);

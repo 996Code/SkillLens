@@ -185,7 +185,7 @@ describe("TimelineView", () => {
     await flush();
     const detail = root.querySelector("[data-testid='rec-detail']");
     expect(detail).not.toBeNull();
-    expect(detail?.textContent).toContain("学到的操作流程（1）");
+    expect(detail?.textContent).toContain("学到的自动化流程（1）");
     const link = detail?.querySelector<HTMLAnchorElement>("a[href='/graph/skill/5']");
     expect(link?.textContent).toContain("SaveForm");
   });
