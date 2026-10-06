@@ -86,3 +86,23 @@ async def save_adapter(adapter_id: str, body: SaveRequest,
     dest = ADAPTERS_DIR / f"{adapter_id}.yaml"
     dest.write_text(body.yaml, encoding="utf-8", newline="\n")
     return {"saved": str(dest), "lints": [l.message for l in lints]}
+
+
+class FingerprintRequest(BaseModel):
+    """P2 画像指纹：新系统接入时贴一段系统页面 HTML（或后续录制器自动
+    采集）→ 识别组件库/框架 → 生成 interaction_profile 画像草稿 YAML。"""
+    dom: str
+    url: str = ""
+
+
+@router.post("/adapters/fingerprint")
+async def adapter_fingerprint(body: FingerprintRequest) -> dict:
+    from app.adapters.fingerprint import detect_profile, fingerprint_page
+    fp = fingerprint_page(body.dom, body.url)
+    profile = detect_profile(fp)
+    # 画像 → YAML 片段（贴进清单即接入）
+    import yaml as _yaml
+    ip_yaml = _yaml.safe_dump(
+        {"interaction_profile": profile.model_dump()},
+        allow_unicode=True, default_flow_style=False, sort_keys=False)
+    return {"fingerprint": fp, "profile_yaml": ip_yaml}

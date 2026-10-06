@@ -33,6 +33,21 @@
           </span>
         </div>
       </div>
+
+      <!-- P2 交互画像指纹：贴系统页面 HTML → 识别组件库 → 生成画像 YAML 片段 -->
+      <div class="fingerprint">
+        <h3>交互画像指纹识别</h3>
+        <p class="hint">接入新系统：贴一段系统页面 HTML（查看源代码任意表单/列表区域），自动识别组件库并生成交互画像（interaction_profile）——贴进上方清单即完成适配。</p>
+        <textarea v-model="fpDom" rows="6" placeholder="<div class='ant-modal-content'>…（系统页面 HTML 片段）" spellcheck="false" />
+        <div class="actions">
+          <button @click="fingerprint">识别画像</button>
+          <span v-if="fpResult" class="ok-text">
+            组件库：{{ fpResult.fingerprint.ui_library }}
+            · 框架：{{ fpResult.fingerprint.framework }}
+          </span>
+        </div>
+        <textarea v-if="fpYaml" v-model="fpYaml" rows="10" spellcheck="false" class="fp-out" />
+      </div>
     </template>
   </div>
 </template>
@@ -52,6 +67,21 @@ const loading = ref(true);
 const selected = ref<AdapterSummary | null>(null);
 const yamlText = ref("");
 const feedback = ref<{ ok: boolean; msg: string } | null>(null);
+
+const fpDom = ref("");
+const fpYaml = ref("");
+const fpResult = ref<{ fingerprint: { ui_library: string; framework: string } } | null>(null);
+
+async function fingerprint(): Promise<void> {
+  const res = await authedFetch("/api/v1/adapters/fingerprint", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dom: fpDom.value, url: "" }),
+  });
+  const body = await res.json();
+  fpResult.value = body;
+  fpYaml.value = body.profile_yaml || "";
+}
 
 async function load(): Promise<void> {
   loading.value = true;
