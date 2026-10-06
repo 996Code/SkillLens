@@ -9,13 +9,13 @@
     "system": "odoo",
     "round": 1,
     "skill": 179,
-    "status": "fail"
+    "status": "pass"
   },
   {
     "system": "odoo",
     "round": 1,
     "skill": 180,
-    "status": "fail"
+    "status": "pass"
   },
   {
     "system": "odoo",
@@ -27,13 +27,13 @@
     "system": "odoo",
     "round": 2,
     "skill": 179,
-    "status": "fail"
+    "status": "pass"
   },
   {
     "system": "odoo",
     "round": 2,
     "skill": 180,
-    "status": "fail"
+    "status": "pass"
   },
   {
     "system": "dolibarr",
@@ -237,42 +237,42 @@
     "system": "ruoyi",
     "round": 2,
     "skill": 258,
+    "status": "fail"
+  },
+  {
+    "system": "jeecg",
+    "round": 1,
+    "skill": 269,
     "status": "pass"
   },
   {
     "system": "jeecg",
     "round": 1,
-    "skill": 269,
-    "status": "fail"
-  },
-  {
-    "system": "jeecg",
-    "round": 1,
     "skill": 270,
-    "status": "fail"
+    "status": "pass"
   },
   {
     "system": "jeecg",
     "round": 1,
     "skill": 271,
-    "status": "fail"
+    "status": "pass"
   },
   {
     "system": "jeecg",
     "round": 2,
     "skill": 269,
-    "status": "fail"
+    "status": "pass"
   },
   {
     "system": "jeecg",
     "round": 2,
     "skill": 270,
-    "status": "fail"
+    "status": "pass"
   },
   {
     "system": "jeecg",
     "round": 2,
     "skill": 271,
-    "status": "fail"
+    "status": "pass"
   }
 ]

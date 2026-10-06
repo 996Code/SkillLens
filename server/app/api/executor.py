@@ -147,6 +147,14 @@ async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
 
     plan = _load_plan_input(db, skill)
     instructions = compile_executor_plan(plan)
+    # goto 实例段归一（ERPNext 236 铁证：录制保存的单据 URL
+    # /desk/sales-order/new-sales-order-xxxx 带随机后缀——回放到已提交
+    # 旧单上 Frappe 弹回旧页，后续步全打到错误页面）
+    import re as _re_nav
+    for ins in instructions:
+        if ins.get("op") == "goto" and ins.get("url"):
+            ins["url"] = _re_nav.sub(
+                r"/(new-[a-z-]+)-[a-z0-9]+$", r"/\1", ins["url"])
     # 换参注入（服务端 replay 的 compile_replay_plan 语义等效）：fill 步
     # 的 value 按 overrides 替换（回放写场景防唯一性冲突——JeecG 269 铁证：
     # 旧表名已存在致 duplicate/check 拒绝、addAll 永不发）。此前 overrides

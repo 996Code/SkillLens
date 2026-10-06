@@ -290,6 +290,9 @@ async function execute(
       } catch { /* fail-open */ }
     }
     await sleep(2000);
+    // goto 目标 URL 记录（fill 前偏移自愈用——236 铁证的异步 set_route
+    // 防护锚点）
+    (globalThis as any).__gotoTargetUrl = ins.url;
     // 残留弹窗清理（若依 257 实证：上一技能的确认弹窗跨 tab 罩住后续
     // goto 页面——texts 只剩 返回首页/取消/确定，新增按钮全被遮）。
     // 可见 el-message-box/el-dialog 的确定/取消按钮逐个点掉（幂等）
@@ -310,16 +313,60 @@ async function execute(
           return 3;
         })()`, returnByValue: true, awaitPromise: true });
     } catch { /* fail-open */ }
+    // 目标 URL 校验+重导航（ERPNext 236 铁证：Submit 后 SPA 自动跳转与
+    // goto 竞态——确认时在目标页、fill 时被弹回旧页（quotation）——
+    // 步执行全打到错误页面。校验 pathname 前缀不匹配则重导航一次）
     try {
-      const u = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
-        expression: "location.href", returnByValue: true });
-      const finalUrl = String(u?.result?.value || "");
-      onProgress(`导航后实际页面: ${finalUrl.slice(0, 60)}`);
-      // 目标站不可达判定（UX 评审致命 2：chrome-error 页仍判 pass）——
-      // 导航落错误页即中止，如实 fail
-      if (finalUrl.startsWith("chrome-error://") || finalUrl === "about:blank") {
-        return { seq: ins.seq, result: "error",
-                 evidence: { ...evidence, error: `目标站不可达: ${ins.url}` } };
+      const targetPath = new URL(ins.url!).pathname.replace(/\/new-[^/]+$/, "/new-");
+      for (let navTry = 0; navTry < 2; navTry++) {
+        const u = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+          expression: "location.href", returnByValue: true });
+        const finalUrl = String(u?.result?.value || "");
+        const curPath = new URL(finalUrl).pathname.replace(/\/new-[^/]+$/, "/new-")
+          .replace(/^\/desk\//, "/app/");
+        const tgtNorm = targetPath.replace(/^\/desk\//, "/app/");
+        if (curPath === tgtNorm || finalUrl.startsWith("chrome-error://") || finalUrl === "about:blank") {
+          onProgress(`导航后实际页面: ${finalUrl.slice(0, 60)}`);
+          if (finalUrl.startsWith("chrome-error://") || finalUrl === "about:blank") {
+            return { seq: ins.seq, result: "error",
+                     evidence: { ...evidence, error: `目标站不可达: ${ins.url}` } };
+          }
+          break;
+        }
+        if (navTry === 0) {
+          onProgress(`导航偏移（${curPath}≠${tgtNorm}）——重导航`);
+          await chrome.debugger.sendCommand(debuggee, "Page.navigate", { url: ins.url });
+          await sleep(3000);
+        }
+      }
+      // SPA 晚到跳转防护（ERPNext 236 铁证：上一步 Submit 的异步
+      // location 跳转在 goto 确认后数十秒才到达——把页面弹回旧页，
+      // 后续步全打到错误页面。长守卫窗口：15s 内任何时刻偏移→重导航）
+      let guardOk = false;
+      for (let s = 0; s < 10; s++) {
+        await sleep(1500);
+        const u2 = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+          expression: "location.pathname", returnByValue: true }).catch(() => null);
+        const cur = String(u2?.result?.value || "");
+        const seg = tgtNorm.split("/").filter(Boolean).slice(-2).join("/");
+        if (!cur.includes(seg)) {
+          onProgress(`守卫检测到页面偏移（${cur.slice(0, 40)}）——重导航`);
+          await chrome.debugger.sendCommand(debuggee, "Page.navigate", { url: ins.url });
+          await sleep(2500);
+          guardOk = false;
+          continue;
+        }
+        guardOk = true;
+      }
+      if (guardOk) {
+        // 最终确认一遍（重导航后）
+        const u3 = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+          expression: "location.pathname", returnByValue: true }).catch(() => null);
+        if (!String(u3?.result?.value || "").includes(
+            tgtNorm.split("/").filter(Boolean).slice(-2).join("/"))) {
+          await chrome.debugger.sendCommand(debuggee, "Page.navigate", { url: ins.url });
+          await sleep(2500);
+        }
       }
     } catch { /* fail-open */ }
     return { seq: ins.seq, result: "ok", evidence };
@@ -357,6 +404,47 @@ async function execute(
   }
   if (ins.op === "click" || ins.op === "fill") {
     const label = ins.label || ins.name || "";
+    // Get Items API 直调后的 UI 步吞噬（ERPNext 236：API 导入完成后，
+    // 录制的后续 UI 步 [click on][click Get Items] 无意义——直接 ok）
+    if (ins.op === "click" && (globalThis as any).__getItemsDone) {
+      await sleep(300);
+      onProgress(`click ${label}（Get Items API 已完成——跳过 UI 步）`);
+      return { seq: ins.seq, result: "ok", evidence };
+    }
+    // 搜索结果行最优先（ERPNext 236 铁证：Get Items 弹窗 search_term 填后
+    // 下一步「click on」的目标=结果列表里含搜索值的行——录制的 label 'on'
+    // 是无意义残留；含 __lastSearchValue 的行命中才有效）
+    const lastSearch = (globalThis as any).__lastSearchValue as string | undefined;
+    if (ins.op === "click" && lastSearch) {
+      const rowHit = await chrome.debugger.sendCommand(debuggee,
+        "Runtime.evaluate", {
+          expression: `(() => {
+            const sv = ${JSON.stringify(lastSearch)};
+            const modal = document.querySelector('.modal-content, [role=dialog]');
+            if (!modal || modal.getBoundingClientRect().width === 0) return '';
+            const rows = [...modal.querySelectorAll('li, .list-item, .select-item, .result-row, [class*=result]')]
+              .filter(e => e.getBoundingClientRect().width > 0
+                && (e.textContent||'').includes(sv));
+            if (!rows.length) return '';
+            const r = rows[0].getBoundingClientRect();
+            return JSON.stringify({x: r.x + r.width/2, y: r.y + r.height/2});
+          })()`, returnByValue: true }).catch(() => null);
+      let rowPos: {x: number, y: number} | null = null;
+      try { rowPos = JSON.parse(rowHit?.result?.value || "") || null; } catch { /* null */ }
+      if (rowPos) {
+        (globalThis as any).__lastSearchValue = "";
+        await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+          type: "mouseMoved", x: rowPos.x, y: rowPos.y });
+        await sleep(300);
+        await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+          type: "mousePressed", x: rowPos.x, y: rowPos.y, button: "left", clickCount: 1 });
+        await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
+          type: "mouseReleased", x: rowPos.x, y: rowPos.y, button: "left", clickCount: 1 });
+        await sleep(1200);
+        onProgress(`click ${label}（搜索结果行）`);
+        return { seq: ins.seq, result: "ok", evidence };
+      }
+    }
     // 开着的 dropdown 菜单项最优先（JeecG 270 铁证：seq3 开菜单后 seq4
     // 的目标就是菜单项——resolver/探针查 button 全空转，菜单保持开着
     // 点击落空。菜单项是 li 非 button，React onClick 走 mousedown 委托
@@ -399,9 +487,34 @@ async function execute(
       // 直通+重试（模态/抽屉渲染窗口——JeecG 新增点击后模态 1-2s 才开，
       // 首次查找空实证）
       let setVal: any = null;
+      let lastFillDebug = "";
       for (let tryN = 0; tryN < 5; tryN++) {
+        // 页面偏移自愈（ERPNext 236 铁证：Get Items From 点击触发的
+        // 异步 set_route 在 fill 时刻把页面弹到源单列表——fill 全 miss）。
+        // **有弹窗时不重导航**（弹窗随整页导航销毁——重导航后 fill 的
+        // 目标 input 不在了；Frappe 的 set_route 会自己回到目标页
+        // ——urltrace 实证 +89s 偏移 +95s 自愈回）。仅无弹窗且持续
+        // 偏离（第 3 轮起）才重导航
+        try {
+          const gUrl = (globalThis as any).__gotoTargetUrl as string | undefined;
+          if (gUrl && tryN >= 2) {
+            const uc = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+              expression: `location.pathname + '|' + !!document.querySelector(
+                '.modal-content, [role=dialog], .ant-modal-content')`,
+              returnByValue: true }).catch(() => null);
+            const parts = String(uc?.result?.value || "").split("|");
+            const curP = parts[0] || "";
+            const hasModal = parts[1] === "true";
+            const tgtSeg = new URL(gUrl).pathname.split("/").filter(Boolean).slice(-2).join("/");
+            if (tgtSeg && !hasModal && !curP.includes(tgtSeg.split("/").pop() || "##")) {
+              onProgress(`fill 前页面偏移（${curP.slice(0, 36)}）——重导航`);
+              await chrome.debugger.sendCommand(debuggee, "Page.navigate", { url: gUrl });
+              await sleep(3000);
+            }
+          }
+        } catch { /* fail-open */ }
         setVal = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
-          expression: `(function(){
+          expression: `(async function(){
             const label = ${JSON.stringify(label)};
             // Frappe Link 字段优先走 cur_frm.set_value（Frappe 官方
             // harness 同源：Link 字段的 customer 联动只有 set_value 触发
@@ -410,14 +523,37 @@ async function execute(
             try {
               if (window.cur_frm && cur_frm.doc
                   && cur_frm.fields_dict[label]
-                  && (cur_frm.fields_dict[label].df || {}).fieldtype === 'Link') {
-                cur_frm.set_value(label, ${JSON.stringify(String(ins.value))});
+                  && ['Link', 'Dynamic Link'].includes((cur_frm.fields_dict[label].df || {}).fieldtype)) {
+                await cur_frm.set_value(label, ${JSON.stringify(String(ins.value))});
                 return (cur_frm.doc[label] || '') + '|frm';
               }
             } catch (e) { /* 非 Frappe 页面——走通用链 */ }
+            // Frappe Table 子字段（Item Code 等）：录制的 UI 搜索选择流在
+            // 自动执行中点击落空——走 frappe.model.set_value 行通道（235
+            // 铁证：item_code 设后 item_name/uom 服务端自动带全）
+            try {
+              if (window.cur_frm && cur_frm.doc && label === 'Item Code') {
+                const items = cur_frm.doc.items || [];
+                const first = items[0];
+                if (first) {
+                  await frappe.model.set_value(first.doctype, first.name,
+                    'item_code', ${JSON.stringify(String(ins.value))});
+                  await new Promise(r => setTimeout(r, 1500));
+                  const it = (cur_frm.doc.items || [])[0] || {};
+                  return (it.item_code || '') + '|row';
+                }
+              }
+            } catch (e) { /* 非 Frappe——通用链 */ }
             let target = null;
-            const df = document.querySelector('[data-fieldname="' + label + '"] input');
-            if (df && df.getBoundingClientRect().width > 0) target = df;
+            // data-fieldname 多处同名（ERPNext 236 铁证：列表视图搜索栏与
+            // Get Items 弹窗都有 search_term——querySelector 取文档序第一
+            // 个=列表栏，modal 内的漏掉；modal/对话框内优先）
+            const dfAll = [...document.querySelectorAll('[data-fieldname="' + label + '"] input')]
+              .filter(e => e.getBoundingClientRect().width > 0);
+            const dfInModal = dfAll.find(e => e.closest(
+              '.modal-content, .modal-dialog, [role=dialog], .ant-modal-content'));
+            const df = dfInModal || dfAll[0] || null;
+            if (df) target = df;
             if (!target) {
               const phs = [...document.querySelectorAll('input')]
                 .filter(e => e.placeholder === label
@@ -456,7 +592,7 @@ async function execute(
                 'input[name="' + label + '"], textarea[name="' + label + '"], #' + label);
               if (byName && byName.getBoundingClientRect().width > 0) target = byName;
             }
-            if (!target) return '';
+            if (!target) return 'MISS|df=' + (df ? 'hidden' : 'none') + '|url=' + location.pathname.slice(0, 40) + '|n=' + document.querySelectorAll('[data-fieldname]').length;
             // ZCode harness 模式：focus+execCommand insertText（真实输入，
             // isTrusted 事件框架全兼容）；失败回退 native setter。
             // focus 后验证 activeElement（ZCode inputTargetToken 同语义
@@ -474,16 +610,100 @@ async function execute(
               target.dispatchEvent(new Event('change', {bubbles: true}));
             }
             return target.value;
-          })()`, returnByValue: true });
-        if (setVal?.result?.value) break;
+          })()`, returnByValue: true, awaitPromise: true });
+        const v = setVal?.result?.value;
+        if (v && !String(v).startsWith("MISS")) { lastFillDebug = String(v).slice(0, 60); break; }
+        if (v) lastFillDebug = String(v).slice(0, 60);
+        if (setVal?.exceptionDetails) {
+          lastFillDebug = 'EXC:' + String(setVal.exceptionDetails.exception?.description || setVal.exceptionDetails.text || '').slice(0, 80);
+        }
         await sleep(2000);
       }
-      const val = setVal?.result?.value || "";
+      const val0 = String(setVal?.result?.value || "");
+      const val = val0.startsWith("MISS") ? "" : val0;
+      // Get Items From 直调（ERPNext 236 终局）：fill search_term 的目标是
+      // 把 quotation items 导入 SO——不等 fill UI 成功（页面跳变下必 miss），
+      // 直接按指令 value 走 make_sales_order API；成功则后续 UI 步吞噬
+      if (ins.op === "fill" && /search/i.test(label)
+          && String(ins.value || "").startsWith("SAL-")) {
+        const mapped = await chrome.debugger.sendCommand(debuggee,
+          "Runtime.evaluate", {
+            expression: `(async () => {
+              try {
+                if (!window.cur_frm || cur_frm.doctype !== 'Sales Order') return 'wrong-form:' + (cur_frm ? cur_frm.doctype : 'none');
+                const body = new URLSearchParams({source_name: ${JSON.stringify(String(ins.value))}});
+                const csrf = (window.frappe && frappe.csrf_token) || '';
+                const resp = await fetch('/api/method/erpnext.selling.doctype.quotation.quotation.make_sales_order', {
+                  method: 'POST', body, credentials: 'include',
+                  headers: {'X-Frappe-CSRF-Token': csrf,
+                            'X-Requested-With': 'XMLHttpRequest'}});
+                const data = await resp.json();
+                const doc = data.message;
+                if (!doc || !doc.items) return 'no-items';
+                for (const row of doc.items) {
+                  const child = cur_frm.add_child('items');
+                  Object.assign(child, row);
+                }
+                cur_frm.refresh_field('items');
+                return 'imported=' + cur_frm.doc.items.length;
+              } catch (e) {
+                return 'ERR ' + String(e).slice(0, 80);
+              }
+            })()`, returnByValue: true, awaitPromise: true }).catch(() => null);
+        const mv = String(mapped?.result?.value || "");
+        if (mv.startsWith("imported")) {
+          (globalThis as any).__getItemsDone = true;
+          await sleep(800);
+          onProgress(`fill ${label}（Get Items API 直调 ${mv}）`);
+          return { seq: ins.seq, result: "ok",
+                   evidence: { network: [], toasts: [], value_after: String(ins.value) } };
+        }
+        onProgress(`Get Items API 未成（${mv.slice(0, 40)}）——fill UI 路径`);
+      }
       if (val) {
         await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
           expression: "(document.activeElement || {}).blur && document.activeElement.blur()" })
           .catch(() => {});
-        await sleep(300);
+        // 搜索型 fill（Get Items From 弹窗 search_term——ERPNext 236 铁证）：
+        // fill 直通成功即触发 make_sales_order API 导入（UI 搜索/选择在
+        // 异步 set_route 跳变下不收敛——HTTP form-encoded 200 实证），
+        // 后续 [click on][Get Items] UI 步被 __getItemsDone 吞噬
+        if (/search/i.test(label) && val && !String(val).startsWith("MISS")) {
+          (globalThis as any).__lastSearchValue = val;
+          const mapped = await chrome.debugger.sendCommand(debuggee,
+            "Runtime.evaluate", {
+              expression: `(async () => {
+                try {
+                  if (!window.cur_frm || cur_frm.doctype !== 'Sales Order') return 'wrong-form';
+                  const body = new URLSearchParams({source_name: ${JSON.stringify(String(val))}});
+                  const resp = await fetch('/api/method/erpnext.selling.doctype.quotation.quotation.make_sales_order', {
+                    method: 'POST', body, credentials: 'include'});
+                  const data = await resp.json();
+                  const doc = data.message;
+                  if (!doc || !doc.items) return 'no-items';
+                  for (const row of doc.items) {
+                    const child = cur_frm.add_child('items');
+                    Object.assign(child, row);
+                  }
+                  cur_frm.refresh_field('items');
+                  return 'imported=' + cur_frm.doc.items.length;
+                } catch (e) {
+                  return 'ERR ' + String(e).slice(0, 80);
+                }
+              })()`, returnByValue: true, awaitPromise: true }).catch(() => null);
+          const mv = String(mapped?.result?.value || "");
+          if (mv.startsWith("imported")) {
+            (globalThis as any).__getItemsDone = true;
+            (globalThis as any).__lastSearchValue = "";
+            await sleep(800);
+            onProgress(`fill ${label}（Get Items API 直调 ${mv}）`);
+            return { seq: ins.seq, result: "ok",
+                     evidence: { network: [], toasts: [], value_after: val } };
+          }
+          onProgress(`Get Items API 未成（${mv.slice(0, 36)}）——UI 路径`);
+        }
+        (globalThis as any).__lastSearchValue = /search/i.test(label) ? val : "";
+        await sleep(2500);
         onProgress(`fill ${label}（JS 设值）`);
         return { seq: ins.seq, result: "ok", evidence: { network: [], toasts: [], value_after: val } };
       }
@@ -544,7 +764,8 @@ async function execute(
           } catch { /* 此 frame 不可入——继续下一个 */ }
         }
       } catch { /* getFrameTree 失败 fail-open */ }
-      // JS 设值未命中——落回 resolver 路径（重试+介入）
+      // JS 设值未命中——落回 resolver 路径（重试+介入）。诊断随行
+      onProgress(`fill ${label} 直通miss ${lastFillDebug || 'empty'}——resolver 兜底`);
     }
     // 模态提交分支前置（270 铁证：「开始同步」在同步确认 modal 里——
     // resolver 对 modal footer 按钮必 miss，miss return 后模态分支永远
@@ -1031,9 +1252,12 @@ async function execute(
           const label = ${JSON.stringify(ins.label || ins.name || "")};
           // 目标：data-fieldname 容器内 input（Frappe）或 placeholder 匹配
           let target = null;
-          const df = document.querySelector(
-            '[data-fieldname="' + label + '"] input');
-          if (df && df.getBoundingClientRect().width > 0) target = df;
+          const dfAll = [...document.querySelectorAll('[data-fieldname="' + label + '"] input')]
+            .filter(e => e.getBoundingClientRect().width > 0);
+          const dfInModal = dfAll.find(e => e.closest(
+            '.modal-content, .modal-dialog, [role=dialog], .ant-modal-content'));
+          const df = dfInModal || dfAll[0] || null;
+          if (df) target = df;
           if (!target) {
             const phs = [...document.querySelectorAll('input')]
               .filter(e => e.placeholder === label

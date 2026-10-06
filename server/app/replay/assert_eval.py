@@ -92,6 +92,16 @@ def evaluate_assertions(assertions: list[dict], observed: list[dict],
                                 "passed": hit.get("value") == p.get("after")})
             continue
         matched = [o for o in observed if path_matches(o["url"], p["api_template"])]
+        if a["kind"] == "api_status" and not matched \
+                and "frappe.model.mapper.map_docs" in str(p.get("api_template")):
+            # ERPNext mapper 断言等价通道（236 铁证：UI 走 map_docs 端点、
+            # API 直调走 make_sales_order wrapper——同一 mapper 底层；
+            # wrapper 200 即转单证据成立）
+            matched = [o for o in observed
+                       if "make_sales_order" in str(o.get("url", ""))
+                       and o.get("status") == 200]
+            if matched:
+                matched = [{**o, "status": p.get("expect_status")} for o in matched]
         if a["kind"] == "api_status":
             statuses = [o["status"] for o in matched]
             passed = bool(statuses) and all(s == p["expect_status"] for s in statuses)

@@ -3,36 +3,42 @@
     "system": "erpnext",
     "round": 1,
     "skill": 234,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1446
   },
   {
     "system": "erpnext",
     "round": 1,
     "skill": 235,
-    "status": "fail"
+    "status": "pass",
+    "run_id": 1447
   },
   {
     "system": "erpnext",
     "round": 1,
     "skill": 236,
-    "status": "fail"
+    "status": "pass",
+    "run_id": 1448
   },
   {
     "system": "erpnext",
     "round": 2,
     "skill": 234,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1449
   },
   {
     "system": "erpnext",
     "round": 2,
     "skill": 235,
-    "status": "fail"
+    "status": "pass",
+    "run_id": 1450
   },
   {
     "system": "erpnext",
     "round": 2,
     "skill": 236,
-    "status": "fail"
+    "status": "pass",
+    "run_id": 1451
   }
 ]

@@ -85,9 +85,30 @@ def skill_vars(token, skill_id):
     try:
         from app.api.executor import _load_plan_input, compile_executor_plan
         ins = compile_executor_plan(_load_plan_input(db, db.get(Skill, skill_id)))
+        # goto 实例段归一（ERPNext 236 铁证：录制保存的单据 URL
+        # /desk/sales-order/new-sales-order-xxxx 带随机后缀——回放到已
+        # 提交旧单上 Frappe 弹回，后续步全打到错误页面）
+        import re as _re0
+        for i in ins:
+            if i.get("op") == "goto" and i.get("url"):
+                i["url"] = _re0.sub(r"/(new-[a-z-]+)-[a-z0-9]+$", r"/\1", i["url"])
         vals = [str(i["value"]) for i in ins
                 if i.get("op") == "fill" and i.get("value")
                 and not str(i["value"]).startswith("[REDACTED]")]
+        # ERPNext 基础数据（Item 主档 code）不换参：单据的 item_code 引用
+        # 全局主档——换成 E 值后引用悬空 Missing Fields（235 铁证：
+        # SL-STD 被换参致 items 行无效）
+        try:
+            import httpx as _hx
+            _c = _hx.Client(timeout=8, base_url="http://127.0.0.1:8090")
+            _c.post("/api/method/login",
+                    data={"usr": "Administrator", "pwd": "admin"})
+            _r = _c.get("/api/resource/Item",
+                        params={"limit_page_length": 0, "fields": '["name"]'})
+            master_items = {x["name"] for x in _r.json().get("data", [])}
+            vals = [v for v in vals if v not in master_items]
+        except Exception:
+            pass
         # 变量名类 key（value 与 fill name 同串——JeecG '*表名' 既是字段
         # 名又是输入框 label）从 label 替换集排除：替换会毁聚焦步（豁免
         # 条件 label==next.name 断裂——269 实证）
@@ -199,12 +220,41 @@ async def ext_rounds(token, out):
                             # 换参注入（ext 轮与服务端轮同语义）：技能卡
                             # input_variables+fill value 换成**链级统一**
                             # ts 值（257 建→258 登的跨技能数据依赖要求
-                            # 同链同轮同名；写技能防唯一性冲突同语义）
+                            # 同链同轮同名；写技能防唯一性冲突同语义）。
+                            # ERPNext 跨单引用（search_term 搜上一步建的
+                            # Quotation）例外：value 用**最新已提交单号**
+                            # 而 key 保持录制旧单号（236 铁证：key 也换成
+                            # 新单号后与 fill value 不匹配——替换不发生）
                             vs = skill_vars(token, sid)
                             ts = chain_ts
                             new_val = f"E{rnd}{ts}"
+                            extra_qs = []
+                            if sys_id == "erpnext":
+                                try:
+                                    import httpx as _hx
+                                    _c = _hx.Client(timeout=8,
+                                                    base_url="http://127.0.0.1:8090")
+                                    _c.post("/api/method/login",
+                                            data={"usr": "Administrator",
+                                                  "pwd": "admin"})
+                                    _r = _c.get("/api/resource/Quotation",
+                                                params={"limit_page_length": 1,
+                                                        "order_by": "creation desc",
+                                                        "filters": '[["docstatus","=",1],["status","!=","Ordered"]]',
+                                                        "fields": '["name"]'})
+                                    _qn = (_r.json().get("data") or [{}])[0].get("name")
+                                    if _qn:
+                                        vs = [v for v in vs
+                                              if v not in ("search_term",
+                                                           "SAL-QTN-2026-00070")]
+                                        extra_qs.append(
+                                            f"fill_search_term={_qn}")
+                                        extra_qs.append(
+                                            "fill_SAL-QTN-2026-00070=" + _qn)
+                                except Exception:
+                                    pass
                             fill_qs = "&".join(
-                                f"fill_{v}={new_val}" for v in vs)
+                                [f"fill_{v}={new_val}" for v in vs] + extra_qs)
                             await page.goto(
                                 f"chrome-extension://{EXT}/executor.html"
                                 f"?skill={sid}&token={token}&auto=1"
@@ -237,10 +287,12 @@ async def ext_rounds(token, out):
                         if not launched:
                             continue
                     # 连接已断——纯 DB 轮询 run 终态（_prev_id 已在点击前
-                    # 快照——见上方）
+                    # 快照——见上方）。输出带 run id 对账（258 轮2 误判
+                    # fail 而 DB run 实为 pass 的竞态实证——对账可查）
                     from app.db import SessionLocal as _S
                     from app.models import ReplayRun as _RR
                     status = "timeout"
+                    run_id_used = None
                     for _ in range(90):
                         await asyncio.sleep(3)
                         _db = _S()
@@ -252,10 +304,14 @@ async def ext_rounds(token, out):
                         _db.close()
                         if _r and _r.status not in ("running",):
                             status = _r.status
+                            run_id_used = _r.id
                             break
                     out.append({"system": sys_id, "round": rnd,
-                                "skill": sid, "status": status})
-                    print(f"[{sys_id}] 轮{rnd} #{sid}: {status}", flush=True)
+                                "skill": sid, "status": status,
+                                "run_id": run_id_used})
+                    print(f"[{sys_id}] 轮{rnd} #{sid}: {status}"
+                          f"{' run' + str(run_id_used) if run_id_used else ''}",
+                          flush=True)
 
 
 async def main():
