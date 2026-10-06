@@ -118,12 +118,14 @@ def test_load_adapter_dir_collects_and_lints(tmp_path: Path):
 
 
 def test_repo_seven_system_adapters_validate():
-    """AF1 验收：仓库 7 份系统清单（s43 脚本机械提取）全部通过校验；
-    env 模式系统（禅道/Odoo/Dolibarr）零 password_literal 警告。"""
+    """AF1 验收：仓库系统清单（s43 脚本机械提取）全部通过校验；
+    env 模式系统（禅道/Odoo/Dolibarr）零 password_literal 警告。
+    P4 后为 8 系统（+firefly——零代码接入终验的声明产物）。"""
     repo_adapters = Path(__file__).resolve().parent.parent / "adapters"
     manifests, lints = load_adapter_dir(repo_adapters)
     ids = {m.id for m in manifests}
-    assert ids == {"zentao", "ruoyi", "jeecg", "snipe", "odoo", "erpnext", "dolibarr"}
+    assert ids == {"zentao", "ruoyi", "jeecg", "snipe", "odoo",
+                   "erpnext", "dolibarr", "firefly"}
     linted_files = {l.file for l in lints}
     assert linted_files <= {"ruoyi.yaml", "jeecg.yaml", "snipe.yaml",
                             "erpnext.yaml", "dolibarr.yaml", "zentao.yaml",
