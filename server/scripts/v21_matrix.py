@@ -30,7 +30,10 @@ CHAINS = {
              "ext_pick": 1},
     "dolibarr": {"name": "订单链", "skills": [188, 189, 190, 191],
                  "ext_pick": 188},
-    "zentao": {"name": "QA 链", "skills": [166, 167, 168, 169],
+    # 169 排除（录制语义歧义：label「执行」匹配到左侧导航菜单而非 CaseRun
+    # 行操作——与 AF4 归档的 iframe 二级操作采集限制同源；菜单点击导航到
+    # 别的页面致后续步必然 miss）
+    "zentao": {"name": "QA 链", "skills": [166, 167, 168],
                "ext_pick": 166},
     "erpnext": {"name": "CRM 链", "skills": [234, 235, 236],
                 "ext_pick": 234},

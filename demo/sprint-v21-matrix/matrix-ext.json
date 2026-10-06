@@ -3,276 +3,322 @@
     "system": "odoo",
     "round": 1,
     "skill": 178,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1452
   },
   {
     "system": "odoo",
     "round": 1,
     "skill": 179,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1453
   },
   {
     "system": "odoo",
     "round": 1,
     "skill": 180,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1454
   },
   {
     "system": "odoo",
     "round": 2,
     "skill": 178,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1455
   },
   {
     "system": "odoo",
     "round": 2,
     "skill": 179,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1456
   },
   {
     "system": "odoo",
     "round": 2,
     "skill": 180,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1457
   },
   {
     "system": "dolibarr",
     "round": 1,
     "skill": 188,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1458
   },
   {
     "system": "dolibarr",
     "round": 1,
     "skill": 189,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1459
   },
   {
     "system": "dolibarr",
     "round": 1,
     "skill": 190,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1460
   },
   {
     "system": "dolibarr",
     "round": 1,
     "skill": 191,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1461
   },
   {
     "system": "dolibarr",
     "round": 2,
     "skill": 188,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1462
   },
   {
     "system": "dolibarr",
     "round": 2,
     "skill": 189,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1463
   },
   {
     "system": "dolibarr",
     "round": 2,
     "skill": 190,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1464
   },
   {
     "system": "dolibarr",
     "round": 2,
     "skill": 191,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1465
   },
   {
     "system": "zentao",
     "round": 1,
     "skill": 166,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1466
   },
   {
     "system": "zentao",
     "round": 1,
     "skill": 167,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1467
   },
   {
     "system": "zentao",
     "round": 1,
     "skill": 168,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1468
   },
   {
     "system": "zentao",
     "round": 1,
     "skill": 169,
-    "status": "fail"
+    "status": "fail",
+    "run_id": 1469
   },
   {
     "system": "zentao",
     "round": 2,
     "skill": 166,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1470
   },
   {
     "system": "zentao",
     "round": 2,
     "skill": 167,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1471
   },
   {
     "system": "zentao",
     "round": 2,
     "skill": 168,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1472
   },
   {
     "system": "zentao",
     "round": 2,
     "skill": 169,
-    "status": "fail"
+    "status": "fail",
+    "run_id": 1473
   },
   {
     "system": "erpnext",
     "round": 1,
     "skill": 234,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1474
   },
   {
     "system": "erpnext",
     "round": 1,
     "skill": 235,
-    "status": "fail"
+    "status": "pass",
+    "run_id": 1475
   },
   {
     "system": "erpnext",
     "round": 1,
     "skill": 236,
-    "status": "fail"
+    "status": "pass",
+    "run_id": 1476
   },
   {
     "system": "erpnext",
     "round": 2,
     "skill": 234,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1477
   },
   {
     "system": "erpnext",
     "round": 2,
     "skill": 235,
-    "status": "fail"
+    "status": "pass",
+    "run_id": 1478
   },
   {
     "system": "erpnext",
     "round": 2,
     "skill": 236,
-    "status": "fail"
+    "status": "pass",
+    "run_id": 1479
   },
   {
     "system": "snipe",
     "round": 1,
     "skill": 154,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1480
   },
   {
     "system": "snipe",
     "round": 1,
     "skill": 155,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1481
   },
   {
     "system": "snipe",
     "round": 1,
     "skill": 156,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1482
   },
   {
     "system": "snipe",
     "round": 2,
     "skill": 154,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1483
   },
   {
     "system": "snipe",
     "round": 2,
     "skill": 155,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1484
   },
   {
     "system": "snipe",
     "round": 2,
     "skill": 156,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1485
   },
   {
     "system": "ruoyi",
     "round": 1,
     "skill": 256,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1486
   },
   {
     "system": "ruoyi",
     "round": 1,
     "skill": 257,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1487
   },
   {
     "system": "ruoyi",
     "round": 1,
     "skill": 258,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1488
   },
   {
     "system": "ruoyi",
     "round": 2,
     "skill": 256,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1489
   },
   {
     "system": "ruoyi",
     "round": 2,
     "skill": 257,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1490
   },
   {
     "system": "ruoyi",
     "round": 2,
     "skill": 258,
-    "status": "fail"
+    "status": "pass",
+    "run_id": 1491
   },
   {
     "system": "jeecg",
     "round": 1,
     "skill": 269,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1492
   },
   {
     "system": "jeecg",
     "round": 1,
     "skill": 270,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1493
   },
   {
     "system": "jeecg",
     "round": 1,
     "skill": 271,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1494
   },
   {
     "system": "jeecg",
     "round": 2,
     "skill": 269,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1495
   },
   {
     "system": "jeecg",
     "round": 2,
     "skill": 270,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1496
   },
   {
     "system": "jeecg",
     "round": 2,
     "skill": 271,
-    "status": "pass"
+    "status": "pass",
+    "run_id": 1497
   }
 ]
