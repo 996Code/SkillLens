@@ -63,4 +63,4 @@ open http://127.0.0.1:8710/skills   # Skill 库 / 四分类报告 / 审计 / 画
 
 ## 测试基线
 
-server **506 passed** / web **54 passed** / extension **83 passed**（三套全绿是每个 Sprint 的合并前提）
+server **508 passed** / web **54 passed** / extension **83 passed**（三套全绿是每个 Sprint 的合并前提）

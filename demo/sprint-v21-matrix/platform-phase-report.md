@@ -40,7 +40,7 @@
 
 ### 修复后基线
 
-server 506 / web 54 / extension 83（新增安全用例：server +2、extension +7）。
+server 508 / web 54 / extension 83（新增安全用例：server +2、extension +7）。
 
 ## 三、文档同步（本轮全部更新）
 

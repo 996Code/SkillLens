@@ -114,7 +114,7 @@ uv run python -m app.create_user <用户名> <密码> admin   # 建号（S21 起
 uv run uvicorn app.main:app --port 8710
 
 # 三套测试（Windows：Node 命令前缀 export PATH="/d/github/.tools/node-v24.18.0-win-x64:$PATH"）
-cd server && uv run pytest -q                    # 506 passed
+cd server && uv run pytest -q                    # 508 passed
 cd server/web && npm test                        # 50 passed
 cd extension && npm run build && npm test        # 31 passed
 
@@ -153,7 +153,7 @@ cd server && uv run python ../scripts/live_browser.py 9222
 - **全库评审（2026-10-07）**：四域深审+6 处安全红线修复（网关 IP env 化/
   路径穿越/attribution 脱敏/执行器三重脱敏/CDP 网络证据脱敏/插件配对 401）：
   `docs/reviews/2026-10-07-full-codebase-audit.md`。
-- **测试基线**：server 506 / web 54 / extension 83（三套全绿是合并前提）。
+- **测试基线**：server 508 / web 54 / extension 83（三套全绿是合并前提）。
 - **近期工作**（2026-10-03 v2.1 方向变更）：~~JeecG 链式 override~~ ✅（S43-5 完成，
   row-anchor 换参注入+动态 id 断言归一，三链全 PASS 实体级验证）→ **块 AF 适配器
   架构**（基座+声明式系统清单：manifest schema/探针运行时/例程库/链编排器/向导 UI）

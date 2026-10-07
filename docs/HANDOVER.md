@@ -124,7 +124,7 @@ docs/arch/2026-10-07-platform-interaction-profile.md。
 ### 4.3 测试基线（每 Sprint 合并前提：三套全绿）
 
 ```bash
-cd server && uv run pytest -q                        # 506 passed
+cd server && uv run pytest -q                        # 508 passed
 cd server/web && npm test                            # 54 passed
 cd extension && npm run build && npm test            # 83 passed
 ```
