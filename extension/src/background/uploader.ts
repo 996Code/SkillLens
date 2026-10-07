@@ -3,7 +3,7 @@ import { AGENT_URL, EVENT_MSG } from "../shared/types";
 import type { RawEvent } from "../shared/types";
 import { assignSession } from "../shared/assign-session";
 import { getRecordingState, startRecording, stopRecording } from "./session";
-import { listExecutorSkills, runSkill } from "./executor";
+import { listExecutorSkills } from "./executor";
 
 // S31 修复：录制状态已从 chrome.storage.session 改为 chrome.storage.local
 // （MV3 SW 空闲被杀后 session 存储丢失，local 持久化跨 SW 重启）。
@@ -16,7 +16,9 @@ const MAX_RETRIES = 3;
 const retries = new Map<string, number>();
 
 function eventKey(e: RawEvent): string {
-  return `${e.ts}:${e.seq}:${e.kind}`;
+  // page_id 必入键（评审 #14）：不同 frame 同毫秒同类型事件键碰撞会
+  // 互相污染重试计数导致误丢
+  return `${e.ts}:${e.seq}:${e.kind}:${e.pageId ?? ""}`;
 }
 
 let flushing = false;
@@ -53,7 +55,9 @@ async function uploadGrouped(assigned: RawEvent[]): Promise<number> {
     try {
       const resp = await fetch(`${AGENT_URL}/sessions/${sid}/events`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        // 跨域污染守卫（服务端 events 豁免鉴权——非插件调用方无此头被 403）
+        headers: { "Content-Type": "application/json",
+                   "X-SkillLens-Agent": "1" },
         body: JSON.stringify(events),
       });
       if (!resp.ok) throw new Error(`status ${resp.status}`);
@@ -172,15 +176,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
   if (msg?.type === "EXECUTOR_RUN") {
-    // MV3：同步 sendResponse + return false 会丢 channel（实测 TIMEOUT）。
-    // 正确姿势：sendResponse 后不 return（listener 自然结束），
-    // 长任务 fire-and-forget，结果经 EXECUTOR_PROGRESS 推送
+    // 评审 #13：SW 上下文跑 runSkill 有 MV3 30s 空闲被杀风险（执行循环/
+    // networkLog 全丢），且与 executor.html 页路径双入口漂移——统一改开
+    // 执行页（AG3 终局架构）。同步 sendResponse（MV3 丢 channel 实证）。
     sendResponse({ started: true });
-    runSkill(msg.skillId, msg.overrides || {},
-      (txt) => { try { chrome.runtime.sendMessage(
-        { type: "EXECUTOR_PROGRESS", msg: txt }, () => void chrome.runtime.lastError); } catch { /* noop */ } })
-      .catch((e) => { try { chrome.runtime.sendMessage(
-        { type: "EXECUTOR_PROGRESS", msg: `失败：${e}` }, () => void chrome.runtime.lastError); } catch { /* noop */ } });
+    const u = new URL(chrome.runtime.getURL("executor.html"));
+    u.searchParams.set("skill", String(msg.skillId ?? ""));
+    if (msg.overrides && Object.keys(msg.overrides).length) {
+      for (const [k, v] of Object.entries(msg.overrides))
+        u.searchParams.set(`fill_${k}`, v);
+    }
+    chrome.tabs.create({ url: u.toString() }).catch(() => {});
   }
 });
 chrome.alarms.onAlarm.addListener(() => void flush());

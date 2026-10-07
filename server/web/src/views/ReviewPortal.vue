@@ -6,6 +6,7 @@
 import { computed, onMounted, ref } from "vue";
 import { createReview, currentUser, getPendingRuns, getReviews } from "../api";
 import type { PendingRun, ReviewDecision, ReviewItem } from "../api";
+import { fmtTime } from "../run-format";
 
 // S21 块 S：评审人从登录态取（后端强制 reviewer/admin；viewer 只读——表单隐藏）
 const user = currentUser();
@@ -47,10 +48,6 @@ function reviewMarkdown(run: PendingRun): string | null {
   return typeof review === "string" ? review : null;
 }
 
-function fmtTime(ts: string): string {
-  return ts.replace("T", " ").replace(/\.\d+.*$/, "");
-}
-
 function toggleRun(run: PendingRun): void {
   if (expandedId.value === run.id) {
     expandedId.value = null;
@@ -84,6 +81,7 @@ async function submitReview(run: PendingRun): Promise<void> {
   }
   submitting.value = true;
   submitError.value = "";
+  submitHint.value = "";  // 上一次的成功提示不带入本次提交（评审）
   try {
     await createReview({
       agent_run_id: run.id,

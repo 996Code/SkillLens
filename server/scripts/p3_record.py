@@ -30,6 +30,8 @@ def mint_token() -> str:
     db = SessionLocal()
     try:
         u = db.query(User).filter(User.username == "admin").first()
+        if u is None:
+            raise SystemExit("admin 账号不存在——先 uv run python -m app.create_user")
         return issue_token(db, u.id)
     finally:
         db.close()
@@ -91,10 +93,12 @@ class CDPage:
 
 
 async def open_page():
-    """新开一个 about:blank 页并返回控制器。"""
-    req = urllib.request.Request(
-        f"{CDP}/json/new?about:blank", method="PUT")
-    target = json.loads(urllib.request.urlopen(req).read())
+    """新开一个 about:blank 页并返回控制器（urllib 阻塞调用让出事件循环）。"""
+    def _new():
+        req = urllib.request.Request(
+            f"{CDP}/json/new?about:blank", method="PUT")
+        return json.loads(urllib.request.urlopen(req).read())
+    target = await asyncio.to_thread(_new)
     ws = await websockets.connect(
         target["webSocketDebuggerUrl"], max_size=10**7)
     page = CDPage(ws)
@@ -104,15 +108,19 @@ async def open_page():
 
 
 async def close_page(target_id):
-    try:
-        urllib.request.urlopen(
-            f"{CDP}/json/close/{target_id}").read()
-    except Exception:
-        pass
+    def _close():
+        try:
+            urllib.request.urlopen(
+                f"{CDP}/json/close/{target_id}").read()
+        except Exception:
+            pass
+    await asyncio.to_thread(_close)
 
 
 async def sw_evaluate(expr: str):
-    targets = json.loads(urllib.request.urlopen(f"{CDP}/json").read())
+    def _list():
+        return json.loads(urllib.request.urlopen(f"{CDP}/json").read())
+    targets = await asyncio.to_thread(_list)
     sw = [t for t in targets if t.get("type") == "service_worker"
           and "chrome-extension" in t.get("url", "")]
     if not sw:
@@ -133,7 +141,8 @@ async def start_recording(note: str) -> str:
     r = await sw_evaluate(
         "(async () => {"
         " const res = await fetch('http://127.0.0.1:8710/api/v1/sessions', {"
-        "   method: 'POST', headers: {'Content-Type': 'application/json'},"
+        "   method: 'POST', headers: {'Content-Type': 'application/json',"
+        "     'X-SkillLens-Agent': '1'},"
         f"   body: JSON.stringify({{target_system: 'njmind', note: {json.dumps(note)}, source: 'demo'}})}});"
         " if (!res.ok) return JSON.stringify({error: res.status});"
         " const s = await res.json();"

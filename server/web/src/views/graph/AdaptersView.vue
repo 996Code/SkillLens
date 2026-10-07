@@ -73,21 +73,33 @@ const fpYaml = ref("");
 const fpResult = ref<{ fingerprint: { ui_library: string; framework: string } } | null>(null);
 
 async function fingerprint(): Promise<void> {
-  const res = await authedFetch("/api/v1/adapters/fingerprint", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ dom: fpDom.value, url: "" }),
-  });
-  const body = await res.json();
-  fpResult.value = body;
-  fpYaml.value = body.profile_yaml || "";
+  try {
+    const res = await authedFetch("/api/v1/adapters/fingerprint", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dom: fpDom.value, url: "" }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = await res.json();
+    fpResult.value = body;
+    fpYaml.value = body.profile_yaml || "";
+  } catch (e: any) {
+    fpYaml.value = "";
+    fpResult.value = null;
+  }
 }
 
 async function load(): Promise<void> {
   loading.value = true;
-  const res = await authedFetch("/api/v1/adapters");
-  adapters.value = await res.json();
-  loading.value = false;
+  try {
+    const res = await authedFetch("/api/v1/adapters");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    adapters.value = await res.json();
+  } catch {
+    adapters.value = [];
+  } finally {
+    loading.value = false;
+  }
 }
 
 async function select(a: AdapterSummary): Promise<void> {
@@ -101,15 +113,20 @@ async function select(a: AdapterSummary): Promise<void> {
 }
 
 async function validate(): Promise<void> {
-  const res = await authedFetch("/api/v1/adapters/validate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ yaml: yamlText.value }),
-  });
-  const body = await res.json();
-  feedback.value = body.valid
-    ? { ok: true, msg: "校验通过" + (body.lints?.length ? `（${body.lints.length} 条警告）` : "") }
-    : { ok: false, msg: `校验失败：${body.error}` };
+  try {
+    const res = await authedFetch("/api/v1/adapters/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ yaml: yamlText.value }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = await res.json();
+    feedback.value = body.valid
+      ? { ok: true, msg: "校验通过" + (body.lints?.length ? `（${body.lints.length} 条警告）` : "") }
+      : { ok: false, msg: `校验失败：${body.error}` };
+  } catch (e: any) {
+    feedback.value = { ok: false, msg: `校验请求失败：${e.message}` };
+  }
 }
 
 async function save(): Promise<void> {

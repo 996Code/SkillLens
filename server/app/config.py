@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -8,6 +9,12 @@ HOST = "127.0.0.1"
 PORT = 8710
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./skilllens.db")
 API_PREFIX = "/api/v1"
+
+# 回放证据（截图等）落盘根目录——双执行器（server runner / extension step）
+# 同源（评审 #8：此前两处 parents[N] 解析分家）
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+REPLAY_ARTIFACT_DIR = os.environ.get(
+    "REPLAY_ARTIFACT_DIR", str(_REPO_ROOT / "artifacts"))
 
 LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")

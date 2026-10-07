@@ -22,8 +22,7 @@ from app.replay.flow_graph import derive_states
 from app.replay.visual import compare_images, dhash, visual_dir
 
 MAX_BODY = 8192
-ARTIFACT_DIR = os.environ.get(
-    "REPLAY_ARTIFACT_DIR", str(Path(__file__).resolve().parents[2] / "artifacts"))
+from app.config import REPLAY_ARTIFACT_DIR as ARTIFACT_DIR
 STORAGE_STATE = os.environ.get("REPLAY_STORAGE_STATE", "")
 
 

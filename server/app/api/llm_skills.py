@@ -51,20 +51,20 @@ async def induce(alignment_id: int, db: Session = Depends(get_db)) -> dict:
 
 @router.get("/skills")
 async def list_skills(db: Session = Depends(get_db)) -> list:
-    from app.api.baseline import _skill_source
+    from app.api.baseline import _session_sources, _skill_source
     from app.models import Alignment
     from app.system import skill_systems
-    sources = {sid: source for sid, source in db.execute(
-        select(RecordingSession.id, RecordingSession.source)).all()}
+    sources = _session_sources(db)
     alignments = {a.id: a for a in db.query(Alignment).all()}
 
+    class _AlignLookup:
+        """_skill_source 逐条 db.get 会 N+1——预载映射后零额外查询。"""
+        def get(self, model, aid):
+            return alignments.get(aid)
+
     def source_of(r: Skill) -> str:
-        # 同 baseline._skill_source 取法：alignment 首个 session 的 source，缺省 demo
-        alignment = alignments.get(r.alignment_id)
-        for sid in (alignment.session_ids or [] if alignment else []):
-            if sid in sources:
-                return sources[sid] or "demo"
-        return "demo"
+        # 与 baseline._skill_source 同一实现（评审 #17：双源漂移消除）
+        return _skill_source(_AlignLookup(), r, sources)
 
     # S15：列表默认排除 superseded（历史版本不进工作台列表）
     rows = db.query(Skill).filter(Skill.status != "superseded") \

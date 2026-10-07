@@ -6,6 +6,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 import { getReplayRun, getRunFlow } from "../api";
 import type { FlowGraphDTO, ReplayRunDetail } from "../api";
+import { fmtTime } from "../run-format";
 import FlowGraph from "../components/FlowGraph.vue";
 import ShotGallery from "../components/ShotGallery.vue";
 import type { ShotItem } from "../components/ShotGallery.vue";
@@ -37,14 +38,12 @@ const shotItems = computed<ShotItem[]>(() => {
   }));
 });
 
-function fmtTime(ts: string | null | undefined): string {
-  return ts ? ts.replace("T", " ").replace(/\.\d+.*$/, "") : "—";
-}
-
 onMounted(async () => {
   try {
-    run.value = await getReplayRun(String(route.params.runId));
-    flow.value = await getRunFlow(String(route.params.runId)).catch(() => null);
+    [run.value, flow.value] = await Promise.all([
+      getReplayRun(String(route.params.runId)),
+      getRunFlow(String(route.params.runId)).catch(() => null),
+    ]);
   } catch (e) {
     if (e instanceof Error && "status" in e && (e as { status: number }).status === 404) {
       notFound.value = true;

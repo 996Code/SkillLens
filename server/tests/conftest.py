@@ -34,5 +34,7 @@ async def client():
         db.close()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         c.headers["Authorization"] = f"Bearer {token}"
+        # events 采集通道豁免鉴权但要求插件共享头（评审 #4 跨域污染守卫）
+        c.headers["X-SkillLens-Agent"] = "1"
         yield c
     Base.metadata.drop_all(engine)

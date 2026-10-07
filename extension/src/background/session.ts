@@ -39,11 +39,17 @@ export async function startRecording(
       }
     }
   } catch { /* 配对失败回退默认——不阻塞录制 */ }
-  const res = await fetch(`${AGENT_URL}/sessions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ target_system: targetSystem, note, source }),
-  });
+  // 超时保护（评审 #16）：server 挂起时 popup 永久等待——与 executor 同款 race
+  const res = await Promise.race([
+    fetch(`${AGENT_URL}/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json",
+                 "X-SkillLens-Agent": "1" },
+      body: JSON.stringify({ target_system: targetSystem, note, source }),
+    }),
+    new Promise<never>((_, rej) =>
+      setTimeout(() => rej(new Error("create session timeout 30s")), 30000)),
+  ]) as Response;
   if (!res.ok) throw new Error(`create session failed: ${res.status}`);
   const session = await res.json();
   await chrome.storage.local.set({

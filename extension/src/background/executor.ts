@@ -5,8 +5,7 @@
 export {};
 
 import { redactNetworkBody, redactNetworkUrl } from "../shared/redact";
-
-const AGENT = "http://127.0.0.1:8710/api/v1";
+import { AGENT_URL as AGENT } from "../shared/types";
 
 interface Instruction {
   seq: number;
@@ -61,13 +60,6 @@ export async function listExecutorSkills(): Promise<any[]> {
 
 // ---- 执行器主体 ----
 
-interface RunHandle {
-  runId: number;
-  stop: boolean;
-}
-
-const active: RunHandle | null = null;
-
 export async function runSkill(
   skillId: number, overrides: Record<string, string>,
   onProgress: (msg: string) => void,
@@ -79,8 +71,13 @@ export async function runSkill(
   });
   const runId: number = plan.run_id;
   // P1 交互画像（平台化组件化）：系统交互差异的声明式载体——执行器
-  // 特化行为改为画像解释（无画像走内置默认=通用行为）
+  // 特化行为改为画像解释（无画像走内置默认=通用行为）。
+  // 入口统一重置全部跨运行全局（评审 #6：残留画像/搜索值/GetItems 标记
+  // 会污染同页签下一个技能——错误吞噬 click/误触发重导航）
   (globalThis as any).__ip = plan.interaction_profile || null;
+  (globalThis as any).__gotoTargetUrl = undefined;
+  (globalThis as any).__getItemsDone = false;
+  (globalThis as any).__lastSearchValue = "";
   onProgress(`已创建执行 #${runId}（${plan.total_instructions} 条指令）`);
 
   // 执行页签获取：优先复用已存在的空白页签（CDP 托管浏览器里
@@ -124,13 +121,20 @@ export async function runSkill(
   }
   onProgress("已 attach（顶部横幅=执行中，全程可见）");
 
-  // 网络证据：先订阅后动作（lesson #30）；AG4 补响应体（断言原料）
+  // 网络证据：先订阅后动作（lesson #30）；AG4 补响应体（断言原料）。
+  // 评审 #7/#8：listener 具名+finally 移除（多轮执行不再累积泄漏闭包）；
+  // pendingBodies 请求结束即删（Map 无界增长根治）
   const networkLog: any[] = [];
   const pendingBodies = new Map<string, string>();
-  chrome.debugger.onEvent.addListener(function onEvt(source, method, params: any) {
+  const onEvt = (source: any, method: string, params: any) => {
     if (source.tabId !== tabId) return;
     if (method === "Network.requestWillBeSent") {
       pendingBodies.set(params?.requestId, params?.request?.method || "GET");
+      return;
+    }
+    if (method === "Network.loadingFinished" || method === "Network.loadingFailed") {
+      // 方法名记入日志后即可删（响应体若已取，networkLog 持有快照）
+      pendingBodies.delete(params?.requestId);
       return;
     }
     if (method === "Network.responseReceived") {
@@ -148,9 +152,11 @@ export async function runSkill(
         // 安全红线：响应体经 redactNetworkBody（JSON 递归敏感键掩码
         // /urlencoded 脱敏）——与录制侧 net-hook.js 同源语义
         networkLog[idx].body = redactNetworkBody(b?.body || "");
-      }).catch(() => { /* 已导航/流式体不可取——留空不阻塞 */ });
+      }).catch(() => { /* 已导航/流式体不可取——留空不阻塞 */ })
+        .finally(() => pendingBodies.delete(params?.requestId));
     }
-  });
+  };
+  chrome.debugger.onEvent.addListener(onEvt);
   await chrome.debugger.sendCommand(debuggee, "Network.enable").catch(() => {});
 
   const t0 = Date.now();
@@ -250,6 +256,7 @@ export async function runSkill(
     ]);
     return { status: "aborted" };
   } finally {
+    chrome.debugger.onEvent.removeListener(onEvt);
     await chrome.debugger.detach(debuggee).catch(() => {});
     await chrome.tabs.remove(tabId).catch(() => {});
   }
@@ -1487,9 +1494,7 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
       for (const c of n.childFrames || []) walk(c);
     })(tree.frameTree);
     // 主 frame 之外的：拿 executionContextId 求值
-    const enabled = await chrome.debugger.sendCommand(debuggee, "Runtime.enable");
-    const ctxs: any[] = enabled?.executionContextCreated
-      ? [enabled.executionContextCreated] : [];
+    await chrome.debugger.sendCommand(debuggee, "Runtime.enable");
     // 逐 frame createIsolatedWorld 或用 contextId——最稳：Runtime.evaluate
     // 的 contextId 从 Runtime.enable 后的事件流拿不到（一次性），
     // 改用 frame 唯一上下文：对每 frame evaluate with contextId=null 不行

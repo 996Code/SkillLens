@@ -9,10 +9,9 @@ from pathlib import Path
 import yaml
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
 from app.adapters.manifest import load_manifest_text, load_adapter_dir
-from app.db import SessionLocal
+from app.api.auth import require_role
 
 router = APIRouter()
 
@@ -26,16 +25,12 @@ def _check_adapter_id(adapter_id: str) -> None:
         raise HTTPException(422, "adapter_id 仅允许字母/数字/下划线/连字符")
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# 写盘探针可触发 docker-exec——viewer 只读，写盘须 reviewer/admin（评审 #3）
+_WRITE_GUARD = [Depends(require_role("admin", "reviewer"))]
 
 
 @router.get("/adapters")
-async def list_adapters(db: Session = Depends(get_db)) -> list:
+async def list_adapters() -> list:
     manifests, lints = load_adapter_dir(ADAPTERS_DIR)
     lint_map: dict[str, list] = {}
     for l in lints:
@@ -59,8 +54,7 @@ class ValidateRequest(BaseModel):
 
 
 @router.post("/adapters/validate")
-async def validate_adapter(body: ValidateRequest,
-                           db: Session = Depends(get_db)) -> dict:
+async def validate_adapter(body: ValidateRequest) -> dict:
     try:
         _, lints = load_manifest_text(body.yaml)
         return {"valid": True, "lints": [l.message for l in lints]}
@@ -69,8 +63,7 @@ async def validate_adapter(body: ValidateRequest,
 
 
 @router.get("/adapters/{adapter_id}/yaml")
-async def get_adapter_yaml(adapter_id: str,
-                           db: Session = Depends(get_db)) -> dict:
+async def get_adapter_yaml(adapter_id: str) -> dict:
     _check_adapter_id(adapter_id)
     f = ADAPTERS_DIR / f"{adapter_id}.yaml"
     if not f.is_file():
@@ -82,9 +75,8 @@ class SaveRequest(BaseModel):
     yaml: str
 
 
-@router.put("/adapters/{adapter_id}")
-async def save_adapter(adapter_id: str, body: SaveRequest,
-                       db: Session = Depends(get_db)) -> dict:
+@router.put("/adapters/{adapter_id}", dependencies=_WRITE_GUARD)
+async def save_adapter(adapter_id: str, body: SaveRequest) -> dict:
     _check_adapter_id(adapter_id)
     try:
         m, lints = load_manifest_text(body.yaml)

@@ -11,9 +11,13 @@ from sqlalchemy.orm import Session
 
 from app.models import Alignment, RawEvent, Skill
 
-# 已知部署的 host → 系统名（新系统自动兜底为 host 本身）
+# 已知部署的 host → 系统名（新系统自动兜底为 host 本身）。
+# njmind 内网 host 经 env 注入（NJMIND_HOST，server/.env）——内网拓扑不入库
+import os
+
 HOST_SYSTEM = {
-    "192.168.99.22": "njmind 内网",
+    **({os.environ["NJMIND_HOST"]: "njmind 内网"}
+      if os.environ.get("NJMIND_HOST") else {}),
     "127.0.0.1:8069": "Odoo 销售",
     "127.0.0.1:8080": "Dolibarr 订单",
     "127.0.0.1:8090": "ERPNext 客户",

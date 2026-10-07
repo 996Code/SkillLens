@@ -49,7 +49,11 @@ export async function login(username: string, password: string): Promise<AuthUse
     body: JSON.stringify({ username, password }),
   });
   if (!resp.ok) {
-    throw new ApiError(resp.status, "用户名或密码错误");
+    // 401=凭证错；5xx=服务端故障（别误导用户改密码）
+    throw new ApiError(resp.status,
+      resp.status === 401 ? "用户名或密码错误"
+        : resp.status >= 500 ? "服务暂时不可用，请稍后重试"
+          : `登录失败（${resp.status}）`);
   }
   const body = (await resp.json()) as { token: string; user: AuthUser };
   setSession(body.token, body.user);
@@ -878,10 +882,6 @@ export function getSkillStateMachine(
 
 export function getLearningGraph(): Promise<FlowGraphDTO> {
   return get<FlowGraphDTO>("/api/v1/learning-graph");
-}
-
-export function getCanvasFlow(canvasId: number | string): Promise<FlowGraphDTO> {
-  return get<FlowGraphDTO>(`/api/v1/canvas/${canvasId}/flow`);
 }
 
 // ---------- S37-3：流程分组（自动化流程组合 → 一键执行 → 汇总） ----------

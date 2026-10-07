@@ -63,7 +63,11 @@ async function loadSkills(): Promise<void> {
     const skills = await listExecutorSkills();
     renderSkills(Array.isArray(skills) ? skills.slice(0, 20) : []);
   } catch (e: any) {
-    execList.innerHTML = `<div style="color: var(--muted); font-size: 12px">${e.message}</div>`;
+    const div = document.createElement("div");
+    div.style.color = "var(--muted)";
+    div.style.fontSize = "12px";
+    div.textContent = e.message;
+    execList.replaceChildren(div);
   }
 }
 

@@ -79,8 +79,9 @@ def _baseline_item(db: Session, skill: Skill,
         "assertion_pass_rate": _latest_pass_rate(db, skill.id),
         "input_var_names": [v.get("name") for v in skill.input_variables or []
                             if v.get("name")],
-        "window_params": (db.get(Alignment, skill.alignment_id).window_params
-                          if skill.alignment_id else None),
+        "window_params": (_al.window_params if (_al := (
+            db.get(Alignment, skill.alignment_id) if skill.alignment_id else None)
+        ) else None),
         "source": _skill_source(db, skill, sources),
     }
 

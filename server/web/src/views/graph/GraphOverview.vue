@@ -4,6 +4,7 @@
 import { computed, onMounted, ref } from "vue";
 import { getSkills, listSuites } from "../../api";
 import type { SkillListItem, SuiteItem } from "../../api";
+import { groupBySystem } from "../../system-group";
 
 const suites = ref<SuiteItem[]>([]);
 const skills = ref<SkillListItem[]>([]);
@@ -12,19 +13,7 @@ const expanded = ref<Record<number, boolean>>({});
 const loading = ref(true);
 const error = ref("");
 
-const bySystem = computed(() => {
-  const groups = new Map<string, SkillListItem[]>();
-  for (const s of skills.value) {
-    const sys = (s as { system?: string }).system || "其他";
-    if (!groups.has(sys)) groups.set(sys, []);
-    groups.get(sys)!.push(s);
-  }
-  const order = ["njmind 内网", "Odoo 销售", "Dolibarr 订单", "ERPNext 客户", "Snipe 资产", "禅道项目", "若依权限", "JeecG 表单"];
-  return [...groups.entries()].sort((a, b) => {
-    const ai = order.indexOf(a[0]), bi = order.indexOf(b[0]);
-    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-  });
-});
+const bySystem = computed(() => groupBySystem(skills.value));
 
 onMounted(async () => {
   try {
@@ -228,6 +217,7 @@ onMounted(async () => {
   height: 10px;
   border-radius: 50%;
   display: inline-block;
+  background: #6b7280; /* 未列系统的默认色（禅道/若依/JeecG 等不再无色） */
 }
 .sys-dot[data-sys="njmind"] { background: #3b82f6; }
 .sys-dot[data-sys="Odoo"] { background: #8b5cf6; }

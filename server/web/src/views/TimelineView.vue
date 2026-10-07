@@ -10,7 +10,7 @@
 import { computed, onMounted, ref } from "vue";
 import { getLlmLogDetail, getReplayRun, getTimeline } from "../api";
 import type { LlmLogDetail, TimelineItem } from "../api";
-import { shotCaption, stepScreenshotFiles } from "../run-format";
+import { shotCaption, stepScreenshotFiles, fmtTime } from "../run-format";
 import ShotGallery from "../components/ShotGallery.vue";
 import type { ShotItem } from "../components/ShotGallery.vue";
 
@@ -44,13 +44,15 @@ function typeColor(t: string): string {
   return TYPE_META[t]?.color ?? "var(--color-gray-5)";
 }
 
-function fmtTime(ts: string): string {
-  return ts.replace("T", " ").replace(/\.\d+.*$/, "");
-}
-
 // ---------- LLM IO 展开（按需拉取，缓存已展开项） ----------
 const expandedKey = ref<string | null>(null);
 const llmCache = new Map<number, LlmLogDetail>();
+// 简易 LRU 上限（评审）：长会话浏览数百条后 Map 无界增长
+const CACHE_MAX = 50;
+function cachePut<K, V>(m: Map<K, V>, k: K, v: V): void {
+  if (m.size >= CACHE_MAX) m.delete(m.keys().next().value as K);
+  m.set(k, v);
+}
 const llmDetail = ref<LlmLogDetail | null>(null);
 const llmLoading = ref(false);
 const llmError = ref("");
@@ -86,7 +88,7 @@ async function expandLlm(it: TimelineItem, key: string): Promise<void> {
   llmLoading.value = true;
   try {
     const d = await getLlmLogDetail(id);
-    llmCache.set(id, d);
+    cachePut(llmCache, id, d);
     if (expandedKey.value === key) llmDetail.value = d; // 已切走则丢弃
   } catch (e) {
     if (expandedKey.value === key) llmError.value = e instanceof Error ? e.message : String(e);
@@ -116,7 +118,7 @@ async function loadReplay(id: number, key: string): Promise<void> {
     const shots: ShotItem[] = (meta?.files ?? []).map((file) => ({
       file, caption: shotCaption(file, detail.executed),
     }));
-    replayCache.set(id, shots);
+    cachePut(replayCache, id, shots);
     if (expandedKey.value === key) replayShots.value = shots;
   } catch (e) {
     if (expandedKey.value === key) {

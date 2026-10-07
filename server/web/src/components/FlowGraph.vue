@@ -3,7 +3,7 @@
 // 全系统流程图基座——Run 执行图 / Skill 流程图 / 套件流水线图共用。
 // 节点类型着色：page 蓝 / action 按执行结果 / state 紫 / assert 按结果；
 // 点击节点 → 详情面板（截图/IO/错误）。
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
 import { VueFlow } from "@vue-flow/core";
 import { Background } from "@vue-flow/background";
 import { Controls } from "@vue-flow/controls";
@@ -98,6 +98,7 @@ async function onNodeClick({ node }: { node: { id: string } }): Promise<void> {
   const n = props.nodes.find((x) => x.id === node.id);
   if (!n) return;
   selected.value = n;
+  if (shotUrl.value) URL.revokeObjectURL(shotUrl.value);
   shotUrl.value = null;
   if (n.screenshot && props.runId != null) {
     try {
@@ -107,6 +108,11 @@ async function onNodeClick({ node }: { node: { id: string } }): Promise<void> {
     }
   }
 }
+
+// blob URL 泄漏收口（评审）：路由切换/组件卸载时释放
+onBeforeUnmount(() => {
+  if (shotUrl.value) URL.revokeObjectURL(shotUrl.value);
+});
 </script>
 
 <template>

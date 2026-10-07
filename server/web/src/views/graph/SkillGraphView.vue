@@ -59,32 +59,46 @@ const diffPct = computed(() => {
   return ratio == null ? "—" : `${(ratio * 100).toFixed(2)}%`;
 });
 
+// 路由竞态守卫（评审）：快速切换左树流程时，旧流程的 side 数据
+// （stateMachine/proposals/visual）晚到会覆盖新流程——seq 单调递增，
+// 响应归来时非当前 seq 即丢弃
+let sideSeq = 0;
 async function loadSideData(id: string): Promise<void> {
+  const seq = ++sideSeq;
   getSkillConsistency(id)
     .then((c) => {
-      if (typeof c?.consistent === "boolean") consistency.value = c;
+      if (seq === sideSeq && typeof c?.consistent === "boolean") consistency.value = c;
     })
     .catch(() => {});
   getSkillStateMachine(id)
     .then((sm) => {
-      if ((sm?.nodes ?? []).length) stateMachine.value = sm;
+      if (seq === sideSeq && (sm?.nodes ?? []).length) stateMachine.value = sm;
     })
     .catch(() => {});
   try {
-    visual.value = await getVisualBaseline(id);
-    if (visual.value.baseline) {
-      visualBaselineUrl.value = await fetchVisualImage(id, "baseline");
-      if (visual.value.last_result) {
-        visualLatestUrl.value = await fetchVisualImage(id, "latest");
+    const v = await getVisualBaseline(id);
+    if (seq !== sideSeq) return;
+    visual.value = v;
+    if (v.baseline) {
+      const b = await fetchVisualImage(id, "baseline");
+      if (seq !== sideSeq) { URL.revokeObjectURL(b); return; }
+      if (visualBaselineUrl.value) URL.revokeObjectURL(visualBaselineUrl.value);
+      visualBaselineUrl.value = b;
+      if (v.last_result) {
+        const l = await fetchVisualImage(id, "latest");
+        if (seq !== sideSeq) { URL.revokeObjectURL(l); return; }
+        if (visualLatestUrl.value) URL.revokeObjectURL(visualLatestUrl.value);
+        visualLatestUrl.value = l;
       }
     }
   } catch {
-    visual.value = null;
+    if (seq === sideSeq) visual.value = null;
   }
   try {
-    proposals.value = await getLocateProposals(id);
+    const p = await getLocateProposals(id);
+    if (seq === sideSeq) proposals.value = p;
   } catch {
-    proposals.value = [];
+    if (seq === sideSeq) proposals.value = [];
   }
 }
 

@@ -120,3 +120,31 @@ def test_adapter_id_traversal_rejected(adapter_client):
                 "credentials: {username: u, password_env: E_PW}\n"})
     assert r2.status_code == 422
     assert not (d.parent / "evil.yaml").exists()
+
+
+def test_put_adapter_requires_write_role(adapter_client, monkeypatch):
+    """评审 #3：清单写盘可触发 docker-exec 探针——viewer 只读 403，
+    reviewer/admin 可写。"""
+    from app.db import SessionLocal
+    from app.models import User
+    from app.auth import hash_password, issue_token
+
+    db = SessionLocal()
+    try:
+        db.add(User(username="af6-viewer", password_hash=hash_password("pw"),
+                    role="viewer"))
+        db.commit()
+        viewer = db.query(User).filter_by(username="af6-viewer").first()
+        vtok = issue_token(db, viewer.id)
+    finally:
+        db.close()
+
+    body = {"yaml": "id: t1\ntarget: {base_url: 'http://t:1'}\n"
+                    "credentials: {username: u, password_env: T_PW}\n"}
+    old = adapter_client.headers["Authorization"]
+    adapter_client.headers["Authorization"] = f"Bearer {vtok}"
+    try:
+        r = adapter_client.put("/api/v1/adapters/t1", json=body)
+        assert r.status_code == 403
+    finally:
+        adapter_client.headers["Authorization"] = old

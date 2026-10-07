@@ -42,8 +42,9 @@ async def main() -> None:
     port = sys.argv[1] if len(sys.argv) > 1 else "9222"
 
     async with async_playwright() as p:
+        # profile 目录项目内相对路径（评审：/tmp 在 Windows 依赖当前盘符解析）
         ctx = await p.chromium.launch_persistent_context(
-            str(Path("/tmp/skilllens-live-profile")),
+            str(ROOT / ".live-profile"),
             headless=False,
             args=[
                 f"--disable-extensions-except={EXT_DIST}",

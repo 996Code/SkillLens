@@ -78,7 +78,6 @@ async def login(page: Page, manifest: Manifest) -> bool:
     登录了新用户，权限不足 404——若依 258 实证）不算通过，先强制退出。"""
     if manifest.login is None:
         return True
-    expect_nick = (manifest.credentials or None) and None  # 默认无昵称断言
     try:
         await page.goto(manifest.target.base_url, wait_until="domcontentloaded",
                         timeout=20000)

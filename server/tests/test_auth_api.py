@@ -59,11 +59,17 @@ async def test_protected_api_requires_token(bare_client):
 
 
 async def test_extension_channel_exempt(bare_client, client):
-    # 插件豁免通道：health 与会话上报不需要认证（client 夹具负责建表）
+    # 插件豁免通道：health 免认证；会话上报免认证但带插件共享头
+    # （评审 #4 跨域污染守卫——无头的网页跨域调用被 403）
     resp = await bare_client.get("/api/v1/health")
     assert resp.status_code == 200
-    resp = await bare_client.post("/api/v1/sessions", json={"page_url": "https://x.example/"})
+    resp = await bare_client.post(
+        "/api/v1/sessions", json={"page_url": "https://x.example/"},
+        headers={"X-SkillLens-Agent": "1"})
     assert resp.status_code == 200
+    no_header = await bare_client.post("/api/v1/sessions",
+                                       json={"page_url": "https://x.example/"})
+    assert no_header.status_code == 403
 
 
 async def test_admin_creates_user(bare_client, client):

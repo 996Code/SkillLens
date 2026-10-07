@@ -6,6 +6,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { getSkills, listSuites, logout } from "../../api";
 import type { SkillListItem, SuiteItem } from "../../api";
+import { groupBySystem } from "../../system-group";
 
 const route = useRoute();
 const router = useRouter();
@@ -19,24 +20,12 @@ const error = ref("");
 const currentSkillId = computed(() =>
   route.name === "graph-skill" ? String(route.params.skillId) : "");
 
-// 按系统分组 + 搜索过滤
+// 按系统分组 + 搜索过滤（分组排序共享 system-group——双源漂移已消除）
 const grouped = computed(() => {
   const q = search.value.trim().toLowerCase();
-  const groups = new Map<string, SkillListItem[]>();
-  for (const s of skills.value) {
-    if (q && !s.name.toLowerCase().includes(q)) continue;
-    const sys = s.system || "其他";
-    if (!groups.has(sys)) groups.set(sys, []);
-    groups.get(sys)!.push(s);
-  }
-  return [...groups.entries()].sort((a, b) => {
-    // 主要系统排前面，"其他"排最后
-    const order = ["njmind", "Odoo", "Dolibarr", "ERPNext"];
-    const ai = order.indexOf(a[0]), bi = order.indexOf(b[0]);
-    const av = ai === -1 ? 99 : ai, bv = bi === -1 ? 99 : bi;
-    if (av !== bv) return av - bv;
-    return a[0].localeCompare(b[0]);
-  });
+  return groupBySystem(
+    skills.value,
+    q ? (s) => s.name.toLowerCase().includes(q) : () => true);
 });
 
 function toggleGroup(sys: string): void {

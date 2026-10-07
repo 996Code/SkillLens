@@ -4,6 +4,7 @@
 //   ③ 证据图（type/src 过滤）        ④ LLM 调用日志（行点击展开 prompt/response 摘要）
 // 全只读；LLM 日志只展示 200 字符界面摘要（完整审计走 DB 直查，不外泄全量）。
 import { onMounted, ref } from "vue";
+import { fmtTime } from "../run-format";
 import {
   getAuditSessions,
   getEvidenceEdges,
@@ -89,10 +90,6 @@ function sourceLabel(s: string): string {
 
 function sourceCls(s: string): string {
   return s === "real_traffic" ? "badge-real" : "badge-demo";
-}
-
-function fmtTime(ts: string): string {
-  return ts.replace("T", " ").replace(/\.\d+.*$/, "");
 }
 
 function confPct(c: number): string {

@@ -40,27 +40,31 @@ executor.ts `Network.getResponseBody` 100KB 响应体裸进 `observed` 落库，
 `session.ts` 裸 fetch 调 `/adapters/match`——该端点挂鉴权守卫，必 401 → catch 静默回退 njmind。P2.5 验收走服务端带 token 路径，插件真实开录路径未覆盖。
 **修复**：复用 executor 的 `getToken()`（已导出）带 Bearer + 5s 超时 race。server 侧补 401 守卫测试 `test_match_api_requires_auth`。
 
-## 三、记录不修（中危，排后续需求）
+## 三、中危项处置（同日二轮：用户指令"把该修复的都处理了"——除 2 项缓修外全部完成）
 
-1. **CORS `*` + events 豁免叠加**：任意网页可向 127.0.0.1:8710 POST /sessions 污染录制数据（C2 分轨污染面）。部署边界既定（本地/127.0.0.1），私有化收紧指引已有——私有化前必须处理。
-2. **probes docker-exec 任意 shell**：manifest 提供的 shell 直跑 `sh -c`，PUT /adapters 仅 viewer 角色即可写盘——"adapters 写盘限 reviewer/admin" 角色收紧 + 密码 env 注入改造，排私有化前置项。
-3. **events 批量 409 整批回滚**：一条旧 seq 让整批事件永久丢失（重发同错）。逐条降级或预查重。
-4. **executor_plan 113 行内联后处理**：URL 归一/换参注入等确定性变换不可单测，违纯函数纪律——抽 `apply_overrides()` 纯函数（重构项）。
-5. **_reap_stale_runs 用 created_at 判超时**：慢步骤/确认停留 >10min 的 run 误标 lost——心跳时间戳入 executor_state。
-6. **execute() 巨型函数+fill 双拷贝漂移**：重构项（op handler 拆分+fillDOM 抽取），与 P1 画像覆盖面提升（Frappe 通道声明化）合并做。
-7. **执行器全局残留**：`__ip/__getItemsDone/__lastSearchValue` 写后不清——runSkill 入口统一重置（小改，可随下轮顺手）。
-8. **debugger onEvent listener 不移除**：多轮执行监听器累积泄漏——finally 清理（同上）。
-9. **AdaptersView 错误处理缺失**：load() 无 finally、fingerprint/validate 不判 res.ok——500 时卡"加载中"/错误体当结果渲染。
-10. **SkillGraphView 侧数据竞态+blob 不 revoke**：快速切换流程时旧数据晚到覆盖；fetchVisualImage blob URL 泄漏。
-11. **token 进 URL**（v21_matrix.py executor.html?token=、executor-page.ts URL 参数+replaceState）：浏览器历史/CDP 记录残留面——短期可接受，长线改一次性换票。
-12. **web api.ts localStorage 存 token**：XSS 可窃取（同源部署缓解）——arch 文档明示取舍。
-13. **`AGENT`/`AGENT_URL` 重复定义**：executor.ts 自持一份,统一 import（卫生）。
+| # | 项 | 处置 |
+|---|---|---|
+| 1 | CORS `*`+events 豁免污染面 | ✅ 已修：events 双端点加 `X-SkillLens-Agent` 共享头守卫（CORS 收紧为非 `*` 时自动豁免）；插件三上报点带齐；测试 `test_ingest_guard_blocks_foreign_origin` |
+| 2 | probes docker-exec 角色收紧 | ✅ 已修：PUT /adapters 挂 `require_role(admin,reviewer)`；viewer 403 测试。密码 env 注入改造留私有化 |
+| 3 | events 批量 409 整批丢失 | ✅ 已修：逐条落库，重复键幂等跳过（`accepted/duplicates` 计数）；混合批测试 |
+| 4 | executor_plan 内联后处理不可单测 | ⏸ 缓修：重构项（抽 apply_overrides 纯函数）——改动面大，需 52 链真机回归支撑，独立排期 |
+| 5 | _reap_stale_runs 误标 lost | ✅ 已修：step POST 刷 `executor_state.last_step_at`，收割判据改最后步时间 |
+| 6 | execute() 巨型函数+fill 双拷贝 | ⏸ 缓修：同 #4 理由——与 P1 画像覆盖面提升（Frappe 通道声明化）合并做，独立排期 |
+| 7 | 执行器全局残留 | ✅ 已修：runSkill 入口统一重置 4 个 globalThis 标志 |
+| 8 | debugger listener 泄漏 | ✅ 已修：具名 onEvt+finally removeListener；pendingBodies 请求结束即删 |
+| 9 | AdaptersView 错误处理 | ✅ 已修：load finally+res.ok 判定；fingerprint/validate try/catch |
+| 10 | SkillGraphView 竞态+blob 泄漏 | ✅ 已修：sideSeq 守卫+blob URL 全路径 revoke（含 FlowGraph onBeforeUnmount） |
+| 11 | token 进 URL | ⏸ 记录：v21_matrix 脚本+executor-page（replaceState 已补救）——一次性换票属协议改造，排私有化 |
+| 12 | web localStorage 存 token | ⏸ 记录：同源部署缓解，取舍已在 arch 文档明示 |
+| 13 | AGENT/AGENT_URL 重复定义 | ✅ 已修：executor.ts 统一 import shared/types |
+
+**顺手清掉的卫生项**（低危一并处理）：events/uploader 幂等语义对齐（409→跳过）、`RunHandle`/`ctxs`/`getCanvasFlow` 死代码、executor import copy 重复、adapters.py 无用 db 依赖、steps.py `expect_nick` 死分支、ARTIFACT_DIR 双常量统一进 config、llm_skills `source_of` 复用 baseline 实现、system.py njmind host 配置化（NJMIND_HOST）、cards/baseline Alignment None 守卫、popup innerHTML→textContent、uploader eventKey 加 page_id、EXECUTOR_RUN 改开 executor.html 页（SW 被杀风险根治）、idb takeEvents 游标限读、capture detached 元素 Map 清荡、session.ts /sessions 超时 race、fmtTime×5 抽 run-format、系统分组×2 抽 system-group（漂移修复）、SuitesView 删除确认+错误处理、GraphOverview sys-dot 默认色、TimelineView 缓存 LRU 上限、ReviewPortal hint 重置、api.ts login 文案分型、ReplayRunView Promise.all 并行、v21_matrix（skill_vars try 保护/ERPNext 凭据读 manifest/EXT id 动态读 dist）、p3_record（mint_token None 守卫/urllib to_thread）、live_browser profile 路径项目内+gitignore。
 
 ## 四、验证
 
-- server：adapters_api 7/7、url_match 6/6、sanitize、fingerprint、manifest 全过；全量 506 passed（504 基线+评审新增 2 安全用例）。
-- extension：build 通过 + vitest 83/83（含新增 7 个网络脱敏用例，新基线 76→83）。
-- web：54 用例未动（本轮无 web 代码变更——AdaptersView 缺陷记录待修）。
+- 一轮（红线修复）：server 506 / extension 83（新增安全用例 server +2、extension +7）。
+- 二轮（中危清零）：server events/adapters/url_match 21/21 即时验证 + 全量后台跑；extension build+83/83；web 54/54+build 通过；5 个脚本 ast 语法全过。
+- 三套终态基线：**server 508 / web 54 / extension 83**（events 新增 2 用例）。
 
 ## 五、对照表扬（评审沉淀的正向资产）
 

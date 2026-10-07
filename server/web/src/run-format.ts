@@ -61,3 +61,8 @@ export function stepScreenshotFiles(
     ?.step_screenshots;
   return meta?.files?.length ? meta : null;
 }
+
+/** ISO 时间 → "YYYY-MM-DD HH:mm:ss"（毫秒/时区截断）。 */
+export function fmtTime(ts: string | null | undefined): string {
+  return ts ? ts.replace("T", " ").replace(/\.\d+.*$/, "") : "—";
+}

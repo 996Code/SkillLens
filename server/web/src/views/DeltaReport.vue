@@ -4,6 +4,7 @@
 // 只读：无报告列表入口，空 delta 时用输入框查询。
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { fmtTime } from "../run-format";
 import {
   getExpectedDelta,
   getLinkedDiscoveries,
@@ -45,10 +46,6 @@ const columns = computed(() => {
       items: r.drift },
   ];
 });
-
-function fmtTime(ts: string): string {
-  return ts.replace("T", " ").replace(/\.\d+.*$/, "");
-}
 
 /** S23 块 V：趋势条高度（2-40px，按历史最大值归一）。 */
 function trendHeight(ms: number): number {

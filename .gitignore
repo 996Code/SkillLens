@@ -25,3 +25,6 @@ artifacts/
 # IDE
 .idea/
 .vscode/
+
+# 常驻浏览器 profile（live_browser.py）
+.live-profile/

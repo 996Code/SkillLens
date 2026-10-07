@@ -18,7 +18,6 @@ import copy
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-
 from app.db import SessionLocal
 from app.models import Alignment, OutcomeAssertion, RawEvent, ReplayRun, Skill
 from app.replay.plan import compile_skeleton_plan, requires_confirmation
@@ -43,17 +42,30 @@ def get_db():
 def _reap_stale_runs(db: Session) -> int:
     """协议 §5 心跳兜底：extension run 卡 running 超 10 分钟（无新步
     上报——矩阵实证 885/888 卡死）→ lost。在 /executor/skills 访问时
-    顺带收割（无独立进程）。"""
+    顺带收割（无独立进程）。
+    评审 #9 修正：判据=executor_state.last_step_at（每步 step POST 刷新）
+    而非 created_at——慢步骤/用户确认停留 >10min 的 run 不再误标 lost。"""
     from datetime import datetime, timedelta, timezone
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(minutes=10)
     rows = db.query(ReplayRun).filter(
         ReplayRun.executor == "extension",
         ReplayRun.status == "running",
         ReplayRun.created_at < cutoff).all()
     n = 0
     for r in rows:
-        r.status = "lost"
-        n += 1
+        state = (r.plan or {}).get("executor_state") or {}
+        last = state.get("last_step_at") or r.created_at
+        if isinstance(last, str):
+            try:
+                last = datetime.fromisoformat(last)
+            except ValueError:
+                last = r.created_at
+        if last.tzinfo is not None:
+            last = last.replace(tzinfo=None)
+        if last < cutoff.replace(tzinfo=None):
+            r.status = "lost"
+            n += 1
     if n:
         db.commit()
     return n
@@ -280,13 +292,15 @@ async def executor_step(run_id: int, body: ExecutorStepReport,
 
     # 证据归档（C3）。state 深拷贝后变异——直接变异 plan 内嵌 dict 会让
     # SQLAlchemy 的新旧值相等（别名同对象），UPDATE 不发（AG3 实证）
-    import copy
     state = copy.deepcopy(state)
     state.setdefault("received", []).append(
         {"seq": body.seq, "result": body.result,
          "evidence": {k: v for k, v in body.evidence.items()
                       if k != "screenshot"}})
     state["cursor"] = cursor + 1
+    # 心跳时间戳（评审 #9）：stale 收割判据从 created_at 改为最后步时间
+    from datetime import datetime, timezone
+    state["last_step_at"] = datetime.now(timezone.utc).isoformat()
     nxt = instructions[cursor + 1] if cursor + 1 < len(instructions) \
         else instructions[-1] if instructions else None
 
@@ -300,9 +314,8 @@ async def executor_step(run_id: int, body: ExecutorStepReport,
             import base64
             import os
             from pathlib import Path as _P
-            art = os.environ.get(
-                "REPLAY_ARTIFACT_DIR",
-                str(_P(__file__).resolve().parents[3] / "artifacts"))
+            from app.config import REPLAY_ARTIFACT_DIR
+            art = REPLAY_ARTIFACT_DIR
             d = _P(art) / f"ext-run-{run_id}"
             os.makedirs(d, exist_ok=True)
             fname = f"step-{body.seq}.png"

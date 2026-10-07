@@ -89,9 +89,14 @@ async function showHistory(id: number): Promise<void> {
 }
 
 async function remove(id: number): Promise<void> {
-  await deleteSuite(id);
-  await load();
-  emit("graph-changed");
+  if (!window.confirm("确定删除该分组？（不可恢复，执行历史保留）")) return;
+  try {
+    await deleteSuite(id);
+    await load();
+    emit("graph-changed");
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e);
+  }
 }
 
 async function load(): Promise<void> {

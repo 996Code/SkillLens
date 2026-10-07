@@ -22,7 +22,17 @@ from playwright.async_api import async_playwright
 
 SERVER = "http://127.0.0.1:8710/api/v1"
 CDP = "http://127.0.0.1:9222"
-EXT = "iifhfcajmahbdbjljhmfknfnachpcpgl"
+
+
+def _ext_id() -> str:
+    """插件 id 动态读 dist manifest（评审：硬编码 EXT id 在插件重载后失效）。"""
+    import json
+    from pathlib import Path
+    p = Path(__file__).resolve().parents[2] / "extension" / "dist" / "manifest.json"
+    return json.loads(p.read_text(encoding="utf-8")).get("name", "")
+
+
+EXT = _ext_id()
 
 # S43-4 验证过的七系统核心链（demo/sprint43/*-chain.json + 报告）
 CHAINS = {
@@ -70,14 +80,16 @@ async def replay(token, skill_id, overrides):
 
 
 def skill_vars(token, skill_id):
-    with httpx.Client(timeout=30) as c:
-        c.headers["Authorization"] = f"Bearer {token}"
-        r = c.get(f"{SERVER}/skills/{skill_id}/card")
-        vs = [v["name"] for v in r.json().get("input_variables", [])]
-        if vs:
-            declared = set(vs)
-        else:
-            declared = set()
+    declared = set()
+    try:
+        with httpx.Client(timeout=30) as c:
+            c.headers["Authorization"] = f"Bearer {token}"
+            r = c.get(f"{SERVER}/skills/{skill_id}/card")
+            vs = [v["name"] for v in r.json().get("input_variables", [])]
+            if vs:
+                declared = set(vs)
+    except Exception:
+        pass  # server 未起/卡片缺失——退化为仅指令派生（评审：不整脚本崩）
     # fill 换参 key 用**fill 指令的 value 本身**（服务端 overrides 按
     # value/name 精确替换——258 跨技能数据依赖实证：变量名≠value 时
     # fill_ 变量名匹配不上 ins.value）。声明变量（其 value 即变量默认值）
@@ -103,9 +115,15 @@ def skill_vars(token, skill_id):
         # SL-STD 被换参致 items 行无效）
         try:
             import httpx as _hx
-            _c = _hx.Client(timeout=8, base_url="http://127.0.0.1:8090")
+            from pathlib import Path as _P
+            from app.adapters.manifest import load_manifest_text
+            _m, _ = load_manifest_text(
+                (_P(__file__).resolve().parents[1] / "adapters" / "erpnext.yaml")
+                .read_text(encoding="utf-8"))
+            _c = _hx.Client(timeout=8, base_url=_m.target.base_url)
             _c.post("/api/method/login",
-                    data={"usr": "Administrator", "pwd": "admin"})
+                    data={"usr": _m.credentials.username,
+                          "pwd": _m.credentials.password_literal or ""})
             _r = _c.get("/api/resource/Item",
                         params={"limit_page_length": 0, "fields": '["name"]'})
             master_items = {x["name"] for x in _r.json().get("data", [])}

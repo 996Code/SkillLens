@@ -166,6 +166,20 @@ function flushPendingInputs(): void {
   }
 }
 
+// 评审 #15：detached 元素在两 Map 滞留（React 重渲染换节点常态）——
+// 低频清荡，键不再是文档内元素即整条删除
+setInterval(() => {
+  for (const el of inputTimers.keys()) {
+    if (!el.isConnected) {
+      clearTimeout(inputTimers.get(el)!);
+      inputTimers.delete(el);
+    }
+  }
+  for (const el of lastInputEmit.keys()) {
+    if (!el.isConnected) lastInputEmit.delete(el);
+  }
+}, 30_000);
+
 document.addEventListener(
   "input",
   (e) => {
