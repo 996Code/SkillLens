@@ -43,6 +43,7 @@
 - Playwright 浏览器：`PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright uv run playwright install chromium`
 - uv.lock 镜像重写：提交前 `git checkout -- server/uv.lock`
 - 杀端口：`powershell -NoProfile -ExecutionPolicy Bypass -File D:/tmp/kill_8710.ps1`（Git Bash 里 `$_` 会被吞，一律用 ps1 文件）
+- **njmind 内网地址只入 server/.env，永不入库**（2026-10-07 评审清零：脚本 env 缺失一律报错退出，不写 fallback）：`NJMIND_LOGIN_URL`/`NJMIND_BASE_URL`/`NJMIND_DESIGNER_URL`/`NJMIND_HOST` + `NJMIND_USER`/`NJMIND_PASS`；提交前 `git grep 192.168` 自扫
 - **MV3 SW 不热替换**：改插件后须重启常驻浏览器才生效（lessons #16）
 - 品牌 Chrome 137+ 禁 `--load-extension`：自动化采集用 Playwright 自带 chromium；回放可用真 Chrome（REPLAY_CHANNEL=chrome）
 - 常驻浏览器工作流：`scripts/live_browser.py 9222` + server `REPLAY_CDP_URL=http://127.0.0.1:9222` + 采集 `RECORD_CDP_URL=...`——录制/回放全程用户可见

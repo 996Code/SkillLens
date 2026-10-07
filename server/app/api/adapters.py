@@ -18,6 +18,13 @@ router = APIRouter()
 
 ADAPTERS_DIR = Path(__file__).resolve().parents[3] / "server" / "adapters"
 
+# 安全红线：adapter_id 直接拼文件路径——白名单字符校验防 `..`/盘符穿越
+# （GET 可任意读盘、PUT 可任意写盘的越权面）
+def _check_adapter_id(adapter_id: str) -> None:
+    import re
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", adapter_id):
+        raise HTTPException(422, "adapter_id 仅允许字母/数字/下划线/连字符")
+
 
 def get_db():
     db = SessionLocal()
@@ -64,6 +71,7 @@ async def validate_adapter(body: ValidateRequest,
 @router.get("/adapters/{adapter_id}/yaml")
 async def get_adapter_yaml(adapter_id: str,
                            db: Session = Depends(get_db)) -> dict:
+    _check_adapter_id(adapter_id)
     f = ADAPTERS_DIR / f"{adapter_id}.yaml"
     if not f.is_file():
         raise HTTPException(404, "adapter not found")
@@ -77,6 +85,7 @@ class SaveRequest(BaseModel):
 @router.put("/adapters/{adapter_id}")
 async def save_adapter(adapter_id: str, body: SaveRequest,
                        db: Session = Depends(get_db)) -> dict:
+    _check_adapter_id(adapter_id)
     try:
         m, lints = load_manifest_text(body.yaml)
     except Exception as e:

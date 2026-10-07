@@ -8,6 +8,7 @@
 """
 import asyncio
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -17,7 +18,9 @@ from playwright.async_api import async_playwright
 
 SERVER = "http://127.0.0.1:8710"
 CDP = "http://127.0.0.1:9222"
-BASE = "http://192.168.99.22/mb3/1"
+BASE = os.environ.get("NJMIND_BASE_URL", "")
+if not BASE:
+    sys.exit("缺少 NJMIND_BASE_URL（环境变量）——内网网关地址不入库")
 
 # 5 个不同菜单页面——覆盖表单/列表/权限/配置/组织 5 种类型
 TARGET_MENUS = [

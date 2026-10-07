@@ -9,7 +9,8 @@ AI 软件学习 + 变更智能产品：Chrome 插件观察真实用户如何使�
 | 能力 | 说明 |
 |---|---|
 | **学习** | 真实用户操作 → 语义动作 → Skill 归纳（LLM 命名 + 确定性回查防幻觉），变量自动识别 |
-| **回放** | 语义定位（非 CSS selector）+ 换参数回放 + PASS/FAIL 确定性判定 |
+| **回放** | 语义定位（非 CSS selector）+ 换参数回放 + PASS/FAIL 确定性判定；插件执行节点（chrome.debugger CDP 桥接） |
+| **平台化接入** | 声明式清单（YAML）：登录/探针/业务链/交互画像；URL 通配符自动配对隔离（油猴 @match 语义）；贴 HTML 自动识别组件库生成画像——**新系统零代码接入**（Firefly III 终验） |
 | **变更智能** | 需求 → Expected Delta（人工确认）→ Observed → **四分类报告**（Expected/Missing/Unexpected/Drift） |
 | **夜间工程** | Impact Analysis（变更→受影响 Skill）→ 定向回归 → 编排画布 → 晨间评审门户 |
 | **审计** | 全链路落库（C3）：会话→窗口→语义动作→Skill→回放→报告，一条链点到底 |
@@ -48,7 +49,7 @@ open http://127.0.0.1:8710/skills   # Skill 库 / 四分类报告 / 审计 / 画
 | [协作宪章](docs/COLLABORATION-CHARTER.md) | 项目所有者全部要求汇总（传承文档） |
 | [工作规范](AGENTS.md) | 阶段闸门仪式/TDD/安全红线/环境要点 |
 | [原始设想](docs/references/ai_software_learning_change_intelligence_v3.md) | 43 节完整思路 |
-| [踩坑经验](docs/references/project-lessons.md) | 28 条实战教训 |
+| [踩坑经验](docs/references/project-lessons.md) | 37 条实战教训 |
 | [SWOT 与迭代](docs/reviews/2026-09-25-swot-iteration.md) | 优势/劣势/机会/威胁 + 优先级 |
 | 代码导览 | [server](server/README.md) / [extension](extension/README.md) / [web](server/web/README.md) |
 | 验收记录 | demo/sprint0 ~ sprint43（每 Sprint 实测证据 + 截图 + 用户测试报告） |
@@ -62,4 +63,4 @@ open http://127.0.0.1:8710/skills   # Skill 库 / 四分类报告 / 审计 / 画
 
 ## 测试基线
 
-server **447 passed** / web **54 passed** / extension **76 passed**（三套全绿是每个 Sprint 的合并前提）
+server **506 passed** / web **54 passed** / extension **83 passed**（三套全绿是每个 Sprint 的合并前提）

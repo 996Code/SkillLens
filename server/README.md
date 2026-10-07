@@ -92,11 +92,25 @@ replay/            ⑤ 回放 Runner
   assert_eval.py   确定性断言评估（path_matches 模板匹配）
   环境开关：REPLAY_HEADLESS=0 前台 / REPLAY_CHANNEL=chrome 真Chrome / REPLAY_CDP_URL 常驻窗口
 
+adapters/          ⑦ 平台化适配架构（v2.1 块 AF + 平台化四阶段）
+  manifest.py      声明式清单 schema：登录/探针/业务链 + interaction_profile
+                   （P1 交互画像五维组件）+ url_matches（P2.5 通配符声明）
+  urlmatch.py      P2.5 URL 匹配引擎（油猴 @match 语义；specificity=去*长度）
+  fingerprint.py   P2 画像指纹（DOM→组件库识别→画像草稿；POST /adapters/fingerprint）
+  probes.py        AF2 探针运行时（docker-exec/http 双形态；密码只从 env 取）
+  lint.py          清单合规检查（password_literal 警告等）
+  runtime.py       登录/流程步骤解释器
+  步骤原语：goto/fill/click/select/wait —— 复杂 shell 走 adapters/scripts/*.sh
+
 change/            ⑥ 变更智能
   expected.py      需求→LLM draft→人工 confirm（verify_delta 校验三类型）
   observed.py      observe 编排（复用 run_replay）+ extract_observed 确定性提取
   classify.py      四分类（expected/missing/unexpected/drift，纯函数）
 ```
+
+平台化四阶段架构契约（P1 画像/P2 指纹/P2.5 URL 匹配/P3 扩链/P4 零代码接入）：
+`docs/arch/2026-10-07-platform-interaction-profile.md`。矩阵脚本：
+`server/scripts/v21_matrix.py`（52 链）；raw CDP 录制：`server/scripts/p3_record.py`。
 
 ## 核心数据流
 

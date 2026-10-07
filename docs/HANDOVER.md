@@ -61,6 +61,8 @@ LLM 边界纪律：**LLM 只做命名/结构化/归因/提案，一切判定确�
 - sprint40/41/42 无独立 user-test-report（当时验收以提交+HANDOVER 矩阵承载）。
 - 若依 checkout 的 livewire POST 语义（S42 探索遗留，骨架已带 POST 证据）。
 - LLM 依赖单网关单模型（deepseek-v4-flash-0731-oc），无 fallback 链。
+- **评审记录不修中危 13 项**（2026-10-07 全库评审，docs/reviews/2026-10-07-full-codebase-audit.md §三）——含 CORS `*`+events 豁免污染面、probes docker-exec 角色收紧、events 批量 409 整批回滚、execute() 巨型函数重构、执行器全局残留/listener 泄漏、AdaptersView 错误处理、token 进 URL。**私有化部署前必须处理前两项**。
+- 采集层限制（已归档）：Odoo OWL SPA 壳、Snipe model-create 无表单标记、Dolibarr iframe 聚类 windows:0、禅道录制 label 歧义。
 
 ## 3. 开发路线图（建议优先级）
 
@@ -88,22 +90,24 @@ LLM 边界纪律：**LLM 只做命名/结构化/归因/提案，一切判定确�
 
 ## 4. 已建成能力全景（你要在此基础上开发）
 
-### 4.1 七系统验证矩阵（S43-4，2026-10-01/02）
+### 4.1 八系统验证矩阵（平台化扩链后，2026-10-06）
 
-| 系统 | 端口 | 业务链 | 技能 # | 结果 |
-|---|---|---|---|---|
-| Odoo 18 | 8069 | 销售：报价→确认→开票 | 178-180 | 3/3 PASS |
-| Dolibarr | 8080 | 订单：第三方→订单→确认→开票 | 188-191 | 4/4 PASS |
-| 禅道 | 8082 | QA：需求→用例→测试单→执行 | 166-169 | 4/4 PASS |
-| ERPNext | 8090 | CRM：客户→报价→销售订单 | 234-236 | 3/3 PASS（22 步长链） |
-| Snipe-IT | 8081 | 资产：Create→Checkout→Checkin | 154-156 | 3/3 PASS |
-| 若依 | 8093 | 权限：角色→用户→新账号登录 | 256-258 | 3/3 PASS |
-| JeecgBoot | 8095 | 在线表单：建表→同步→填数 | 269-271 | 3/3 PASS（S43-5 修复后全绿） |
-| njmind（真实） | 192.168.99.22 | 团队日常系统 | — | G2 两次真实发版验收 |
+| 系统 | 端口 | 业务链 | 结果 |
+|---|---|---|---|
+| Odoo 18 | 8069 | 销售：报价→确认→开票（+第二链） | 4/4 PASS |
+| Dolibarr | 8080 | 订单：第三方→订单→确认→开票（+第二链） | 8/8 PASS |
+| 禅道 | 8082 | QA：需求→用例→测试单→执行（+第二链） | 8/8 PASS |
+| ERPNext | 8090 | CRM：客户→报价→销售订单（+供应商链） | 8/8 PASS（22 步长链） |
+| Snipe-IT | 8081 | 资产：Create→Checkout→Checkin（+第二链） | 8/8 PASS |
+| 若依 | 8093 | 权限：角色→用户→新账号登录（+第二链） | 4/4 PASS |
+| JeecgBoot | 8095 | 在线表单：建表→同步→填数（+第二链） | 8/8 PASS |
+| Firefly III | 8098 | 记账：账户→交易→预算 | 零代码接入终验 PASS |
 
-**23 技能学成，23 回放全 PASS，实体级验证（直查目标系统 DB/API）。**
-覆盖 5 种前端框架（zui/element-plus/ant-design-vue/owl/select2+Bootstrap）。
-详情：demo/sprint43/user-test-report.md。
+**矩阵 52/52 全 PASS（8 系统×2 业务链×2 轮换参，插件真实路径）。**
+53 技能全绿；覆盖 5+ 种前端框架；换参三层注入（fill value+click label 实例值+row-anchor）。
+平台化四阶段（画像/指纹/URL 匹配/扩链/零代码接入）架构契约：
+docs/arch/2026-10-07-platform-interaction-profile.md。
+安全评审（2026-10-07）：docs/reviews/2026-10-07-full-codebase-audit.md。
 
 ### 4.2 核心管道（全部能跑）
 
@@ -120,9 +124,9 @@ LLM 边界纪律：**LLM 只做命名/结构化/归因/提案，一切判定确�
 ### 4.3 测试基线（每 Sprint 合并前提：三套全绿）
 
 ```bash
-cd server && uv run pytest -q                        # 447 passed
+cd server && uv run pytest -q                        # 506 passed
 cd server/web && npm test                            # 54 passed
-cd extension && npm run build && npm test            # 76 passed
+cd extension && npm run build && npm test            # 83 passed
 ```
 
 （web/extension 的 Node 前缀：`export PATH="/d/github/.tools/node-v24.18.0-win-x64:$PATH"`）

@@ -6,13 +6,19 @@
 import re
 import time
 
+import os
+
 from playwright.async_api import async_playwright
 from sqlalchemy.orm import Session
 
 from app.sanitize import sanitize_error
 from app.models import DevPlan
 
-DESIGNER_URL = "http://192.168.99.22/mb3/1/mind-designer/field-edit?formCode={code}"
+# 安全红线：内网网关地址不入库——env 注入（server/.env NJMIND_DESIGNER_URL）
+DESIGNER_URL = os.environ.get(
+    "NJMIND_DESIGNER_URL",
+    "http://{host}/mb3/1/mind-designer/field-edit?formCode={{code}}").format(
+        host=os.environ.get("NJMIND_HOST", ""))
 
 JS_CLICK_PERM = """
 (label) => {

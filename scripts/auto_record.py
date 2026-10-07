@@ -10,6 +10,7 @@ STOP_RECORDING → 轮询 server 确认事件落库。
 （复用 njmind_login 的表单逻辑，凭据读 server/.env，不入库不打印）。
 """
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -17,7 +18,8 @@ from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 EXT_DIST = ROOT / "extension" / "dist"
-FORM_URL = "http://192.168.99.22/mb3/1/mind-designer/field-edit?formCode=ceshi000001"
+FORM_URL = (os.environ.get("NJMIND_DESIGNER_URL")
+            or "http://" + os.environ.get("NJMIND_HOST", "") + "/mb3/1/mind-designer/field-edit?formCode=ceshi000001")
 NOTE = "auto-record-e2e"
 
 
@@ -76,6 +78,8 @@ async def main() -> None:
     if not user or not password:
         sys.exit("缺少 NJMIND_USER/NJMIND_PASS（server/.env）——"
                  "缺凭据时会以表单定位超时的间接症状报错，这里显式报")
+    if "://" not in FORM_URL:
+        sys.exit("缺少 NJMIND_DESIGNER_URL/NJMIND_HOST（环境变量）——内网网关地址不入库")
 
     try:
         import os

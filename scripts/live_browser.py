@@ -36,7 +36,9 @@ async def login_in_page(page, user: str, password: str, login_url: str) -> None:
 async def main() -> None:
     from dotenv import dotenv_values
     cfg = dotenv_values(ROOT / "server" / ".env")
-    login_url = cfg.get("NJMIND_LOGIN_URL") or "http://192.168.99.22/mb3/1/"
+    login_url = cfg.get("NJMIND_LOGIN_URL")
+    if not login_url:
+        sys.exit("缺少 NJMIND_LOGIN_URL（server/.env）——内网网关地址不入库")
     port = sys.argv[1] if len(sys.argv) > 1 else "9222"
 
     async with async_playwright() as p:

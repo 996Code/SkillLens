@@ -114,7 +114,7 @@ uv run python -m app.create_user <用户名> <密码> admin   # 建号（S21 起
 uv run uvicorn app.main:app --port 8710
 
 # 三套测试（Windows：Node 命令前缀 export PATH="/d/github/.tools/node-v24.18.0-win-x64:$PATH"）
-cd server && uv run pytest -q                    # 354 passed
+cd server && uv run pytest -q                    # 506 passed
 cd server/web && npm test                        # 50 passed
 cd extension && npm run build && npm test        # 31 passed
 
@@ -146,7 +146,14 @@ cd server && uv run python ../scripts/live_browser.py 9222
   Odoo 销售/Dolibarr 订单/JeecgBoot 在线表单/ERPNext CRM/若依权限，23 技能
   学成、22 换参回放全 PASS、实体级验证（直查目标系统 DB/API）。
   详见 `demo/sprint43/user-test-report.md`。
-- **测试基线**：server 447 / web 54 / extension 76（三套全绿是合并前提）。
+- **平台化四阶段（2026-10-06）**：交互画像+指纹生成+URL 通配符配对+扩链
+  52/52+Firefly 零代码接入——八系统 53 技能全绿。架构契约：
+  `docs/arch/2026-10-07-platform-interaction-profile.md`；收口报告：
+  `demo/sprint-v21-matrix/platform-phase-report.md`。
+- **全库评审（2026-10-07）**：四域深审+6 处安全红线修复（网关 IP env 化/
+  路径穿越/attribution 脱敏/执行器三重脱敏/CDP 网络证据脱敏/插件配对 401）：
+  `docs/reviews/2026-10-07-full-codebase-audit.md`。
+- **测试基线**：server 506 / web 54 / extension 83（三套全绿是合并前提）。
 - **近期工作**（2026-10-03 v2.1 方向变更）：~~JeecG 链式 override~~ ✅（S43-5 完成，
   row-anchor 换参注入+动态 id 断言归一，三链全 PASS 实体级验证）→ **块 AF 适配器
   架构**（基座+声明式系统清单：manifest schema/探针运行时/例程库/链编排器/向导 UI）
@@ -205,8 +212,11 @@ cd server && uv run python ../scripts/live_browser.py 9222
 - 目标系统容器端口/凭据注入模式/SW 冷启动等：docs/HANDOVER.md §4。
 
 【当前状态】
-M1-M4+v2.0 全部完成，七系统核心业务闭环验证通过（S43-4，2026-10-02），测试
-基线 447/54/76。待办：G4 真实试点团队指定（唯一外部输入）+ JeecG 链式
-override（小技术项）。你的第一个任务：跑通三套测试确认基线，然后读主计划
-§7 变更记录了解演进史，再看 demo/sprint43/user-test-report.md 最近验收形态。
+M1-M4+v2.0+v2.1+平台化四阶段全部完成：八系统 53 技能全绿（矩阵 52/52）、
+新系统零代码接入终验（Firefly III）、全库评审+安全红线 6 处修复完毕，测试
+基线 506/54/83。待办：G4 真实试点团队指定（唯一外部输入）+ 评审记录不修
+13 项（docs/reviews/2026-10-07-full-codebase-audit.md §三，私有化前置项
+2 个）。你的第一个任务：跑通三套测试确认基线，然后读主计划
+§7 变更记录了解演进史，再看 demo/sprint-v21-matrix/platform-phase-report.md
+最近验收形态。
 ```

@@ -24,6 +24,7 @@ from app.models import Alignment, OutcomeAssertion, RawEvent, ReplayRun, Skill
 from app.replay.plan import compile_skeleton_plan, requires_confirmation
 from app.replay.repair import load_repair_map
 from app.replay.resolver import compile_resolve_candidates
+from app.sanitize import sanitize_error
 from sqlalchemy import select
 
 router = APIRouter()
@@ -398,7 +399,7 @@ async def executor_step(run_id: int, body: ExecutorStepReport,
             and cur_ins.get("op") == "goto"):
         run.plan = {**plan, "executor_state": state}
         run.status = "fail"
-        run.attribution = str(body.evidence.get("error", ""))[:500]
+        run.attribution = sanitize_error(str(body.evidence.get("error", "")))[:500]
         db.commit()
         db.refresh(run)
         return {"instruction": {"seq": None, "op": "detach"},
@@ -453,7 +454,7 @@ async def executor_finish(run_id: int, body: ExecutorFinishRequest,
     run.plan = {**plan, "executor_state": state,
                 "executor_summary": body.summary}
     if body.status in ("fail", "aborted", "lost"):
-        run.attribution = str(body.summary.get("error", ""))[:500]
+        run.attribution = sanitize_error(str(body.summary.get("error", "")))[:500]
     db.commit()
     db.refresh(run)
     return {"id": run.id, "status": run.status, "executor": run.executor,

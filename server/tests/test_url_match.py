@@ -66,3 +66,15 @@ async def test_match_api(client):
     assert r.status_code == 200
     body = r.json()
     assert body["adapter_id"] == "jeecg"
+
+
+async def test_match_api_requires_auth(client):
+    """安全红线（评审实锤）：/adapters/match 挂鉴权守卫——插件侧裸 fetch
+    401 静默回退 njmind 曾致 P2.5 配对失效。守卫语义必须保持，插件侧带 Bearer。"""
+    from httpx import ASGITransport, AsyncClient
+    from app.main import app
+    async with AsyncClient(transport=ASGITransport(app=app),
+                           base_url="http://test") as bare:
+        r = await bare.get("/api/v1/adapters/match",
+                           params={"url": "http://127.0.0.1:8095/x"})
+        assert r.status_code == 401

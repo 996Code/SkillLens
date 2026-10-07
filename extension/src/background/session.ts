@@ -1,4 +1,5 @@
 import { AGENT_URL } from "../shared/types";
+import { getToken } from "./executor";
 import { finalFlushWithSession } from "./uploader";
 
 export interface RecordingState {
@@ -23,8 +24,15 @@ export async function startRecording(
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.url?.startsWith("http")) {
-      const m = await fetch(
-        `${AGENT_URL}/adapters/match?url=${encodeURIComponent(tab.url)}`);
+      // /adapters/match 在鉴权守卫后面——必须带 Bearer，否则 401 静默
+      // 回退 njmind（评审实锤：P2.5 插件路径配对失效根因）
+      const t = await getToken();
+      const m = await Promise.race([
+        fetch(`${AGENT_URL}/adapters/match?url=${encodeURIComponent(tab.url)}`,
+          { headers: { Authorization: `Bearer ${t}` } }),
+        new Promise<never>((_, rej) =>
+          setTimeout(() => rej(new Error("match timeout")), 5000)),
+      ]);
       if (m.ok) {
         const body = await m.json();
         if (body.adapter_id) targetSystem = body.adapter_id;

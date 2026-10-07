@@ -20,10 +20,12 @@ async def main() -> None:
     user = cfg.get("NJMIND_USER") or os.environ.get("NJMIND_USER", "")
     password = cfg.get("NJMIND_PASS") or os.environ.get("NJMIND_PASS", "")
     login_url = (cfg.get("NJMIND_LOGIN_URL")
-                 or os.environ.get("NJMIND_LOGIN_URL", "http://192.168.99.22/mb3/1/"))
+                 or os.environ.get("NJMIND_LOGIN_URL", ""))
     out = sys.argv[1] if len(sys.argv) > 1 else "/tmp/njmind-state.json"
     if not user or not password:
         sys.exit("缺少 NJMIND_USER/NJMIND_PASS（server/.env）")
+    if not login_url:
+        sys.exit("缺少 NJMIND_LOGIN_URL（server/.env）——内网网关地址不入库")
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)

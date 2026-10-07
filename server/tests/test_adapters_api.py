@@ -106,3 +106,17 @@ def test_put_adapter_invalid_rejected(adapter_client):
         "yaml": "id: t1\ntarget: {base_url: 'http://t:2'}\n"
                 "credentials: {username: u}\n"})  # 无凭据
     assert r.status_code == 422
+
+
+def test_adapter_id_traversal_rejected(adapter_client):
+    """安全红线（全量评审）：adapter_id 拼文件路径——Windows 反斜杠穿越
+    （%5C 解码后单段命中路由）必须被白名单字符校验拦截。"""
+    import app.api.adapters as api_mod
+    d = api_mod.ADAPTERS_DIR
+    r = adapter_client.get("/api/v1/adapters/..%5C..%5Capp/yaml")
+    assert r.status_code == 422
+    r2 = adapter_client.put("/api/v1/adapters/..%5C..%5Cevil", json={
+        "yaml": "id: evil\ntarget: {base_url: 'http://e:1'}\n"
+                "credentials: {username: u, password_env: E_PW}\n"})
+    assert r2.status_code == 422
+    assert not (d.parent / "evil.yaml").exists()

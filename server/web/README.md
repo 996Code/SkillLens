@@ -35,6 +35,7 @@ npm test           # vitest 单测（tests/*.spec.ts，jsdom 环境）
 | `/graph/reports/:deltaId` | `views/DeltaReport.vue` | 四分类报告（expected/missing/unexpected/drift 分色卡 + 需求上下文 + id 查询框） |
 | `/graph/audit` | `views/AuditView.vue` | 链路审计（S10.5 块 M）：会话列表→trace 下钻（窗口 kept/过滤原因→语义动作→对齐分桶→Skill→回放历史）+ 证据图过滤 + LLM 日志摘要 |
 | `/graph/canvas` | `views/CanvasView.vue` | 编排画布（S14） |
+| `/graph/adapters` | `views/graph/AdaptersView.vue` | 系统接入清单（AF6+平台化）：YAML 查看/校验/保存 + 画像指纹贴 HTML 生成草稿（P2） |
 | `/graph/reviews-portal` | `views/ReviewPortal.vue` | 评审门户（S15） |
 
 旧路径（`/skills/:id`、`/replay-runs/:runId` 等 11 条）全部重定向到对应 `/graph/*` 新路径（不丢深链）。

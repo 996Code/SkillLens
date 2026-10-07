@@ -7,6 +7,10 @@ export const BASE_SENSITIVE_PATTERNS = [
   "token",
   "authorization",
   "cookie",
+  "api_key",
+  "apikey",
+  "private_key",
+  "credential",
 ];
 
 export function buildSensitiveRe(extraPatterns: string[] = []): RegExp {
@@ -29,4 +33,32 @@ export function redactValue(key: string, value: unknown): unknown {
     );
   }
   return value;
+}
+
+// ---- 执行器网络证据脱敏（与 injected/net-hook.js 同源语义——CDP 路径
+// 复用，安全红线：响应体/URL query 中的凭据不得明文出行）----
+
+export function redactNetworkBody(raw: unknown, maxChars = 2000): string {
+  const text = String(raw ?? "");
+  try {
+    return JSON.stringify(redactValue("body", JSON.parse(text))).slice(0, maxChars);
+  } catch {
+    // 非 JSON 字符串：urlencoded 键值形态脱敏（password=x&…），其余原样截断
+    return text
+      .replace(/(^|[&;])([^=&;]+)=([^&;]*)/g,
+        (m, p, k) => (SENSITIVE_KEY_RE.test(k) ? `${p}${k}=${MASK}` : m))
+      .slice(0, maxChars);
+  }
+}
+
+export function redactNetworkUrl(u: string): string {
+  // 字符串级替换而非 URL API——searchParams.set 会把 [REDACTED]
+  // 编码成 %5BREDACTED%5D，语义同 net-hook redactFormString
+  const i = u.indexOf("?");
+  if (i < 0) return u;
+  const q = u.slice(i + 1).replace(
+    /(^|[&;])([^=&;#]+)=([^&#]*)/g,
+    (m, p, k) => (SENSITIVE_KEY_RE.test(k) ? `${p}${k}=${MASK}` : m),
+  );
+  return u.slice(0, i + 1) + q;
 }

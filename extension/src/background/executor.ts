@@ -4,6 +4,8 @@
 // 执行可信输入；先订阅 Network 后动作（lesson #30 时序）。
 export {};
 
+import { redactNetworkBody, redactNetworkUrl } from "../shared/redact";
+
 const AGENT = "http://127.0.0.1:8710/api/v1";
 
 interface Instruction {
@@ -26,7 +28,7 @@ export async function setExecutorToken(t: string): Promise<void> {
   await chrome.storage.local.set({ sl_executor_token: t });
 }
 
-async function getToken(): Promise<string> {
+export async function getToken(): Promise<string> {
   if (tokenCache) return tokenCache;
   const { sl_executor_token } = await chrome.storage.local.get("sl_executor_token");
   tokenCache = sl_executor_token || "";
@@ -132,7 +134,7 @@ export async function runSkill(
       return;
     }
     if (method === "Network.responseReceived") {
-      const url: string = params?.response?.url || "";
+      const url: string = redactNetworkUrl(params?.response?.url || "");
       networkLog.push({
         url, status: params?.response?.status,
         requestId: params?.requestId,
@@ -143,7 +145,9 @@ export async function runSkill(
       chrome.debugger.sendCommand(debuggee, "Network.getResponseBody", {
         requestId: params?.requestId,
       }).then((b: any) => {
-        networkLog[idx].body = (b?.body || "").slice(0, 102400);
+        // 安全红线：响应体经 redactNetworkBody（JSON 递归敏感键掩码
+        // /urlencoded 脱敏）——与录制侧 net-hook.js 同源语义
+        networkLog[idx].body = redactNetworkBody(b?.body || "");
       }).catch(() => { /* 已导航/流式体不可取——留空不阻塞 */ });
     }
   });
@@ -380,19 +384,30 @@ async function execute(
     try {
       const r = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
         expression: `JSON.stringify((function(){
+          // 安全红线：与录制侧 snapshot.ts 同源三重防线——password 跳过 /
+          // autocomplete=password 旁路跳过 / label 敏感词脱敏
+          const SENS = /password|passwd|secret|token|authorization|cookie|api_key|apikey|private_key|credential/i;
           const forms = [...document.querySelectorAll('input, select, textarea')]
             .filter(e => e.getBoundingClientRect().width > 0)
-            .slice(0, 30).map(e => ({
-              label: ((e.closest('.form-group, .ant-form-item, .cgf-item') || {})
+            .filter(e => {
+              const ac = (e.getAttribute('autocomplete') || '').toLowerCase();
+              return e.type !== 'password' && !ac.includes('password');
+            })
+            .slice(0, 30).map(e => {
+              const label = (((e.closest('.form-group, .ant-form-item, .cgf-item') || {})
                 .querySelector ? e.closest('.form-group, .ant-form-item, .cgf-item')
-                  .querySelector('label')?.textContent : '') || e.placeholder || e.name || '',
-              value: e.type === 'password' ? '[REDACTED]' : String(e.value || '')}))
-            .map(f => ({label: String(f.label || '').trim().slice(0, 40),
-                        value: String(f.value || '').slice(0, 60)}));
+                  .querySelector('label')?.textContent : '') || e.placeholder || e.name || '');
+              return { label: String(label || '').trim().slice(0, 40),
+                       value: SENS.test(String(label || ''))
+                         ? '[REDACTED]'
+                         : String(e.value || '').slice(0, 60) };
+            });
           const toasts = [...document.querySelectorAll(
             '.toast, .toast-message, .ant-message-notice, .el-message, [role=alert]')]
             .filter(e => e.offsetParent !== null)
-            .map(e => (e.textContent || '').trim().slice(0, 80)).filter(Boolean);
+            .map(e => (e.textContent || '').trim().slice(0, 80))
+            // 敏感 toast 整条丢弃（红线：宁可缺失也不落敏感线索）
+            .filter(t => t && !SENS.test(t));
           return {url: location.href, title: document.title, forms, toasts};
         })())`, returnByValue: true });
       try { evidence.page = JSON.parse(r?.result?.value || "{}"); } catch { /* noop */ }
