@@ -162,8 +162,16 @@ async def run_chain_server(db: Session, chain_id: int,
                 warnings.append(
                     f"前置步骤 #{results[-1]['step']} 未通过（{results[-1]['status']}）——已跳过继续")
             else:
-                break  # 业务步骤 fail 即停（与插件端链模式同语义）
-    biz = [r for r, st in zip(results, steps) if not st.get("setup")]
+                # AJ1 blocked 语义（TestRail）：业务步骤 fail 即停，后续步骤
+                # 标 blocked（没跑≠失败）——统计分母只含执行了的步骤；
+                # 占位结果不落 ReplayRun（防污染执行列表），只进链结果
+                for j in range(i + 1, len(steps)):
+                    results.append({"step": j + 1, "status": "blocked",
+                                    "skill_id": steps[j].get("skill_id")})
+                break
+    # AJ1：分母排除 setup 步骤与 blocked 占位（没跑≠失败——TestRail 语义）
+    biz = [r for r, st in zip(results, steps)
+           if not st.get("setup") and r["status"] != "blocked"]
     biz_pass = sum(1 for r in biz if r["status"] == "pass")
     overall = "pass" if biz and biz_pass == len(biz) else (
         "shadow" if results and results[-1]["status"] == "shadow" else "fail")

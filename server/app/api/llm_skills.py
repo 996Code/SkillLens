@@ -155,15 +155,28 @@ async def skill_trends(db: Session = Depends(get_db)) -> list[dict]:
     from datetime import datetime, timedelta
     from app.models import ReplayRun
     from app.system import skill_systems
+    from app.change.failure_class import pass_rate
     since = datetime.utcnow() - timedelta(days=30)
     rows = db.query(ReplayRun).filter(
         ReplayRun.created_at >= since,
-        ReplayRun.status.in_(("pass", "fail"))).all()
+        ReplayRun.status.in_(("pass", "fail", "error"))).all()
     systems = skill_systems(db, [r.skill_id for r in rows])
     agg: dict[str, dict] = {}
     for r in rows:
         sysname = systems.get(r.skill_id) or "通用"
-        a = agg.setdefault(sysname, {"system": sysname, "total": 0, "pass": 0, "fail": 0})
-        a["total"] += 1
-        a[r.status] += 1
+        a = agg.setdefault(sysname, {"system": sysname, "runs": [],
+                                     "total": 0, "pass": 0, "fail": 0,
+                                     "e1_env": 0, "e2_infra": 0})
+        # 原始分类计数（透明度：环境失败可见但不进分母）
+        if r.failure_class:
+            a[r.failure_class] = a.get(r.failure_class, 0) + 1
+        a["runs"].append({"status": r.status,
+                          "failure_class": r.failure_class})
+    # 分母口径（AJ1）：E1/E2 不计——用 failure_class.pass_rate 统一算
+    for a in agg.values():
+        pr = pass_rate(a.pop("runs"))
+        a["pass"] = pr["pass"]
+        a["total"] = pr["total"]
+        a["fail"] = pr["total"] - pr["pass"]
+        a["rate"] = pr["rate"]
     return sorted(agg.values(), key=lambda x: -x["total"])

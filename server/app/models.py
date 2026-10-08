@@ -319,6 +319,8 @@ class ReplayRun(Base):
     # S23 块 V：execute 回放耗时（ms）——性能基线与漂移判定的原始数据
     duration_ms: Mapped[int | None] = mapped_column(nullable=True)
     # S24 块 U：flaky 标记——首试 fail 重试 pass（两次结果不一致），进一致性统计
+    # AJ1 失败分类（e1_env/e2_infra/e3_drift/e4_expected；null=pass/未分类）
+    failure_class: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     flaky: Mapped[bool] = mapped_column(default=False)
     # AG1：执行后端标记（server|extension）——插件执行端 run 可区分
     executor: Mapped[str] = mapped_column(String(20), default="server")

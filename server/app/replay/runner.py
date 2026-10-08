@@ -27,6 +27,57 @@ from app.config import REPLAY_ARTIFACT_DIR as ARTIFACT_DIR
 STORAGE_STATE = os.environ.get("REPLAY_STORAGE_STATE", "")
 
 
+# ---- AJ2 登录守卫（E1 首实例）----
+# 步骤现场 URL 落 login 路径 = 登录态丢失（环境故障非链漂移）：
+# 不烧自愈额度、不误判元素漂移；服务端可自愈（适配器登录例程幂等），
+# 自愈后从当前步重试一次。session_recovered 落 plan 供统计。
+_LOGIN_GUARD_RE = None  # 延迟初始化（复用 failure_class 词表）
+
+
+async def _session_guard_recover(system: str) -> bool:
+    """AJ2 登录守卫恢复：独立浏览器跑适配器登录例程（幂等），成功后写
+    artifacts/states/<适配器>.json——_open_context(system=) 已会注入该文件，
+    守卫重跑的 attempt 即带新登录态（与 chain_runner._adapter_login 同构，
+    两个入口一份语义）。"""
+    from pathlib import Path as _P
+    from app.system import SYSTEM_ADAPTER
+    aid = SYSTEM_ADAPTER.get(system or "")
+    if not aid:
+        return False
+    try:
+        from app.adapters.manifest import load_adapter_dir
+        from app.adapters.steps import login as adapter_login
+        from playwright.async_api import async_playwright
+        ms, _ = load_adapter_dir(_P("adapters"))
+        m = next((x for x in ms if x.id == aid), None)
+        if m is None or m.login is None:
+            return False
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            try:
+                ctx = await browser.new_context()
+                page = await ctx.new_page()
+                ok = await adapter_login(page, m)
+                if ok:
+                    state_dir = _P("artifacts") / "states"
+                    state_dir.mkdir(parents=True, exist_ok=True)
+                    await ctx.storage_state(path=str(state_dir / f"{aid}.json"))
+                return ok
+            finally:
+                await browser.close()
+    except Exception:
+        return False
+
+
+def _hit_login_page(error_text: str) -> bool:
+    """步骤错误串里的现场 URL 是否落在 login 路径（@ url 提取）。"""
+    global _LOGIN_GUARD_RE
+    if _LOGIN_GUARD_RE is None:
+        import re as _re
+        _LOGIN_GUARD_RE = _re.compile(r"@(\s*)https?://\S*/login|@(\s*)\S*/login\?", _re.IGNORECASE)
+    return bool(_LOGIN_GUARD_RE.search(error_text or ""))
+
+
 def write_response_count(observed: list[dict]) -> int:
     """写方法响应计数。预拉放行水位只认写响应——按 observed 总条数比较时，
     页面加载/轮询的 GET 噪声即抬高水位，被前端校验拦下的提交会被放行成 pass。"""
@@ -1084,6 +1135,22 @@ async def _execute_skill(db: Session, browser, skill_id: int,
     attempt = await _attempt(db, browser, skill_id, plan, assertions, shared_ctx,
                              repair_map, has_overrides=has_overrides,
                              row_anchor_hints=row_hints, system=system)
+    # AJ2 登录守卫（E1 首实例）：attempt 失败且现场落 login 页 = 登录态丢失
+    # （环境故障非链漂移）——跑适配器登录例程（幂等）自愈后整个 attempt
+    # 重跑一次。不烧自愈额度/不误入 E3。守卫限一次（防登录例程本身坏的循环）。
+    if attempt.get("status") == "fail" and system:
+        _errtxt = " ".join(str(s.get("error") or "") for s in attempt.get("executed") or [])
+        if _hit_login_page(_errtxt) or "/login" in str(attempt.get("error_text") or ""):
+            try:
+                ok = await _session_guard_recover(system)
+            except Exception:
+                ok = False
+            if ok:
+                attempt = await _attempt(
+                    db, browser, skill_id, plan, assertions, shared_ctx,
+                    repair_map, has_overrides=has_overrides,
+                    row_anchor_hints=row_hints, system=system)
+                attempt["session_recovered"] = True  # 统计标记（AJ1 反哺）
     flaky = False
     field_healed = False
     healed_fields: list[dict] = []
@@ -1166,9 +1233,16 @@ async def _execute_skill(db: Session, browser, skill_id: int,
     if field_healed:
         plan = {**plan, "field_healed": True,
                 "healed_fields": healed_fields}
+    # AJ1 失败分类（落库原始判定——派生值查询时算，口径可重算）
+    from app.change.failure_class import classify_run
+    failure_class = classify_run({
+        "status": status,
+        "executed": result["executed"],
+        "assertions": results}) if status in ("fail", "error") else None
     run = ReplayRun(skill_id=skill_id, mode="execute", status=status, plan=plan,
                     executed=result["executed"], assertion_results=results,
-                    duration_ms=attempt["duration_ms"], flaky=flaky)
+                    duration_ms=attempt["duration_ms"], flaky=flaky,
+                    failure_class=failure_class)
     db.add(run)
     db.commit()
     db.refresh(run)
