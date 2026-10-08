@@ -37,3 +37,4 @@ artifacts/
 
 # 运行日志（webhook_receiver.py 等）
 *.log
+.jeecg-state.json

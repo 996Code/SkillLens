@@ -140,3 +140,40 @@ async def skill_fill_fields(skill_id: int, db: Session = Depends(get_db)) -> lis
     if not db.get(Skill, skill_id):
         raise HTTPException(404, "skill not found")
     return _fill_fields(db, skill_id)
+
+
+@router.post("/chains/{chain_id}/run", dependencies=WRITE_GUARD)
+async def run_chain(chain_id: int, wait: int = 0,
+                    confirm_side_effect: bool = True,
+                    db: Session = Depends(get_db)) -> dict:
+    """AI3 CI 出口：同步执行链（服务端 Playwright 路径）。
+
+    - wait=1：同步等执行完成（CI 场景——curl/流水线直接拿结果）
+    - HTTP 200=整体 pass；409=有步骤 fail/error（CI 退出码语义：
+      `curl -f` 或 status_code 判定即得非零）
+    - confirm_side_effect 默认 true（CI 授权由调用方持有——与 executor
+      auto=1 同语义；显式 false 走 C1 shadow 门控）
+    - 失败摘要走 webhook（WEBHOOK_URL 配置时）——复用既有通道
+    """
+    if not db.get(Chain, chain_id):
+        raise HTTPException(404, "chain not found")
+    if not wait:
+        # 异步形态：后台任务执行（结果经 GET /chains/{id}/runs 查——
+        # P2 补执行历史表；当前先只支持同步，CI 是主场景）
+        raise HTTPException(422, "当前仅支持 wait=1（同步执行）")
+    from app.replay.chain_runner import run_chain_server
+    result = await run_chain_server(db, chain_id, confirm_side_effect)
+    # webhook 失败摘要（fire-and-forget；无 WEBHOOK_URL 静默跳过）
+    if result.get("status") != "pass":
+        try:
+            from app.integrations.webhook import notify
+            import json as _json
+            await notify("SkillLens 链执行失败",
+                         f"链 #{chain_id}：{result.get('pass_count', 0)}/"
+                         f"{result.get('total', 0)} 步通过\n"
+                         + _json.dumps(result.get("steps", []), ensure_ascii=False)[:500])
+        except Exception:
+            pass  # webhook 失败不影响 CI 判定
+    if result.get("status") != "pass":
+        raise HTTPException(409, result)
+    return result

@@ -1133,7 +1133,10 @@ async def _execute_skill(db: Session, browser, skill_id: int,
             "after_snapshot": attempt["after_snapshot"],
             "api_latencies": result.get("api_latencies") or {},
             # S38 业务状态（流程图基座）：观测响应派生，确定性规则
-            "business_states": derive_states(result.get("observed") or [])}
+            "business_states": derive_states(result.get("observed") or []),
+            # AI3 链执行跨步绑定：observed 旁挂 plan（reqBody 已在采集侧
+            # 脱敏——与插件端 networkLog 同语义；单技能回放不消费此键）
+            "observed": result.get("observed") or []}
     # S33：步骤截图清单旁挂（起始页 + 每步一张；fail-open 无截图不挂键）
     shot_files = []
     if attempt.get("start_shot"):
