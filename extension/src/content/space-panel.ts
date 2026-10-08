@@ -70,6 +70,19 @@ function mount(): void {
       .sk:hover .one { display: inline-block; }
       .picked { background: #f7f8fa; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; margin-top: 8px; font-size: 12px; }
       .picked .st { color: #6b7280; font-size: 11px; margin-bottom: 6px; }
+      .picked .ovr { margin: 4px 0; display: flex; gap: 4px; align-items: center; }
+      .picked .ovr select {
+        flex: 1; font: inherit; font-size: 11px; padding: 3px 4px;
+        border: 1px solid #e5e7eb; border-radius: 5px; background: #fff;
+      }
+      .picked .ovr input {
+        flex: 1.2; font: inherit; font-size: 11px; padding: 3px 6px;
+        border: 1px solid #e5e7eb; border-radius: 5px;
+      }
+      .picked .ovr .del { border: none; background: none; color: #dc2626; cursor: pointer; font-size: 12px; }
+      .picked .addf { font-size: 11px; border: 1px dashed #cbd5e1; background: none; border-radius: 5px; padding: 2px 8px; cursor: pointer; color: #6b7280; }
+      .picked .rules { font-size: 10px; color: #6b7280; margin-top: 3px; }
+      .picked .rules code { background: #eef2f7; border-radius: 3px; padding: 0 3px; cursor: pointer; }
       .picked .row { display: flex; gap: 6px; }
       .picked input.nm { flex: 1; padding: 5px 8px; font: inherit; font-size: 12px; border: 1px solid #e5e7eb; border-radius: 6px; outline: none; }
       .picked button {
@@ -157,6 +170,102 @@ function mount(): void {
   let systemName = "";
   let skills: any[] = [];
   let picked: any[] = [];
+  // AI2 overrides 编辑态：picked[i].__ovr = Record<key, value>；
+  // __fills = 该技能 fill 候选（懒加载——点选时拉 /chains/fills/{id}）
+  const fillsCache = new Map<number, Array<{ name: string; value: string }>>();
+
+  async function loadFills(skillId: number): Promise<Array<{ name: string; value: string }>> {
+    if (fillsCache.has(skillId)) return fillsCache.get(skillId)!;
+    try {
+      const r = await api(`/chains/fills/${skillId}`);
+      fillsCache.set(skillId, Array.isArray(r) ? r : []);
+    } catch { fillsCache.set(skillId, []); }
+    return fillsCache.get(skillId)!;
+  }
+
+  function renderPicked(): void {
+    pkEl.style.display = picked.length ? "block" : "none";
+    pksEl.replaceChildren();
+    picked.forEach((p, i) => {
+      const row = document.createElement("div");
+      row.style.cssText = "margin:4px 0;padding:4px;border-bottom:1px solid #eef2f7";
+      const head = document.createElement("div");
+      head.style.cssText = "display:flex;align-items:center;gap:4px";
+      const no = document.createElement("b");
+      no.style.color = "#2563eb";
+      no.textContent = `${i + 1}.`;
+      const nm = document.createElement("span");
+      nm.style.flex = "1";
+      nm.textContent = p.name;
+      const add = document.createElement("button");
+      add.className = "addf";
+      add.textContent = "+参数";
+      add.addEventListener("click", async () => {
+        const fills = await loadFills(p.id);
+        const key = fills[0]?.name;
+        if (!key) { note("该技能无 fill 字段（无可换参项）", "err"); return; }
+        p.__ovr = { ...(p.__ovr || {}), [key]: "" };
+        renderPicked();
+      });
+      head.append(no, nm, add);
+      row.append(head);
+
+      const ovr = p.__ovr || {};
+      for (const [k, v] of Object.entries(ovr)) {
+        const line = document.createElement("div");
+        line.className = "ovr";
+        const sel = document.createElement("select");
+        void loadFills(p.id).then((fills) => {
+          sel.replaceChildren();
+          for (const f of fills) {
+            const o = document.createElement("option");
+            o.value = f.name;
+            o.textContent = f.name;
+            if (f.value) o.textContent += `（原:${f.value.slice(0, 12)}）`;
+            if (f.name === k) o.selected = true;
+            sel.append(o);
+          }
+          if (!fills.some((f) => f.name === k)) {
+            const o = document.createElement("option");
+            o.value = k; o.textContent = `${k} ⚠不在候选`; o.selected = true;
+            sel.append(o);
+          }
+        });
+        sel.addEventListener("change", () => {
+          const old = { ...p.__ovr };
+          delete old[k];
+          p.__ovr = { ...old, [sel.value]: v };
+          renderPicked();
+        });
+        const inp = document.createElement("input");
+        inp.value = v;
+        inp.placeholder = "值或 ${unique:前缀} / ${stepN.字段}";
+        inp.addEventListener("input", () => { p.__ovr[k] = inp.value; });
+        const del = document.createElement("button");
+        del.className = "del"; del.textContent = "×";
+        del.addEventListener("click", () => {
+          delete p.__ovr[k];
+          renderPicked();
+        });
+        line.append(sel, inp, del);
+        row.append(line);
+      }
+      if (Object.keys(ovr).length) {
+        const hint = document.createElement("div");
+        hint.className = "rules";
+        hint.innerHTML =
+          `规则：<code title="点击插入">${"$" + "{unique:前缀}"}</code> 每次唯一 ` +
+          `<code title="点击插入">${"$" + "{step" + (i) + ".字段}"}</code> 取本步上游产出`;
+        const codes = hint.querySelectorAll("code");
+        const lastInput = row.querySelector<HTMLInputElement>(".ovr input:last-of-type");
+        codes.forEach((c) => c.addEventListener("click", () => {
+          if (lastInput) { lastInput.value = c.textContent || ""; lastInput.dispatchEvent(new Event("input")); }
+        }));
+        row.append(hint);
+      }
+      pksEl.append(row);
+    });
+  }
 
   function note(msg: string, cls: "ok" | "err"): void {
     ntEl.style.display = "block";
@@ -221,8 +330,7 @@ function mount(): void {
       row.addEventListener("click", () => {
         const i = picked.findIndex((p) => p.id === s.id);
         if (i >= 0) picked.splice(i, 1); else picked.push(s);
-        pkEl.style.display = picked.length ? "block" : "none";
-        pksEl.textContent = picked.map((p, k) => `${k + 1}.${p.name}`).join(" → ");
+        renderPicked();
         render();
       });
       // 单技能执行（popup 技能列表职能并入——行 hover 出执行钮，与组链并存）
@@ -259,7 +367,9 @@ function mount(): void {
     return {
       name: cnEl.value.trim() || `链 ${new Date().toTimeString().slice(0, 5)}`,
       system: systemName || "通用",
-      steps: picked.map((p) => ({ skill_id: p.id, overrides: {} })),
+      // AI2：面板编辑的 overrides（key 经 fill 候选防呆）随步保存
+      steps: picked.map((p) => ({ skill_id: p.id,
+                                  overrides: p.__ovr || {} })),
     };
   }
 
@@ -279,7 +389,7 @@ function mount(): void {
     try {
       await api("/chains", { method: "POST", body: JSON.stringify(p) });
       cnEl.value = ""; picked = [];
-      pkEl.style.display = "none";
+      renderPicked();
       render();
       await loadChains();
       note("链已保存", "ok");

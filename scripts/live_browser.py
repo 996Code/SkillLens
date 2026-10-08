@@ -61,7 +61,12 @@ async def main() -> None:
             timeout=60000,
         )
         page = ctx.pages[0] if ctx.pages else await ctx.new_page()
-        await login_in_page(page, user, password, login_url)
+        # njmind 登录容错：内网不可达/超时不应带走常驻浏览器（2026-10-08
+        # 实锤：goto 30s 超时→脚本退→Playwright 清理杀 Chrome，CDP 全丢）
+        try:
+            await login_in_page(page, user, password, login_url)
+        except Exception as e:
+            print(f"njmind 登录跳过（不阻断常驻浏览器）：{e}")
         print(f"常驻浏览器已就绪：CDP http://127.0.0.1:{port}（Ctrl+C 关闭）")
         while True:
             await asyncio.sleep(3600)

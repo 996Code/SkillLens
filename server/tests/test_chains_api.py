@@ -66,6 +66,11 @@ async def test_create_list_get_delete_chain(chain_client):
         steps = one.json()["steps"]
         assert steps[0]["skill"]["id"] == sid
         assert steps[0]["skill"]["name"] == "链测试技能"
+        # AI2 防呆：fill_fields 候选键集（lesson #49：override key=录制的
+        # input 事件 name——空骨架技能无 input，空列表合法；有 input 的
+        # 技能必须列出 name+首值）
+        assert "fill_fields" in steps[0]["skill"]
+        assert isinstance(steps[0]["skill"]["fill_fields"], list)
 
         d = await chain_client.delete(f"/api/v1/chains/{cid}")
         assert d.status_code == 200

@@ -64,7 +64,7 @@ export async function runSkill(
   skillId: number, overrides: Record<string, string>,
   onProgress: (msg: string) => void,
   shouldStop?: () => boolean,
-): Promise<{ status: string; runId?: number }> {
+): Promise<{ status: string; runId?: number; observed?: any[] }> {
   const plan = await api(`/executor/skills/${skillId}/plan`, {
     method: "POST",
     body: JSON.stringify({ overrides, confirm_side_effect: true }),
@@ -219,14 +219,16 @@ export async function runSkill(
         onProgress(`中止：${ev.evidence?.error || "导航失败"}`);
         return { status: "fail" };
       }
-      // AG3：步 POST 加 8s race——任何卡点浮出为错误而非静默挂死
+      // AG3：步 POST race——卡点浮出为错误而非静默挂死。45s：服务端 miss
+      // 时介入自愈（LLM 提案+heal 重试）可到 30s+，8s 假阳性实锤（1596：
+      // 服务端 200 正常推进而 race 先 abort）
       const resp = await Promise.race([
         api(`/executor/runs/${runId}/step`, {
           method: "POST",
           body: JSON.stringify(ev),
         }),
         new Promise<never>((_, rej) =>
-          setTimeout(() => rej(new Error(`step POST 挂起 seq=${ev.seq}`)), 8000)),
+          setTimeout(() => rej(new Error(`step POST 挂起 seq=${ev.seq}`)), 45000)),
       ]);
       instruction = resp.instruction;
     }
@@ -243,7 +245,10 @@ export async function runSkill(
       }),
     });
     onProgress(`完成：${finish.status}（${steps} 步）`);
-    return { status: finish.status, runId };
+    // AI2 跨步传值：把写请求证据带回调用方（链模式的下一步绑定原料）。
+    // 与 finish.summary.observed 同源（判定用同一份；凭据已脱敏）
+    return { status: finish.status, runId,
+             observed: networkLog.filter((n) => n.url && n.url.startsWith("http")) };
   } catch (e: any) {
     onProgress(`中断：${e.message}`);
     // 诊断核心：错误必须落库（race 保护 finish 自身也不挂死）

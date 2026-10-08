@@ -6,7 +6,7 @@
 export {};
 
 import { listExecutorSkills, runSkill, setExecutorToken, api } from "./background/executor";
-import { resolveChainSteps } from "./shared/chain-rules";
+import { resolveStepOverrides } from "./shared/chain-rules";
 
 const logEl = document.getElementById("log")!;
 const go = document.getElementById("go") as HTMLButtonElement;
@@ -127,30 +127,35 @@ go.addEventListener("click", async () => {
       } else if (skillWrites && autoConfirm) {
         log("auto 模式：整链 C1 授权由调用方持有，跳过确认卡");
       }
-      const resolved = resolveChainSteps(steps);
+      // AI2 逐步解析：每步执行时带前序产出 ctx（${stepN.字段} 跨步绑定），
+      // unique 同轮共享时间戳。逐步而非整链预解析——绑定值依赖执行期证据。
+      const runTs = Date.now();
+      const stepCtx: any[][] = [];
       const results: Array<{ step: number; status: string; runId?: number }> = [];
-      for (let i = 0; i < resolved.length; i++) {
+      for (let i = 0; i < steps.length; i++) {
         if (stopRequested) { log(`已停止：第 ${i + 1} 步前中断`); break; }
-        const st = resolved[i];
-        const nm = `#${st.skill_id} ${steps[i].skill?.name ?? ""}`;
-        log(`步骤 ${i + 1}/${resolved.length}：${nm} …`);
+        const st = resolveStepOverrides(steps[i], stepCtx, runTs);
+        const nm = `#${steps[i].skill_id} ${steps[i].skill?.name ?? ""}`;
+        log(`步骤 ${i + 1}/${steps.length}：${nm} …`);
         try {
-          const r = await runSkill(st.skill_id, st.overrides, log, () => stopRequested);
+          const r = await runSkill(steps[i].skill_id, st.overrides, log, () => stopRequested);
+          stepCtx.push(r.observed || []);   // 本步产出供后续步骤绑定
           results.push({ step: i + 1, status: r.status, runId: r.runId });
           log(`步骤 ${i + 1} 完成：${r.status}`);
           if (r.status !== "pass") {
-            log(`链在第 ${i + 1} 步未通过——停止后续步骤（已执行 ${i + 1}/${resolved.length}）`);
+            log(`链在第 ${i + 1} 步未通过——停止后续步骤（已执行 ${i + 1}/${steps.length}）`);
             break;
           }
         } catch (e: any) {
+          stepCtx.push([]);
           results.push({ step: i + 1, status: "error" });
           log(`步骤 ${i + 1} 失败：${e.message}——停止后续步骤`);
           break;
         }
       }
       const npass = results.filter((r) => r.status === "pass").length;
-      const overall = npass === resolved.length && resolved.length > 0 ? "pass" : "fail";
-      log(`链执行结束：${npass}/${resolved.length} 步通过（${overall}）`);
+      const overall = npass === steps.length && steps.length > 0 ? "pass" : "fail";
+      log(`链执行结束：${npass}/${steps.length} 步通过（${overall}）`);
       showResultCard(overall, results.find((r) => r.runId)?.runId ?? null);
     } else {
       // ---- 单技能模式（原有路径） ----

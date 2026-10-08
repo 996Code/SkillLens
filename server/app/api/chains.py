@@ -9,10 +9,11 @@
 """
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
-from app.models import Chain, Skill
+from app.models import Alignment, Chain, RawEvent, Skill
 from app.api.auth import WRITE_GUARD
 
 router = APIRouter()
@@ -44,11 +45,44 @@ def _validate_steps(db: Session, steps: list[ChainStepIn]) -> None:
             raise HTTPException(422, f"skill 不存在：{st.skill_id}")
 
 
+def _fill_fields(db: Session, skill_id: int) -> list[dict]:
+    """AI2 防呆：fill 字段候选——链 overrides 的合法 key 集（lesson #49：
+    key 语义=录制的 input 事件 name，变量名可能一字之差静默失效）。
+    直接查参考会话 input 事件（name+首值）——与 compile_skeleton_plan
+    的 fill 投影同源，不跑完整编译。"""
+    s = db.get(Skill, skill_id)
+    fills: list[dict] = []
+    if not s or not s.alignment_id:
+        return fills
+    try:
+        al = db.get(Alignment, s.alignment_id)
+        ref_sid = (al.session_ids or [None])[0] if al else None
+        if not ref_sid:
+            return fills
+        rows = db.execute(
+            select(RawEvent).where(
+                RawEvent.session_id == ref_sid,
+                RawEvent.kind == "action").order_by(RawEvent.ts, RawEvent.seq)
+        ).scalars().all()
+        seen: set[str] = set()
+        for r in rows:
+            p = r.payload or {}
+            if p.get("type") == "input":
+                nm = str(p.get("name") or "")
+                if nm and nm not in seen:
+                    seen.add(nm)
+                    fills.append({"name": nm, "value": str(p.get("value", ""))[:60]})
+    except Exception:
+        pass
+    return fills
+
+
 def _skill_brief(db: Session, skill_id: int) -> dict:
     from app.replay.plan import requires_confirmation
     s = db.get(Skill, skill_id)
     return {"id": s.id, "name": s.name,
-            "requires_confirmation": requires_confirmation(s.skeleton or [])}
+            "requires_confirmation": requires_confirmation(s.skeleton or []),
+            "fill_fields": _fill_fields(db, skill_id)}
 
 
 @router.post("/chains", status_code=201, dependencies=WRITE_GUARD)
@@ -97,3 +131,12 @@ async def delete_chain(chain_id: int, db: Session = Depends(get_db)) -> dict:
     db.delete(row)
     db.commit()
     return {"ok": True}
+
+
+@router.get("/chains/fills/{skill_id}")
+async def skill_fill_fields(skill_id: int, db: Session = Depends(get_db)) -> list[dict]:
+    """AI2 防呆：单技能 fill 候选（面板组链时按需取——列表端点不逐技能
+    查 events，288 技能全量 fills 是重查询）。"""
+    if not db.get(Skill, skill_id):
+        raise HTTPException(404, "skill not found")
+    return _fill_fields(db, skill_id)
