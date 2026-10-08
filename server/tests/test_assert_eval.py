@@ -249,3 +249,34 @@ def test_ui_text_value_mismatch_without_fill_evidence_fails():
                             after_snapshot={"forms": [{"label": "状态", "value": "草稿"}]},
                             executed_steps=[{"kind": "click", "label": "保存", "ok": True}])
     assert r[0]["passed"] is False
+
+
+def test_api_status_method_filter():
+    """经典表单系统（Dolibarr 实证）：GET 页面加载与 POST 提交共享路径
+    （query 忽略）——payload 带 method 时只按同方法命中判定，GET 200
+    不稀释 POST 302 的期望；无 method 保持旧语义（全命中比对）。"""
+    from app.replay.assert_eval import evaluate_assertions
+    observed = [
+        {"url": "http://h/societe/card.php?action=create", "status": 200,
+         "method": "GET", "body": ""},
+        {"url": "http://h/societe/card.php?action=create", "status": 302,
+         "method": "POST", "body": ""},
+    ]
+    a = [{"kind": "api_status",
+          "payload": {"api_template": "/societe/card.php", "expect_status": 302,
+                      "method": "POST"}}]
+    r = evaluate_assertions(a, observed)
+    assert r[0]["passed"] is True
+    assert r[0]["observed_status"] == 302
+    # 无 method：全命中比对（旧语义）——GET 200 与 POST 302 并存判 fail
+    a_old = [{"kind": "api_status",
+              "payload": {"api_template": "/societe/card.php",
+                          "expect_status": 302}}]
+    r_old = evaluate_assertions(a_old, observed)
+    assert r_old[0]["passed"] is False
+    # 带方法但写请求缺失（提交被拦）→ fail（真实回归信号）
+    a_miss = [{"kind": "api_status",
+               "payload": {"api_template": "/societe/card.php",
+                           "expect_status": 302, "method": "POST"}}]
+    r_miss = evaluate_assertions(a_miss, observed[:1])
+    assert r_miss[0]["passed"] is False

@@ -13,6 +13,10 @@ login:
     - fill: ["input[name=password]", "${password}"]
     - click: "input[type=submit], button[type=submit]"
   post_login: []
+  # 经典表单系统：登录页在根路径、URL 无 login 字样——URL 探针失效，
+  # 登录态唯一证据是登录后首页特征文本（实证 2026-10-09：无此配置时
+  # 登录步从不执行、假成功返回 True）
+  success: {text_contains: "My Dashboard"}
 probes:
   - id: order_count
     kind: docker-exec

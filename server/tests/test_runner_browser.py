@@ -941,3 +941,42 @@ async def test_execute_plan_prefetch_write_releases_later_button():
         result = await execute_plan(page, plan)
         assert all(s.get("ok") for s in result["executed"]), result["executed"]
         await browser.close()
+
+
+async def test_execute_plan_input_classic_form_enter_submits():
+    """经典表单系统（Dolibarr 实证 2026-10-09）：fill 后统一补 Enter 会
+    直接提交整个表单（浏览器默认行为）——元素随导航消失时输入步不得
+    卡 30s readback 超时判失败，应识别为提前提交（值已被消费，结果由
+    断言判定）。"""
+    from app.replay.runner import execute_plan
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body>
+          <form id="f" onsubmit="return false">
+            <input type="text" name="name" id="name" placeholder="名称">
+            <button type="submit" id="btn">创建</button>
+          </form>
+          <div id="result" style="display:none">已创建</div>
+          <script>
+            document.getElementById('name').addEventListener('keydown', (e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                // 经典表单 Enter 直提：提交后表单整体移除（页面导航的 DOM 等价）
+                document.getElementById('f').remove();
+                document.getElementById('result').style.display = 'block';
+              }
+            });
+          </script>
+        </body></html>""")
+        plan = {"url": "about:blank", "steps": [
+            {"kind": "input", "name": "name", "value": "闭环客户X",
+             "labels": ["名称", "name"], "tag": "input"},
+            {"kind": "click", "label": "创建", "labels": ["创建"], "tag": "button"}]}
+        result = await execute_plan(page, plan)
+        assert result["executed"][0]["ok"] is True, result["executed"][0]
+        # 表单已提前提交：创建步跳过（ok=True + skipped 注记），不判失败
+        assert result["executed"][1]["ok"] is True
+        assert "提前提交" in result["executed"][1].get("skipped", "")
+        await browser.close()

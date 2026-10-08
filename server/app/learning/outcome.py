@@ -1,11 +1,29 @@
 import logging
+from urllib.parse import urlsplit
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Alignment, FieldChange, OutcomeAssertion, SemanticAction, Skill
+from app.models import Alignment, FieldChange, OutcomeAssertion, ReplayRun, \
+    SemanticAction, Skill
+from app.replay.assert_eval import _ID_SEGMENT
 
 logger = logging.getLogger("skilllens")
+
+# 查询型调用排除词表（generate_assertions 与 bootstrap_from_run 共用）：
+# 这些 RPC 虽走 POST 但语义是列表轮询/读取，与流程无因果
+_QUERY_LIKE_KEYS = ("reportview", "search_link", "search_widget",
+                    "get_count", "list_view", "get_list")
+_WRITE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
+
+
+def _normalize_template(url: str) -> str:
+    """路径段序列，动态段（模板 {id}、纯数字段、UUID 段）归一 {id}——
+    与 assert_eval.path_matches 的忽略语义同源（_ID_SEGMENT 单一事实）。"""
+    path = urlsplit(url).path
+    segs = [("{id}" if _ID_SEGMENT.match(s) else s)
+            for s in path.split("/") if s]
+    return "/" + "/".join(segs)
 
 
 def _ui_text_rows(action: SemanticAction) -> list[tuple]:
@@ -58,8 +76,7 @@ def generate_assertions(db: Session, skill_id: int) -> list[OutcomeAssertion]:
                 if not t:
                     logger.warning("generate_assertions: api_call missing template: %r", call)
                     continue
-                if any(k in t for k in ("reportview", "search_link", "search_widget",
-                                        "get_count", "list_view", "get_list")):
+                if any(k in t for k in _QUERY_LIKE_KEYS):
                     continue
                 if (call.get("method") or "GET").upper() == "GET":
                     continue
@@ -205,3 +222,52 @@ def _check_one(db: Session, sid: str, kind: str, p: dict) -> bool:
                     return True
         return False
     return False
+
+
+def bootstrap_from_run(db: Session, skill_id: int, run_id: int) -> list[OutcomeAssertion]:
+    """P0-3 回放反哺断言：从 pass run 的 observed 写响应引导 api_status 断言。
+
+    经典表单系统（Dolibarr 整页提交）录制侧 net-hook 只包 fetch/XHR，
+    写请求与 after 快照结构性缺失（api_calls=0 → generate_assertions 零产出）；
+    服务端回放 observed 走 Playwright 全响应捕获（含表单 POST）——pass run
+    的写响应就是成功证据。确定性规则（无 LLM 判定，C3 合规）。
+
+    只认 pass run（fail run 的响应是失败现场不是成功证据）；动态段归一
+    {id}；查询型模板排除（与 generate_assertions 同词表）；同模板幂等。
+    """
+    run = db.get(ReplayRun, run_id)
+    if run is None:
+        raise ValueError("run not found")
+    if run.skill_id != skill_id:
+        raise ValueError("run 不属于该 skill")
+    if run.status != "pass":
+        raise ValueError("只支持从 pass run 引导（失败现场不是成功证据）")
+    observed = (run.plan or {}).get("observed") or []
+    existing = {a.api_template for a in db.execute(
+        select(OutcomeAssertion).where(OutcomeAssertion.skill_id == skill_id)
+    ).scalars()}
+    rows: list[OutcomeAssertion] = []
+    seen: set[str] = set()
+    for o in observed:
+        if not isinstance(o, dict):
+            continue
+        if (o.get("method") or "").upper() not in _WRITE_METHODS:
+            continue
+        tpl = _normalize_template(o.get("url") or "")
+        if not tpl or "/" == tpl:
+            continue
+        if any(k in tpl for k in _QUERY_LIKE_KEYS):
+            continue
+        if tpl in existing or tpl in seen:
+            continue
+        seen.add(tpl)
+        rows.append(OutcomeAssertion(
+            skill_id=skill_id, layer=3, kind="api_status", api_template=tpl,
+            payload={"api_template": tpl, "expect_status": o.get("status"),
+                     # 经典表单系统 GET 页面加载与 POST 提交共享路径
+                     # （query 忽略）——方法过滤防 GET 200 稀释写期望
+                     "method": (o.get("method") or "").upper()}))
+    for r in rows:
+        db.add(r)
+    db.commit()
+    return rows

@@ -24,6 +24,27 @@
 2. **系统派生两个洞**——17 个"未知系统"实为禅道 6+Odoo 11（会话零
    navigation：SPA/iframe 录制窗口无整页加载），1 个裸 host 实为 Firefly。
    兜底链（action.url）+映射补齐后：禅道 99/Odoo 12/Firefly 1，零残留。
+3. **P0-3 Dolibarr 断言 0→有（2026-10-09 完成）**——根因比预想深：
+   录制侧 net-hook 只包 fetch/XHR，Dolibarr 经典表单整页提交两头瞎
+   （api_calls=0 + after 快照缺失），**补录也救不了**。解法换道
+   "回放反哺"：服务端回放 observed 走 Playwright 全响应捕获（含表单
+   POST），从 pass run 的写响应引导 api_status 断言（确定性，C3 合规）。
+   落地链（TDD 全程红→绿）：
+   - `POST /skills/{id}/assertions/from-run`：bootstrap_from_run（动态段
+     归一 {id}、查询型模板排除、同模板幂等、只认 pass run）
+   - api_status payload 加可选 `method` 过滤：经典表单 GET 页面加载与
+     POST 提交共享路径（query 忽略），防 GET 200 稀释写期望
+   - trends 加 `unverified_pass`：0 断言技能的 pass 显性化
+     （Dolibarr 32/禅道 8/若依 11/Snipe 14——假 pass 工厂可见）
+   - 顺带根治三个挡路 bug：AJ2 守卫只接 fail 态+只认 URL（Dolibarr
+     登录页在根路径标题 "Login @ 24.0.0" 两头漏）→ login_page_evidence
+     谓词（error 态+标题证据）；适配器登录假成功（url_not_contains
+     默认 "login" 对经典表单失效）→ text_contains 双通道判定
+     （dolibarr.yaml 补 "My Dashboard"）；fill 后统一补 Enter 在经典
+     表单直接提交（readback 卡 30s 超时判失败）→ 元素失连=提前提交
+   - 真机验证：7/10 技能断言 0→1 且回放全 pass（run 1642-1648）；
+     187/190/191 为纯导航技能（无写请求，断言无从引导，由
+     unverified_pass 诚实标记）；188/189 视觉基线过期重录
 
 ## 三、各系统欠缺与行动清单（调整后的测试计划）
 
@@ -32,15 +53,16 @@
 |---|---|---|---|
 | 1 | ~~extension 分类补线~~ | 全部 | ✅ 已修 |
 | 2 | ~~系统派生兜底~~ | Odoo/禅道/Firefly | ✅ 已修 |
-| 3 | **Dolibarr 断言 0→有** | Dolibarr | 10 技能全裸奔、59 pass 无判定=纯假 pass 工厂（空断言 all([])==True 直接 pass）。补录带 API 抓取会话→generate_assertions→回放验证。**同时给空断言 pass 加显式标记或移出分母** |
-| 4 | **起容器**（odoo/dolibarr/snipe/zentao/firefly 全 Exited 255） | 三系统+禅道 | 任何补课的硬前置；落实"重启后全量 docker start"例程 |
+| 3 | ~~Dolibarr 断言 0→有~~ | Dolibarr | ✅ 已修（回放反哺通道，见§二.3） |
+| 4 | ~~起容器~~ | 三系统+禅道 | ✅ 已起（六系统探活 8069/8080/8081/8082/8096/8090 全通） |
+| 5 | ~~禅道矩阵轮~~（P0-5，提前完成） | 禅道 | ✅ 40 基名代表全跑（run 1703-1742）：14 pass/20 fail/6 error，失败全 e3_drift 零 e1/e2——AJ1 分类器实战数据落库。失败归因：状态依赖定位失败 20（技能需前置数据，编排 setup 是产品答案）+视觉漂移 3+断言 2。**矩阵轮本身挖出两个真 bug 已修**：批回放路径漏传 system（登录态不注入+守卫永假）；禅道 query 风格登录 URL（f=login）不被分类词表匹配（误判 e3_drift→已补词表，e1_env 正确） |
 
 ### P1（本周）
 | # | 动作 | 系统 |
 |---|---|---|
-| 5 | Snipe+若依裸奔技能补断言（Snipe 14 假 pass/若依 8 裸奔） | Snipe/若依 |
+| 5 | Snipe+若依裸奔技能补断言（Snipe 14 假 pass/若依 8 裸奔）——回放反哺通道（from-run 端点）已就绪，直接复用 Dolibarr 流程 | Snipe/若依 |
 | 6 | ERPNext 自愈验证积压清理（26 proposed→verified/promoted，让自愈参与回放） | ERPNext |
-| 7 | 禅道重跑矩阵补 AJ1/AJ2 数据（技能最多系统对新防线零数据；至少 34 个基名代表） | 禅道 |
+| 7 | ~~禅道重跑矩阵补 AJ1/AJ2 数据~~ | 禅道 | ✅ 见 P0-5 |
 | 8 | 禅道 candidate 清障（9 个=10-06 LLM 网关配额耗尽污染，重跑命名） | 禅道 |
 
 ### P2（排期）

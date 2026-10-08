@@ -91,6 +91,28 @@ async def create_assertions(skill_id: int, db: Session = Depends(get_db)) -> dic
     return {"assertions": len(rows)}
 
 
+class FromRunRequest(BaseModel):
+    run_id: int
+
+
+@router.post("/skills/{skill_id}/assertions/from-run", dependencies=WRITE_GUARD)
+async def create_assertions_from_run(
+        skill_id: int, body: FromRunRequest, db: Session = Depends(get_db)) -> dict:
+    """P0-3 回放反哺：从 pass run 的 observed 写响应引导 api_status 断言
+    （经典表单系统录制侧抓不到写请求的兜底通道）。"""
+    from app.learning.outcome import bootstrap_from_run
+    skill = db.get(Skill, skill_id)
+    if not skill:
+        raise HTTPException(status_code=404, detail="skill not found")
+    if skill.status == "superseded":
+        raise HTTPException(409, f"该 Skill 版本已被取代（v{skill.superseded_by}），请使用新版本")
+    try:
+        rows = bootstrap_from_run(db, skill_id, body.run_id)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    return {"assertions": len(rows)}
+
+
 @router.post("/assertions/{assertion_id}/verify", dependencies=WRITE_GUARD)
 async def verify_assertion(assertion_id: int, db: Session = Depends(get_db)) -> dict:
     assertion = db.get(OutcomeAssertion, assertion_id)
@@ -161,15 +183,24 @@ async def skill_trends(db: Session = Depends(get_db)) -> list[dict]:
         ReplayRun.created_at >= since,
         ReplayRun.status.in_(("pass", "fail", "error"))).all()
     systems = skill_systems(db, [r.skill_id for r in rows])
+    # P0-3 空断言 pass 显性化：0 断言技能的 pass 是无判定通过（假 pass
+    # 工厂可见性）——按 skill 批量取断言数
+    skill_ids = {r.skill_id for r in rows}
+    asserted = {a for a in db.execute(
+        select(OutcomeAssertion.skill_id).where(
+            OutcomeAssertion.skill_id.in_(skill_ids))).scalars()}
     agg: dict[str, dict] = {}
     for r in rows:
         sysname = systems.get(r.skill_id) or "通用"
         a = agg.setdefault(sysname, {"system": sysname, "runs": [],
                                      "total": 0, "pass": 0, "fail": 0,
-                                     "e1_env": 0, "e2_infra": 0})
+                                     "e1_env": 0, "e2_infra": 0,
+                                     "unverified_pass": 0})
         # 原始分类计数（透明度：环境失败可见但不进分母）
         if r.failure_class:
             a[r.failure_class] = a.get(r.failure_class, 0) + 1
+        if r.status == "pass" and r.skill_id not in asserted:
+            a["unverified_pass"] += 1
         a["runs"].append({"status": r.status,
                           "failure_class": r.failure_class})
     # 分母口径（AJ1）：E1/E2 不计——用 failure_class.pass_rate 统一算

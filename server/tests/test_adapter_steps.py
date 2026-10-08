@@ -198,3 +198,69 @@ async def test_admin_nickname_mismatch_forces_relogin(monkeypatch):
     assert ok is True
     # 身份不符 → 强制退出被触发（死代码复活的行为铁证）
     assert len(logout_calls) == 1
+
+
+CLASSIC_FORM_LOGIN = """
+<html><body>
+  <form onsubmit="return false">
+    <input name="u"><input name="p" type="password">
+    <button id="go" type="submit">Login</button>
+  </form>
+  <script>
+    document.querySelector('#go').addEventListener('click', () => {
+      document.body.innerHTML = '<div>My Dashboard</div>';
+    });
+  </script>
+</body></html>
+"""
+
+CLASSIC_FORM_MANIFEST = """
+id: t2
+target: {base_url: "http://mock.local"}
+credentials: {username: alice, password_env: T_PW}
+login:
+  steps:
+    - goto: /
+    - fill: ["input[name=u]", "${username}"]
+    - fill: ["input[name=p]", "${password}"]
+    - click: "button[type=submit]"
+  success: {text_contains: "My Dashboard"}
+"""
+
+
+async def _classic_page(content: str):
+    """经典表单系统页面：根路径直接渲染（无 302 跳 login——Dolibarr 形态）。"""
+    pw = await async_playwright().start()
+    browser = await pw.chromium.launch()
+    page = await browser.new_page()
+
+    async def serve(route):
+        await route.fulfill(status=200, content_type="text/html; charset=utf-8",
+                            body=content)
+    await page.route("http://mock.local/**", serve)
+    await page.goto("http://mock.local/")
+    return pw, browser, page
+
+
+async def test_login_classic_form_runs_steps():
+    """经典表单系统（Dolibarr 实证）：登录页在根路径、URL 无 login 字样
+    ——URL 探针失效时 text_contains 是唯一登录态证据，登录步必须实际执行
+    （旧逻辑误判"已登录"直接返回 True，登录步从不跑）。"""
+    pw, browser, page = await _classic_page(CLASSIC_FORM_LOGIN)
+    m, _ = load_manifest_text(CLASSIC_FORM_MANIFEST)
+    ok = await login(page, m)
+    visible = await page.get_by_text("My Dashboard").is_visible()
+    await browser.close()
+    await pw.stop()
+    assert ok is True
+    assert visible, "登录步未实际执行（假成功）"
+
+
+async def test_login_classic_form_already_logged_in():
+    """已登录（特征文本可见）→ 幂等直接通过，不重跑登录步。"""
+    pw, browser, page = await _classic_page('<div>My Dashboard</div>')
+    m, _ = load_manifest_text(CLASSIC_FORM_MANIFEST)
+    ok = await login(page, m)
+    await browser.close()
+    await pw.stop()
+    assert ok is True

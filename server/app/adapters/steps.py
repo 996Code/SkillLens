@@ -71,8 +71,25 @@ async def run_steps(page: Page, manifest: Manifest, steps: list[Step]) -> None:
         await run_step(page, manifest, s)
 
 
+async def _logged_in(page: Page, manifest: Manifest) -> bool:
+    """登录态判定（确定性，双通道）：URL 探针（url_not_contains 在 URL
+    中=未登录）+ 特征文本（text_contains 可见=已登录）。
+
+    经典表单系统（Dolibarr 实证）：登录页在根路径、URL 无 login 字样
+    ——URL 探针失效，text_contains 是唯一证据。"""
+    succ = manifest.login.success
+    if succ.url_not_contains and succ.url_not_contains in page.url:
+        return False
+    if succ.text_contains:
+        try:
+            return await page.get_by_text(succ.text_contains).first.is_visible()
+        except Exception:
+            return False
+    return True
+
+
 async def login(page: Page, manifest: Manifest) -> bool:
-    """按清单登录（幂等）：已登录（访问 base_url 不落 login 路径）直接通过；
+    """按清单登录（幂等）：已登录（URL 探针+特征文本双通道判定）直接通过；
     未登录执行 login.steps → post_login 例程 → success 判定（确定性）。
     已登录但**身份不符**（nickname≠期望账号的昵称——矩阵轮间上个技能换参
     登录了新用户，权限不足 404——若依 258 实证）不算通过，先强制退出。"""
@@ -82,8 +99,7 @@ async def login(page: Page, manifest: Manifest) -> bool:
         await page.goto(manifest.target.base_url, wait_until="domcontentloaded",
                         timeout=20000)
         await page.wait_for_timeout(2500)
-        probe = manifest.login.success.url_not_contains
-        if probe and probe not in page.url:
+        if await _logged_in(page, manifest):
             if manifest.login.admin_nickname:
                 nick = await page.evaluate(
                     "(() => (document.querySelector("
@@ -112,15 +128,7 @@ async def login(page: Page, manifest: Manifest) -> bool:
         from app.adapters.routines import run_routine
         await run_routine(page, name)
     await page.wait_for_timeout(1500)
-    succ = manifest.login.success
-    if succ.url_not_contains and succ.url_not_contains in page.url:
-        return False
-    if succ.text_contains:
-        try:
-            return await page.get_by_text(succ.text_contains).first.is_visible()
-        except Exception:
-            return False
-    return True
+    return await _logged_in(page, manifest)
 
 
 def _looks_like_swapped_user(nick: str) -> bool:
@@ -156,8 +164,7 @@ async def _recheck_or_login(page: Page, manifest: Manifest) -> bool:
         await page.goto(manifest.target.base_url, wait_until="domcontentloaded",
                         timeout=20000)
         await page.wait_for_timeout(2000)
-        probe = manifest.login.success.url_not_contains
-        if probe and probe not in page.url:
+        if await _logged_in(page, manifest):
             return True
     except Exception:
         pass
@@ -166,7 +173,4 @@ async def _recheck_or_login(page: Page, manifest: Manifest) -> bool:
         from app.adapters.routines import run_routine
         await run_routine(page, name)
     await page.wait_for_timeout(1500)
-    succ = manifest.login.success
-    if succ.url_not_contains and succ.url_not_contains in page.url:
-        return False
-    return True
+    return await _logged_in(page, manifest)

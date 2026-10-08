@@ -12,8 +12,10 @@
 """
 import re
 
-# 登录态特征：URL 出现 login 路径（适配器 url_not_contains 的通用反查）
-_LOGIN_URL_RE = re.compile(r"/login\b|/login\?|login\.php|/signin", re.IGNORECASE)
+# 登录态特征：URL 出现 login 路径（适配器 url_not_contains 的通用反查）；
+# 禅道实证补强：query 风格登录（?m=user&f=login）非路径风格——词表须覆盖
+_LOGIN_URL_RE = re.compile(
+    r"/login\b|/login\?|login\.php|/signin|[?&][a-z_]+=login\b", re.IGNORECASE)
 # 业务页但非 login 的判定：排除法（守卫只看证据 URL）
 _CHROME_ERROR_RE = re.compile(r"chrome-error://|ERR_CONNECTION|ERR_NAME|net::ERR", re.IGNORECASE)
 _NAV_TIMEOUT_RE = re.compile(r"Timeout \d+ms exceeded.*(goto|navigat)|page\.goto.*Timeout", re.IGNORECASE)
@@ -67,3 +69,21 @@ def pass_rate(runs: list[dict]) -> dict:
     total = len(counted)
     return {"pass": npass, "total": total,
             "rate": round(npass / total, 4) if total else None}
+
+
+# AJ2 守卫触发谓词（Dolibarr 实证补强）：登录页现场两种证据形态——
+# URL 落 login 路径（SPA 系统），或页面标题是登录页（经典表单系统
+# 会话过期后 URL 停在业务路径、标题变 "Login"，错误串里无 login 字样）
+_LOGIN_TITLE_RE = re.compile(
+    r"^\s*(login|log\s*in|sign\s*in|signin|登录|登陆|用户登录)"
+    r"\s*(?:[|·\-—@:：].*)?$",
+    re.IGNORECASE)
+
+
+def login_page_evidence(error_text: str, page_title: str | None) -> bool:
+    """错误串/页面标题是否指向登录页现场（AJ2 守卫与分类共用）。"""
+    if _LOGIN_URL_RE.search(error_text or ""):
+        return True
+    if page_title and _LOGIN_TITLE_RE.match(page_title):
+        return True
+    return False

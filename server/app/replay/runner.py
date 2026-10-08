@@ -31,7 +31,6 @@ STORAGE_STATE = os.environ.get("REPLAY_STORAGE_STATE", "")
 # 步骤现场 URL 落 login 路径 = 登录态丢失（环境故障非链漂移）：
 # 不烧自愈额度、不误判元素漂移；服务端可自愈（适配器登录例程幂等），
 # 自愈后从当前步重试一次。session_recovered 落 plan 供统计。
-_LOGIN_GUARD_RE = None  # 延迟初始化（复用 failure_class 词表）
 
 
 async def _session_guard_recover(system: str) -> bool:
@@ -68,14 +67,6 @@ async def _session_guard_recover(system: str) -> bool:
     except Exception:
         return False
 
-
-def _hit_login_page(error_text: str) -> bool:
-    """步骤错误串里的现场 URL 是否落在 login 路径（@ url 提取）。"""
-    global _LOGIN_GUARD_RE
-    if _LOGIN_GUARD_RE is None:
-        import re as _re
-        _LOGIN_GUARD_RE = _re.compile(r"@(\s*)https?://\S*/login|@(\s*)\S*/login\?", _re.IGNORECASE)
-    return bool(_LOGIN_GUARD_RE.search(error_text or ""))
 
 
 def write_response_count(observed: list[dict]) -> int:
@@ -395,7 +386,7 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
             continue
         if early_submitted:
             executed.append({**step, "ok": True,
-                             "skipped": "表单已由日期控件 Enter 提前提交，步骤跳过（结果由断言判定）"})
+                             "skipped": "表单已提前提交（Enter 直提），步骤跳过（结果由断言判定）"})
             continue
         try:
             if step["kind"] == "goto":
@@ -798,7 +789,15 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                                 break
                         for _ in range(4):
                             await page.wait_for_timeout(250)
-                            if await locator.input_value() == step["value"]:
+                            try:
+                                if await locator.input_value(timeout=2000) == step["value"]:
+                                    filled = True
+                                    break
+                            except Exception:
+                                # 经典表单 Enter 直提（Dolibarr 实证）：元素随
+                                # 提交/导航消失（2s 内无法再解析）——值已被
+                                # 消费，剩余步骤跳过，结果由断言判定
+                                early_submitted = True
                                 filled = True
                                 break
                         if filled:
@@ -1138,9 +1137,18 @@ async def _execute_skill(db: Session, browser, skill_id: int,
     # AJ2 登录守卫（E1 首实例）：attempt 失败且现场落 login 页 = 登录态丢失
     # （环境故障非链漂移）——跑适配器登录例程（幂等）自愈后整个 attempt
     # 重跑一次。不烧自愈额度/不误入 E3。守卫限一次（防登录例程本身坏的循环）。
-    if attempt.get("status") == "fail" and system:
-        _errtxt = " ".join(str(s.get("error") or "") for s in attempt.get("executed") or [])
-        if _hit_login_page(_errtxt) or "/login" in str(attempt.get("error_text") or ""):
+    # Dolibarr 实证补强：error 态也接（定位失败异常同样可能是登录现场）；
+    # 证据两形态——URL 落 login 路径或页面标题是登录页（经典表单系统
+    # 会话过期后 URL 停在业务路径）。
+    if attempt.get("status") in ("fail", "error") and system:
+        # 步骤错误在 attempt["result"]["executed"]（_attempt 返回结构）——
+        # 禅道实证：query 风格登录 URL 只出现在步骤错误串里
+        _errtxt = " ".join(
+            str(s.get("error") or "")
+            for s in ((attempt.get("result") or {}).get("executed") or []))
+        from app.change.failure_class import login_page_evidence
+        if login_page_evidence(_errtxt, attempt.get("page_title")) \
+                or "/login" in str(attempt.get("error_text") or ""):
             try:
                 ok = await _session_guard_recover(system)
             except Exception:
@@ -1230,6 +1238,8 @@ async def _execute_skill(db: Session, browser, skill_id: int,
                                              "files": shot_files}}
     if "first_attempt" in attempt:
         plan = {**plan, "first_attempt": attempt["first_attempt"]}
+    if attempt.get("session_recovered"):
+        plan = {**plan, "session_recovered": True}
     if field_healed:
         plan = {**plan, "field_healed": True,
                 "healed_fields": healed_fields}
@@ -1394,11 +1404,15 @@ async def run_replay_batch(db: Session, skill_ids: list[int],
         async with _launch() as p:
             browser = await _open_browser(p)
             try:
+                # 链编排 v2：批路径同样按技能归属系统派生（漏传则登录态
+                # 不注入+AJ2 守卫条件永假——禅道矩阵轮 40/40 error 实证）
+                from app.system import skill_systems
+                systems = skill_systems(db, pending)
                 for sid in pending:
                     try:
                         runs.append(await _execute_skill(
                             db, browser, sid, (overrides_map or {}).get(sid) or {},
-                            confirm_side_effect))
+                            confirm_side_effect, system=systems.get(sid)))
                     except Exception as exc:  # 计划编译等前置异常：落 error run 继续
                         runs.append(_error_run(db, sid, exc))
                 return runs

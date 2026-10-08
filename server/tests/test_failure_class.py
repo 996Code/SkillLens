@@ -176,3 +176,65 @@ class TestExtensionClassification:
             from app.models import ReplayRun as RR
             db.query(RR).filter(RR.id == rid).delete()
             db.commit(); db.close()
+
+
+class TestLoginPageEvidence:
+    """AJ2 守卫触发谓词（Dolibarr 实证补强）：登录页现场不止 URL 一种
+    形态——经典表单系统（Dolibarr）会话过期后页面标题为 "Login" 而
+    URL 停留在业务路径，定位失败错误串里无 login 字样。"""
+
+    def test_url_evidence(self):
+        from app.change.failure_class import login_page_evidence
+        assert login_page_evidence(
+            "semantic locate failed @ http://h/user/login btns=[]", None)
+
+    def test_title_evidence(self):
+        from app.change.failure_class import login_page_evidence
+        assert login_page_evidence(
+            "semantic locate failed: 'name' @ http://h/societe/card.php?action=create",
+            "Login")
+
+    def test_title_chinese(self):
+        from app.change.failure_class import login_page_evidence
+        assert login_page_evidence("", "登录")
+
+    def test_no_evidence(self):
+        from app.change.failure_class import login_page_evidence
+        assert not login_page_evidence(
+            "semantic locate failed: 'name' @ http://h/societe/card.php", "创建合作方")
+
+    def test_empty_inputs(self):
+        from app.change.failure_class import login_page_evidence
+        assert not login_page_evidence("", None)
+
+    def test_title_with_suffix(self):
+        """Dolibarr 实证：登录页标题 "Login @ 24.0.0"（版本号后缀）。"""
+        from app.change.failure_class import login_page_evidence
+        assert login_page_evidence("", "Login @ 24.0.0")
+        assert login_page_evidence("", "登录 - 禅道")
+        # 登录词必须是独立词（后接其他字不算）
+        assert not login_page_evidence("", "登录日志")
+
+
+class TestQueryStyleLoginUrl:
+    """禅道实证：登录 URL 是 query 风格（?m=user&f=login）非路径风格
+    （/login）——URL 证据词表须覆盖，否则登录态丢失误判 e3_drift。"""
+
+    def test_query_login_url_evidence(self):
+        from app.change.failure_class import login_page_evidence
+        assert login_page_evidence(
+            "semantic locate failed: '项目集' @ .php?m=user&f=login&referer=L2luZGV4 btns=['登录']",
+            None)
+
+    def test_query_login_url_classified_e1(self):
+        from app.change.failure_class import classify_run
+        run = {"status": "error", "executed": [
+            {"ok": False, "kind": "click",
+             "error": "semantic locate failed: '项目集' @ .php?m=user&f=login&referer=L2luZGV4 btns=['登录']"}],
+            "assertions": []}
+        assert classify_run(run) == "e1_env"
+
+    def test_business_url_not_matched(self):
+        from app.change.failure_class import login_page_evidence
+        assert not login_page_evidence(
+            "semantic locate failed: '项目集' @ http://h/index.php?m=project&f=browse", None)
