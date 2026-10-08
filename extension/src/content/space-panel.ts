@@ -43,6 +43,9 @@ function mount(): void {
         font: inherit; font-size: 11px; padding: 2px 8px; cursor: pointer;
       }
       .bar button:hover { background: rgba(255,255,255,.35); }
+      .rec-dot { width:8px; height:8px; border-radius:50%; background:#d1d5db; }
+      .rec-dot.on { background:#f87171; animation: pulse 1.2s ease-in-out infinite; }
+      @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,.5)} 50%{box-shadow:0 0 0 5px rgba(248,113,113,0)} }
       .body { padding: 10px 12px; overflow-y: auto; min-height: 0; }
       .collapsed .body, .collapsed .foot { display: none; }
       .lbl { font-size: 11px; color: #6b7280; margin-bottom: 6px; }
@@ -60,6 +63,11 @@ function mount(): void {
       .sk .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .sk .w { font-size: 10px; color: #dc2626; }
       .sk .o { color: #2563eb; font-weight: 700; font-size: 11px; width: 14px; }
+      .sk .one {
+        font-size: 11px; border: none; border-radius: 5px; padding: 2px 8px;
+        cursor: pointer; background: #2563eb; color: #fff; display: none;
+      }
+      .sk:hover .one { display: inline-block; }
       .picked { background: #f7f8fa; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px; margin-top: 8px; font-size: 12px; }
       .picked .st { color: #6b7280; font-size: 11px; margin-bottom: 6px; }
       .picked .row { display: flex; gap: 6px; }
@@ -87,6 +95,7 @@ function mount(): void {
     <div class="panel" id="pn">
       <div class="bar" id="bar">
         <span class="logo">SL 空间</span>
+        <span class="rec-dot" id="recdot" title="未在录制"></span>
         <span class="sys" id="sys">识别系统中…</span>
         <button id="fold" title="收起/展开">—</button>
         <button id="close" title="关闭">×</button>
@@ -216,6 +225,16 @@ function mount(): void {
         pksEl.textContent = picked.map((p, k) => `${k + 1}.${p.name}`).join(" → ");
         render();
       });
+      // 单技能执行（popup 技能列表职能并入——行 hover 出执行钮，与组链并存）
+      const one = document.createElement("button");
+      one.className = "one";
+      one.textContent = "执行";
+      one.title = "单独执行该技能";
+      one.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        window.open(chrome.runtime.getURL(`executor.html?skill=${s.id}`), "_blank");
+      });
+      row.append(one);
       listEl.append(row);
     }
   }
@@ -320,16 +339,26 @@ function mount(): void {
 
   qEl.addEventListener("input", () => render());
 
-  // AI1 学习通知：面板常驻页面，打开即带出最近一次自动学习结果
-  void chrome.storage.local.get("sl_last_learn").then(({ sl_last_learn: r }) => {
-    if (!r) return;
-    if (r.status === "done") note(`学习完成：${r.skillName ?? "新技能"}（技能 #${r.skillId}）`, "ok");
-    else if (r.status === "error") note(`上次自动学习失败：${r.error ?? ""}`, "err");
+  // AI1 学习通知 + 待学消费：面板常驻页面（比 popup 生命周期可靠）——
+  // 打开面板时消费待学会话，触发 learn.html 学习页
+  void chrome.storage.local.get(["sl_last_learn", "sl_pending_learn"]).then((st) => {
+    const r = (st as any).sl_last_learn;
+    const p = (st as any).sl_pending_learn;
+    if (r?.status === "done") note(`学习完成：${r.skillName ?? "新技能"}（技能 #${r.skillId}）`, "ok");
+    else if (r?.status === "error") note(`上次自动学习失败：${r.error ?? ""}`, "err");
+    if (p?.sid && Date.now() - p.at < 30 * 60 * 1000 && !r) {
+      note("有待学习的录制——正在打开学习页…", "ok");
+      chrome.storage.local.remove("sl_pending_learn");
+      window.open(chrome.runtime.getURL(`learn.html?sid=${encodeURIComponent(p.sid)}`), "_blank");
+    }
   }).catch(() => {});
-  // 停录后的待学会话也提示（learn.html 由 popup 触发打开——面板提示去向）
-  void chrome.storage.local.get("sl_pending_learn").then(({ sl_pending_learn: p }) => {
-    if (p?.sid && Date.now() - p.at < 30 * 60 * 1000) {
-      note("有待学习的录制——打开插件弹窗完成学习", "err");
+
+  // 录制状态徽标（只读展示——录制控制在 popup；面板提示防"录着忘了"）
+  void chrome.storage.local.get("sl_recording").then(({ sl_recording: rec }) => {
+    const dot = root.getElementById("recdot")!;
+    if (rec) {
+      dot.classList.add("on");
+      dot.title = "录制中（控制见插件弹窗）";
     }
   }).catch(() => {});
 

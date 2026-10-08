@@ -4,24 +4,15 @@
     <meta charset="utf-8" />
     <style>
       :root {
-        --bg: #f7f8fa;
-        --card: #ffffff;
-        --text: #1a2233;
-        --muted: #6b7280;
-        --line: #e5e7eb;
-        --accent: #2563eb;
-        --accent-hover: #1d4ed8;
-        --danger: #dc2626;
-        --ok: #16a34a;
-        --radius: 12px;
+        --bg: #f7f8fa; --card: #fff; --text: #1a2233; --muted: #6b7280;
+        --line: #e5e7eb; --accent: #2563eb; --accent-hover: #1d4ed8;
+        --danger: #dc2626; --ok: #16a34a; --radius: 12px;
       }
       * { box-sizing: border-box; margin: 0; }
       body {
-        width: 320px;
+        width: 300px;
         font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-        color: var(--text);
-        background: var(--bg);
-        padding: 12px;
+        color: var(--text); background: var(--bg); padding: 12px;
       }
       .head {
         display: flex; align-items: center; gap: 8px;
@@ -35,7 +26,6 @@
         color: #fff; font-weight: 700; font-size: 11px;
       }
       .head .title { font-weight: 600; font-size: 13px; }
-      .head .sub { font-size: 11px; color: var(--muted); }
       .dot {
         margin-left: auto; width: 8px; height: 8px; border-radius: 50%;
         background: #d1d5db; transition: background .2s;
@@ -53,49 +43,37 @@
       input#note {
         width: 100%; padding: 8px 10px; font: inherit;
         border: 1px solid var(--line); border-radius: 8px; outline: none;
-        transition: border-color .15s;
       }
       input#note:focus { border-color: var(--accent); }
       .row { display: flex; gap: 8px; margin-top: 10px; }
       button {
         flex: 1; padding: 8px 0; font: inherit; font-weight: 500;
         border: none; border-radius: 8px; cursor: pointer;
-        transition: background .15s, opacity .15s;
       }
       button#start { background: var(--accent); color: #fff; }
       button#start:hover { background: var(--accent-hover); }
-      button#stop {
-        background: #eef2f7; color: var(--text);
-      }
+      button#stop { background: #eef2f7; color: var(--text); }
       button#stop:hover { background: #e2e8f0; }
-      button:disabled { opacity: .5; cursor: not-allowed; }
-      .status {
-        display: flex; align-items: center; gap: 6px;
-        font-size: 12px; color: var(--muted); padding: 2px 4px;
-      }
+      .status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 2px 4px; }
       .status .sdot { width: 6px; height: 6px; border-radius: 50%; background: #d1d5db; }
       .status.rec .sdot { background: var(--danger); }
-      .status.ok .sdot { background: var(--ok); }
-      #status { word-break: break-all; }
-      .conn {
-        display: flex; align-items: center; gap: 6px;
-        font-size: 11px; color: var(--muted); padding: 0 4px 2px;
-      }
+      .conn { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); padding: 0 4px 2px; }
       .conn .cdot { width: 6px; height: 6px; border-radius: 50%; background: #d1d5db; }
       .conn.ok .cdot { background: var(--ok); }
       .conn.err .cdot { background: var(--danger); }
-      .meta {
-        font-size: 11px; color: var(--muted); margin-top: 4px; padding: 0 4px;
+      .meta { font-size: 11px; color: var(--muted); margin-top: 4px; padding: 0 4px; word-break: break-all; }
+      .guide {
+        font-size: 11px; color: var(--muted); padding: 8px 10px;
+        background: var(--card); border: 1px dashed var(--line);
+        border-radius: 8px; line-height: 1.6;
       }
+      .guide b { color: var(--accent); }
     </style>
   </head>
   <body>
     <div class="head">
       <div class="logo">SL</div>
-      <div>
-        <div class="title">SkillLens Sensor</div>
-        <div class="sub">操作观察 · 技能学习</div>
-      </div>
+      <div class="title">SkillLens 录制</div>
       <div class="dot" id="status-dot"></div>
     </div>
 
@@ -116,23 +94,9 @@
       <span class="cdot"></span><span id="conn-text">连接本地 Agent…</span>
     </div>
 
-    <div class="section" id="learn-card" style="display:none; margin-top: 10px; border-color:#bfdbfe">
-      <div style="font-weight:600; font-size:12px" id="learn-title"></div>
-      <div style="font-size:11px; color:var(--muted); margin-top:2px" id="learn-meta"></div>
-      <div class="row" style="margin-top:6px">
-        <button id="learn-run" style="background:var(--accent); color:#fff; font-size:12px">去执行</button>
-        <button id="learn-dismiss" style="background:#eef2f7; color:var(--text); font-size:12px">知道了</button>
-      </div>
-    </div>
-
-    <div class="section" id="executor" style="margin-top: 10px">
-      <div style="display:flex; align-items:center; gap:6px; margin-bottom: 6px">
-        <div style="font-weight: 600; flex:1">自动执行</div>
-        <button id="open-space" style="flex:none; padding:3px 10px; font-size:12px; background:var(--accent); color:#fff">空间</button>
-      </div>
-      <input id="exec-search" placeholder="搜索系统/技能名…" style="width: 100%; padding: 6px 10px; font: inherit; font-size: 12px; border: 1px solid var(--line); border-radius: 8px; outline: none; margin-bottom: 6px" />
-      <div id="exec-list" style="max-height: 180px; overflow-y: auto"></div>
-      <div id="exec-progress" style="margin-top: 8px; padding: 6px 8px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; display: none; font-size: 12px; color: var(--muted)"></div>
+    <div class="guide" style="margin-top: 10px">
+      测试执行请用页面上的 <b>SL 空间面板</b>：打开目标系统页面，
+      点右下角 <b>SL 徽标</b> → 选回放/组链 → 执行。停止录制后技能会自动学习。
     </div>
 
     <script type="module" src="src/popup.ts"></script>
