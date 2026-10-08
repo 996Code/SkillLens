@@ -4,6 +4,7 @@ import type { RawEvent } from "../shared/types";
 import { assignSession } from "../shared/assign-session";
 import { getRecordingState, startRecording, stopRecording } from "./session";
 import { listExecutorSkills } from "./executor";
+import { autoLearn } from "./learn";
 
 // S31 修复：录制状态已从 chrome.storage.session 改为 chrome.storage.local
 // （MV3 SW 空闲被杀后 session 存储丢失，local 持久化跨 SW 重启）。
@@ -135,6 +136,16 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg?.type === EVENT_MSG) {
     void (async () => {
       await putEvent(msg.event as RawEvent);
+      // AI1 录制反馈：累计事件计数（popup 实时展示"已捕获 N 项"——
+      // 按 kind 分桶，录得对不对当场可见）
+      try {
+        const k = String((msg.event as RawEvent)?.kind ?? "?");
+        const cur = (await chrome.storage.session.get("sl_counts")) as
+          Record<string, number> | undefined;
+        const counts = cur?.sl_counts ?? {};
+        counts[k] = (counts[k] ?? 0) + 1;
+        await chrome.storage.session.set({ sl_counts: counts });
+      } catch { /* 计数失败不影响上报 */ }
       await flush();
     })();
   }
@@ -149,14 +160,16 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type === "START_RECORDING") {
     // source 透传：popup 不带 → 缺省 real_traffic；auto_record 显式带 demo
+    chrome.storage.session.remove("sl_counts").catch(() => {});
     startRecording(String(msg.note ?? ""), String(msg.source ?? "real_traffic"))
       .then(sendResponse)
       .catch((e) => sendResponse({ error: String(e) }));
     return true;
   }
   if (msg?.type === "STOP_RECORDING") {
-    // await 停止流程（内部先做最终上报再清 storage），确保 sendResponse
-    // 返回时缓冲事件已尝试上报完毕。
+    // 真实根因仍查（storage.local 跨 SW 实例偶发丢失，AI1 验收实锤），但
+    // 学习触发改挂进 stopRecording 内部（session.ts 是状态权威——它清理
+    // 前一定持有 sid），消息层分支只负责响应。
     stopRecording()
       .then(() => sendResponse({ ok: true }))
       .catch((e) => sendResponse({ error: String(e) }));

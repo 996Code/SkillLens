@@ -248,11 +248,24 @@ document.addEventListener(
   { capture: true },
 );
 
+// 悬浮面板（油猴式空间）UI 隔离：面板是注入的 DOM，用户点击面板会被
+// 录制成业务操作污染骨架——宿主元素带 data-skilllens-ui 标记，事件目标
+// 在面板内一律不采集（shadow root 的 composedPath 也覆盖）。
+function inSkillLensUI(e: Event): boolean {
+  const path = (e.composedPath?.() || []) as EventTarget[];
+  for (const t of path) {
+    const el = t as Element | Document | Window;
+    if (el instanceof Element && el.hasAttribute?.("data-skilllens-ui")) return true;
+  }
+  return false;
+}
+
 document.addEventListener(
   "click",
   (e) => {
     const target = e.target as Element;
     if (!target) return;
+    if (inSkillLensUI(e)) return;
     flushPendingInputs();
     emitSnapshotsAroundAnchor();
     void emit("action", { type: "click", target: describeElement(target), url: pageUrl() });
@@ -263,6 +276,7 @@ document.addEventListener(
 document.addEventListener(
   "submit",
   (e) => {
+    if (inSkillLensUI(e)) return;
     flushPendingInputs();
     emitSnapshotsAroundAnchor();
     // S35：描述提交按钮（e.submitter）而非 form——form 的 textContent

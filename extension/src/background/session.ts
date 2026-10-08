@@ -6,6 +6,8 @@ export interface RecordingState {
   recording: boolean;
   sessionId: string | null;
   note: string;
+  /** AI1 录制反馈：本录制期事件计数（kind → 次数） */
+  counts?: Record<string, number>;
 }
 
 // MV3 SW 空闲 ~30s 被 Chrome 杀死，chrome.storage.session 随 SW 重启丢失。
@@ -56,6 +58,7 @@ export async function startRecording(
     sl_recording: true,
     sl_session: session.session_id,
     sl_note: note,
+    sl_start_trace: { at: Date.now(), sid: session.session_id },
   });
   return { id: session.session_id };
 }
@@ -66,14 +69,30 @@ export async function stopRecording(): Promise<void> {
   // 因此在清除标记之前，用当前 sid 做一次最终上报兜底。
   const st = await getRecordingState();
   await finalFlushWithSession(st.sessionId);
-  await chrome.storage.local.remove(["sl_recording", "sl_session", "sl_note"]);
+  // AI1 录制闭环：待学会话落 storage（不在 SW 内直接触发——CDP 托管浏览器
+  // 的 SW 在 stop 消息处理路径上 fire-and-forget 任务被静默吞，验收多轮
+  // 实锤：autoLearn 首行都不执行；改由 popup 打开时消费——页面上下文的
+  // fetch 生命周期稳定，且用户停录后必然回看 popup，触发点自然）。
+  if (st.sessionId) {
+    await chrome.storage.local.set({ sl_pending_learn: { sid: st.sessionId, at: Date.now() } });
+  }
+  await chrome.storage.local.remove(["sl_recording", "sl_session", "sl_note",
+                                      "sl_start_trace", "sl_stop_trace"]);
 }
 
 export async function getRecordingState(): Promise<RecordingState> {
   const st = await chrome.storage.local.get(["sl_recording", "sl_session", "sl_note"]);
+  // AI1 录制反馈：本录制期事件计数（storage.session——SW 生命周期即清，
+  // 语义=“本次录制”而非历史累计）
+  let counts: Record<string, number> = {};
+  try {
+    const c = await chrome.storage.session.get("sl_counts");
+    counts = (c?.sl_counts as Record<string, number>) ?? {};
+  } catch { /* 无 session storage 权限场景 */ }
   return {
     recording: st.sl_recording === true,
     sessionId: (st.sl_session as string) ?? null,
     note: (st.sl_note as string) ?? "",
+    counts,
   };
 }

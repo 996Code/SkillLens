@@ -351,6 +351,23 @@ AG1 协议 server 侧 ✅（端点组+迁移+4 用例；契约文档 docs/arch/e
 
 **v2.4 执行序**：AH1 → AH2 → AH3 → AH4 → AH5（真机矩阵含环境预检：端口/登录态探活）。
 
+### 块 AI：测试工程师日常化（v2.5 新增，2026-10-08 用户视角评审驱动）
+
+背景：以测试工程师视角实地评审（管理平台 6/10、插件 5/10、链路 4/10）——底座优势
+（自愈/证据链/C1/零代码接入）真实，但日常流在三个流失点断：录后断片、链不能传值、
+无 CI 出口。本块把"能用"补成"好用"，按流失点排序：
+
+| 片 | 内容 | 验收 |
+|---|---|---|
+| AI1 录制闭环 | 停录 → 插件自动触发 process+align+induce（SW 调既有 API）→ 技能直接进空间；popup 录制中实时计数（步/网络）+ 学习完成通知 | 真机：录一条新链，停录 60s 内技能出现在空间可执行，全程不打开工作台 |
+| AI2 跨步传值+防呆 | `${stepN.变量}`：执行期从上一步写响应证据提取真值（如 addAll 建的表名）注入下一步 override；空间组链 overrides 编辑 UI（候选 key 自动带出=fill 步 name/原值，防 lesson #49 静默失效） | 真机：269 建表 → 271 用 `${step1.*表名}` 选中该表执行 pass；错 key 在 UI 里即时红标 |
+| AI3 CI 出口 | `POST /chains/{id}/run?wait=1` 同步执行（响应含每步 status+run_id；非零语义=整体 fail）；失败摘要 webhook（已有通道复用） | curl 触发链，退出码/JSON 可判 fail；CI 文档示例 |
+| AI4 库治理 | 技能批量归档/重命名（superseded 语义复用，不物理删）；按系统通过率趋势（dashboard 卡）；Candidate/无描述清障视图 | 工作台可一次清 17 个 Candidate；趋势卡可见 |
+| AI5 数据卫生 | 链级 teardown 声明（steps 可带 cleanup 步：适配器 probes 同款 docker/API 通道）；unique 规则自动推荐（写链时检测唯一字段） | 链跑完测试数据被清（JeecG sl_form_* 验证） |
+
+**执行序**：AI1 → AI2 → AI3 → AI4 → AI5（AI1/AI2 解日常流断点，AI3 进 CI，AI4/AI5 治理）。
+
+
 ## 6. 执行与变更流程
 
 - **Sprint 执行**：派生计划 → docs/superpowers/plans/ → SDD 子代理执行（TDD 先红后绿）→ 全量测试绿 + 实测验收 → 本地合 main + 删分支。
@@ -381,3 +398,4 @@ AG1 协议 server 侧 ✅（端点组+迁移+4 用例；契约文档 docs/arch/e
 - 2026-10-07 v2.2（全库代码评审+两轮修复）：四域深审（server/app+scripts/extension/web，docs/reviews/2026-10-07-full-codebase-audit.md）——一轮红线 6 处修复（网关 IP env 化/路径穿越白名单/attribution 脱敏/snapshot 三重脱敏/CDP 网络证据脱敏/插件配对 401）；二轮中危 11/13 清零+卫生 28 项（events 跨域守卫+批量幂等/adapters 写盘限 reviewer/admin/stale-run 心跳判据/执行器全局重置+listener 清理/EXECUTOR_RUN 改执行页/web 竞态守卫+blob revoke+fmtTime/分组共享抽取）。缓修 2 项（execute() 重构、token 一次性换票——需 52 链真机回归支撑，独立排期）。测试基线 server 508 / web 54 / extension 83。
 - 2026-10-08 v2.3（三轮全库评审+修复+文档补全）：七域并行深审（安全鉴权/回放引擎/数据管道与学习/插件/工作台/脚本部署/适配器；报告 docs/reviews/2026-10-08-full-codebase-audit-round3.md）——本轮定位"声称的语义是否真的成立"：🔴 9 项全修（viewer 角色形同虚设→WRITE_GUARD 31 变更端点+C1 确认冒充→取登录态 / Skill.system 有模型无迁移→删列+schema 双向 drift 守卫 / induce 空骨架 NameError / 写水位被 GET 噪声击穿 / 脱敏词表四处漂移→16 词+跨文件一致性测试 / 注入模板转义丢层 / AdaptersView select 失败错写系统 / auto_record IP 兜底回归）；🟡 43 项修 34 缓 9（掩码回填防"保存即毁凭据"、net-hook 失败调用留痕 C3、export_shared 判定同源逐字内嵌、快照穿 iframe、classify 畸形防御+按身份消费、2 支脚本 fail-fast、端口 127.0.0.1 绑定+非 root+uv pin 等）；🟢 34 项清 22。新增四类防漂移装置（一致性测试/非空守卫/迁移 drift 守卫/同源内嵌）。文档 +8 篇 arch（replay-engine/ingestion-pipeline/adapters-subsystem/auth-and-role-matrix/redaction-defense-in-depth/env-contract/change-intelligence/schema-migration-discipline）+ lessons #38-#46。缓修 34 项逐条附理由（插件三处"路径激活型"须与真机矩阵轮同批；C2 学习分轨待产品决策；conftest test.db 并行互撞待 CI 分片）。测试基线 **server 546 / web 78 / extension 99**。
 - 2026-10-08 v2.4（用户方向裁定：空间与链编排）：**新增块 AH**——交互全在插件弹窗（工作台不参与执行流）、链=纯数据+通用规则（降耦合）。AH1 服务端 chain 数据层（表+CRUD+WRITE_GUARD）→ AH2 规则解释器（${unique:}）→ AH3 executor.html 链模式（顺序执行+整链 C1+步进报告）→ AH4 空间小窗（P2.5 match 识别当前系统→过滤→多选组链）→ AH5 真机验收（JeecG 269+118 链）。P2：跨步值绑定/执行历史/superseded 跟版。触发背景：JeecG 矩阵 3 轮验收（06a339e）+ popup 回放列表双根因修复后用户提出组合执行需求。
+- 2026-10-08 v2.5（测试工程师视角评审驱动）：**新增块 AI「测试工程师日常化」**——评审结论：底座优势真实但日常流三断点（录后断片/链不能传值/无 CI 出口）。AI1 录制闭环（停录自动学习，60s 进空间）→ AI2 跨步传值+override 防呆 UI → AI3 CI 出口（同步 run+退出码语义）→ AI4 库治理（批量清障+趋势）→ AI5 数据卫生（teardown+unique 推荐）。触发：用户问「以测试工程师角度好不好用」，四维评分 6/5/4/— 的诚实评审。

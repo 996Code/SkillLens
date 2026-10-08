@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        width: 320px; padding: 16px; margin: 0;
+        font: 13px/1.6 -apple-system, "Segoe UI", system-ui, sans-serif;
+        color: #1a2233; background: #f7f8fa;
+      }
+      .t { font-weight: 600; margin-bottom: 6px; }
+      .m { color: #6b7280; font-size: 12px; }
+      .ok { color: #16a34a; }
+      .err { color: #dc2626; }
+      #log { margin-top: 8px; font-size: 11px; color: #6b7280; max-height: 120px; overflow-y: auto; }
+    </style>
+  </head>
+  <body>
+    <div class="t" id="title">正在学习刚才的录制…</div>
+    <div class="m" id="meta">学习完成后本窗口自动关闭，技能会出现在弹窗与空间里</div>
+    <div id="log"></div>
+    <script type="module" src="src/learn-page.ts"></script>
+  </body>
+</html>

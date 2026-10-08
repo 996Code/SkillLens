@@ -17,7 +17,13 @@ export default defineManifest({
   options_ui: { page: "executor.html", open_in_tab: true },
   // S42：all_frames——禅道 22 综合界面等 iframe 架构应用把业务内容渲染在
   // about:blank iframe 里，顶层注入采集不到任何事件
-  content_scripts: [{ matches: ["<all_urls>"], js: ["src/content/capture.ts"], all_frames: true }],
+  content_scripts: [
+    { matches: ["<all_urls>"], js: ["src/content/capture.ts"], all_frames: true },
+    // AH4b 悬浮面板：常驻注入但懒挂载（零 UI，直到 skilllens:show-space 事件）
+    // ——CRXJS 只编译 manifest 声明的 CS 文件，动态 executeScript files
+    // 引用 TS 源路径不编译（实锤：dist 无产物、注入静默失败）
+    { matches: ["<all_urls>"], js: ["src/content/space-panel.ts"], run_at: "document_idle" },
+  ],
   background: { service_worker: "src/background/uploader.ts", type: "module" },
   // 注：CRXJS 对 web_accessible_resources 条目按原样复制（不做 TS→JS 转换），
   // 故该入口必须是纯 JS 文件（src/injected/net-hook.js）。
