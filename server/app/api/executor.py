@@ -415,6 +415,9 @@ async def executor_step(run_id: int, body: ExecutorStepReport,
             and cur_ins is not None and cur_ins.get("label")):
         run.plan = {**plan, "executor_state": state}
         run.status = "fail"
+        from app.change.failure_class import classify_run
+        run.failure_class = classify_run({
+            "status": "fail", "executed": state.get("received") or []})
         db.commit()
         db.refresh(run)
         return {"instruction": {"seq": None, "op": "detach"},
@@ -427,6 +430,11 @@ async def executor_step(run_id: int, body: ExecutorStepReport,
         run.plan = {**plan, "executor_state": state}
         run.status = "fail"
         run.attribution = sanitize_error(str(body.evidence.get("error", "")))[:500]
+        from app.change.failure_class import classify_run
+        run.failure_class = classify_run({
+            "status": "fail",
+            "executed": [{"kind": "goto", "ok": False,
+                          "error": str(body.evidence.get("error", ""))}]})
         db.commit()
         db.refresh(run)
         return {"instruction": {"seq": None, "op": "detach"},
@@ -482,6 +490,14 @@ async def executor_finish(run_id: int, body: ExecutorFinishRequest,
                 "executor_summary": body.summary}
     if body.status in ("fail", "aborted", "lost"):
         run.attribution = sanitize_error(str(body.summary.get("error", "")))[:500]
+    # AJ1 补线：extension 主通道分类（占 fail/error 的 54%——此前只有
+    # server 路径写 failure_class，主通道零产出，抽查实锤）
+    if run.status in ("fail", "error"):
+        from app.change.failure_class import classify_run
+        run.failure_class = classify_run({
+            "status": run.status,
+            "executed": run.executed or [],
+            "assertions": run.assertion_results or []})
     db.commit()
     db.refresh(run)
     return {"id": run.id, "status": run.status, "executor": run.executor,

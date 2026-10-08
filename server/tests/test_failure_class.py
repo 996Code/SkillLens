@@ -116,3 +116,63 @@ class TestPassRateDenominator:
         ]
         rate = pass_rate(runs)
         assert rate == {"pass": 1, "total": 2, "rate": 0.5}
+
+
+class TestExtensionClassification:
+    async def test_finish_fail_classified(self, client: AsyncClient):
+        """AJ1 补线：extension finish fail → failure_class 非空（主通道
+        占 fail/error 54%，此前零产出——抽查实锤）。"""
+        db = SessionLocal()
+        try:
+            from app.models import ReplayRun
+            run = ReplayRun(skill_id=1, mode="execute", status="running",
+                            plan={"steps": [], "url": "http://t/",
+                                  "executor_instructions": [
+                                      {"seq": 1, "op": "detach"}],
+                                  "executor_state": {"cursor": 0, "received": [],
+                                                     "interventions": 0,
+                                                     "overrides": {}}},
+                            executor="extension")
+            db.add(run); db.commit()
+            rid = run.id
+            # finish 带 fail + 定位失败证据（URL 在业务页=e3）
+            resp = await client.post(f"/api/v1/executor/runs/{rid}/finish",
+                json={"status": "fail", "summary": {
+                    "executed": [{"kind": "click", "ok": False,
+                                  "error": "semantic locate failed: '保存' @ http://127.0.0.1:8095/x"}],
+                    "observed": []}})
+            assert resp.status_code == 200
+            db.expire_all()
+            r = db.get(ReplayRun, rid)
+            assert r.status == "fail"
+            assert r.failure_class == "e3_drift"  # 主通道分类生效
+        finally:
+            from app.models import ReplayRun as RR
+            db.query(RR).filter(RR.id == rid).delete()
+            db.commit(); db.close()
+
+    async def test_finish_login_fail_e1(self, client: AsyncClient):
+        """登录态丢失（URL 落 login）→ e1_env（AJ2 守卫的分类基础）。"""
+        db = SessionLocal()
+        try:
+            from app.models import ReplayRun
+            run = ReplayRun(skill_id=1, mode="execute", status="running",
+                            plan={"steps": [], "url": "http://t/",
+                                  "executor_instructions": [{"seq": 1, "op": "detach"}],
+                                  "executor_state": {"cursor": 0, "received": [],
+                                                     "interventions": 0, "overrides": {}}},
+                            executor="extension")
+            db.add(run); db.commit()
+            rid = run.id
+            resp = await client.post(f"/api/v1/executor/runs/{rid}/finish",
+                json={"status": "fail", "summary": {
+                    "executed": [{"kind": "input", "ok": False,
+                                  "error": "locate failed @ http://127.0.0.1:8093/login?redirect=/x"}],
+                    "observed": []}})
+            assert resp.status_code == 200
+            db.expire_all()
+            assert db.get(ReplayRun, rid).failure_class == "e1_env"
+        finally:
+            from app.models import ReplayRun as RR
+            db.query(RR).filter(RR.id == rid).delete()
+            db.commit(); db.close()

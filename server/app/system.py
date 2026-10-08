@@ -16,6 +16,7 @@ from app.models import Alignment, RawEvent, Skill
 import os
 
 HOST_SYSTEM = {
+    "127.0.0.1:8096": "Firefly III 记账",
     **({os.environ["NJMIND_HOST"]: "njmind 内网"}
       if os.environ.get("NJMIND_HOST") else {}),
     "127.0.0.1:8069": "Odoo 销售",
@@ -37,6 +38,7 @@ def system_label(host: str) -> str:
 # 系统名 → 适配器清单 id（server/adapters/*.yaml）。URL 通配符未命中时的
 # 兜底配对通道——与 HOST_SYSTEM 同源维护，避免两处映射漂移
 SYSTEM_ADAPTER = {
+    "Firefly III 记账": "firefly",
     "njmind 内网": "njmind",
     "Odoo 销售": "odoo",
     "Dolibarr 订单": "dolibarr",
@@ -51,7 +53,11 @@ SYSTEM_ADAPTER = {
 def _session_hosts(db: Session, session_ids: set[str] | None = None) -> dict[str, str]:
     """session_id → 首条 navigation 的 host（一次查询批量派生）。
     S42：给定 session_ids 时只查相关行——全表 navigation 扫描是
-    list_suites 等列表端点的 N+1 放大器。"""
+    list_suites 等列表端点的 N+1 放大器。
+    归因报告（2026-10-09）：105/875 会话零 navigation（SPA/iframe 录制窗口
+    无整页加载——禅道 about:blank iframe、Odoo hash 路由）。兜底链：
+    navigation 缺失时取首条 action 事件的 payload.url（纯确定性）。
+    17 个"未知系统"技能由此归位（禅道 6+Odoo 11）。"""
     nav: dict[str, str] = {}
     q = select(RawEvent.session_id, RawEvent.payload).where(RawEvent.kind == "navigation")
     if session_ids is not None:
@@ -82,6 +88,23 @@ def skill_systems(db: Session, skill_ids: list[int] | None = None) -> dict[int, 
                   Alignment.id.in_({s.alignment_id for s in skills})).all()}
     ref_sids = {(a or [""])[0] for a in aligns.values() if a}
     nav = _session_hosts(db, ref_sids)
+    # 兜底：无 navigation 的会话取首条 action 的 url host（确定性派生）
+    missing = {sid for sid in ref_sids if sid not in nav}
+    if missing:
+        q2 = select(RawEvent.session_id, RawEvent.payload).where(
+            RawEvent.kind == "action",
+            RawEvent.session_id.in_(missing))
+        for sid, payload in db.execute(
+                q2.order_by(RawEvent.ts, RawEvent.seq)).all():
+            if sid in nav:
+                continue
+            u = str((payload or {}).get("url") or "")
+            if u.startswith("http"):
+                try:
+                    from urllib.parse import urlparse as _up
+                    nav[sid] = _up(u).netloc
+                except Exception:
+                    pass
     return {s.id: system_label(nav.get((aligns.get(s.alignment_id) or [""])[0], ""))
             for s in skills}
 
