@@ -134,11 +134,12 @@ go.addEventListener("click", async () => {
       const results: Array<{ step: number; status: string; runId?: number }> = [];
       for (let i = 0; i < steps.length; i++) {
         if (stopRequested) { log(`已停止：第 ${i + 1} 步前中断`); break; }
-        const st = resolveStepOverrides(steps[i], stepCtx, runTs);
+        // resolveStepOverrides 返回 overrides 字典本身（AI2 签名：step+ctx）
+        const ovr = resolveStepOverrides(steps[i], stepCtx, runTs);
         const nm = `#${steps[i].skill_id} ${steps[i].skill?.name ?? ""}`;
         log(`步骤 ${i + 1}/${steps.length}：${nm} …`);
         try {
-          const r = await runSkill(steps[i].skill_id, st.overrides, log, () => stopRequested);
+          const r = await runSkill(steps[i].skill_id, ovr, log, () => stopRequested);
           stepCtx.push(r.observed || []);   // 本步产出供后续步骤绑定
           results.push({ step: i + 1, status: r.status, runId: r.runId });
           log(`步骤 ${i + 1} 完成：${r.status}`);

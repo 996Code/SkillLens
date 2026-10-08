@@ -129,15 +129,22 @@ export async function runSkill(
   // pendingBodies 请求结束即删（Map 无界增长根治）
   const networkLog: any[] = [];
   const pendingBodies = new Map<string, string>();
+  // AI2：请求体暂存（requestWillBeSent 存，responseReceived 落 networkLog）
+  const pendingReqBodies = new Map<string, string>();
   const onEvt = (source: any, method: string, params: any) => {
     if (source.tabId !== tabId) return;
     if (method === "Network.requestWillBeSent") {
+      // AI2 跨步传值：请求体（postData）必须留——${stepN.字段} 绑定的提取
+      // 原料。脱敏后存（红线：请求体含凭据形态——与 net-hook 同语义）
       pendingBodies.set(params?.requestId, params?.request?.method || "GET");
+      pendingReqBodies.set(params?.requestId,
+        redactNetworkBody(params?.request?.postData || ""));
       return;
     }
     if (method === "Network.loadingFinished" || method === "Network.loadingFailed") {
       // 方法名记入日志后即可删（响应体若已取，networkLog 持有快照）
       pendingBodies.delete(params?.requestId);
+      pendingReqBodies.delete(params?.requestId);
       return;
     }
     if (method === "Network.responseReceived") {
@@ -145,7 +152,10 @@ export async function runSkill(
       networkLog.push({
         url, status: params?.response?.status,
         requestId: params?.requestId,
-        method: pendingBodies.get(params?.requestId) || "GET", body: "",
+        method: pendingBodies.get(params?.requestId) || "GET",
+        // AI2 跨步传值：请求体随响应落日志（绑定提取原料）
+        reqBody: pendingReqBodies.get(params?.requestId) || "",
+        body: "",
       });
       // 响应体异步取（AG0 实证 Network.getResponseBody 可用；失败留空）
       const idx = networkLog.length - 1;
@@ -156,7 +166,10 @@ export async function runSkill(
         // /urlencoded 脱敏）——与录制侧 net-hook.js 同源语义
         networkLog[idx].body = redactNetworkBody(b?.body || "");
       }).catch(() => { /* 已导航/流式体不可取——留空不阻塞 */ })
-        .finally(() => pendingBodies.delete(params?.requestId));
+        .finally(() => {
+          pendingBodies.delete(params?.requestId);
+          pendingReqBodies.delete(params?.requestId);
+        });
     }
   };
   chrome.debugger.onEvent.addListener(onEvt);
