@@ -6,6 +6,7 @@ export {};
 
 import { redactNetworkBody, redactNetworkUrl } from "../shared/redact";
 import { AGENT_URL as AGENT } from "../shared/types";
+import { resolveStepOverrides } from "../shared/chain-rules";
 
 interface Instruction {
   seq: number;
@@ -64,6 +65,7 @@ export async function runSkill(
   skillId: number, overrides: Record<string, string>,
   onProgress: (msg: string) => void,
   shouldStop?: () => boolean,
+  hostTab?: number,
 ): Promise<{ status: string; runId?: number; observed?: any[] }> {
   const plan = await api(`/executor/skills/${skillId}/plan`, {
     method: "POST",
@@ -80,36 +82,41 @@ export async function runSkill(
   (globalThis as any).__lastSearchValue = "";
   onProgress(`已创建执行 #${runId}（${plan.total_instructions} 条指令）`);
 
-  // 执行页签获取：优先复用已存在的空白页签（CDP 托管浏览器里
-  // tabs.create 可能静默 pending——AG0 实证 tabs.query 稳定可用；
-  // 宿主页被外部 CDP 持有，attach 会冲突，绝不复用非空白页签）
+  // 执行页签获取（AH6 页内执行）：hostTab 指定=直接在该页签执行（用户
+  // 正在看的业务页——goto 步会把页面导航到技能入口，全程用户可见），
+  // 收尾只 detach 不动页签。未指定=原逻辑（空白页复用/新建）。
   let tabId: number | undefined;
   // 复用的页签是用户自己开的——收尾只能导航回 about:blank，不能 remove
   let tabReused = false;
-  try {
-    const all = await chrome.tabs.query({});
-    const blank = all.find((t) => !t.url || t.url === "about:blank");
-    if (blank?.id) {
-      tabId = blank.id;
-      tabReused = true;
-      onProgress("复用空白页签执行");
-    } else {
-      const created = await Promise.race([
-        chrome.tabs.create({ url: "about:blank", active: true }),
-        new Promise((res) => setTimeout(() => res(null), 4000)),
-      ]) as any;
-      tabId = created?.id;
+  if (hostTab != null) {
+    tabId = hostTab;
+    onProgress("在当前页面执行（本页将被驱动）");
+  } else {
+    try {
+      const all = await chrome.tabs.query({});
+      const blank = all.find((t) => !t.url || t.url === "about:blank");
+      if (blank?.id) {
+        tabId = blank.id;
+        tabReused = true;
+        onProgress("复用空白页签执行");
+      } else {
+        const created = await Promise.race([
+          chrome.tabs.create({ url: "about:blank", active: true }),
+          new Promise((res) => setTimeout(() => res(null), 4000)),
+        ]) as any;
+        tabId = created?.id;
+      }
+    } catch { tabId = undefined; }
+    if (!tabId) {
+      await api(`/executor/runs/${runId}/finish`, {
+        method: "POST",
+        body: JSON.stringify({
+          status: "fail",
+          summary: { error: "无法获取执行页签（tabs.create 不可用——请打开一个空白页签后重试）" },
+        }),
+      });
+      return { status: "fail" };
     }
-  } catch { tabId = undefined; }
-  if (!tabId) {
-    await api(`/executor/runs/${runId}/finish`, {
-      method: "POST",
-      body: JSON.stringify({
-        status: "fail",
-        summary: { error: "无法获取执行页签（tabs.create 不可用——请打开一个空白页签后重试）" },
-      }),
-    });
-    return { status: "fail" };
   }
     const debuggee = { tabId };
   try {
@@ -119,7 +126,7 @@ export async function runSkill(
       method: "POST",
       body: JSON.stringify({ status: "fail", summary: { error: `attach 失败：${e.message}（关闭 DevTools 后重试）` } }),
     });
-    await releaseExecTab(debuggee, tabId, tabReused);
+    await releaseExecTab(debuggee, tabId, tabReused, hostTab != null);
     return { status: "fail" };
   }
   onProgress("已 attach（顶部横幅=执行中，全程可见）");
@@ -278,14 +285,16 @@ export async function runSkill(
     return { status: "aborted" };
   } finally {
     chrome.debugger.onEvent.removeListener(onEvt);
-    await releaseExecTab(debuggee, tabId, tabReused);
+    await releaseExecTab(debuggee, tabId, tabReused, hostTab != null);
   }
 }
 
 // 收尾释放执行页签：自建页签直接关；复用的是用户自己开的空白页签，
 // 只能导航回 about:blank（关掉会销毁用户的页签——评审三轮 🟡）。
-async function releaseExecTab(debuggee: any, tabId: number, reused: boolean): Promise<void> {
+async function releaseExecTab(debuggee: any, tabId: number, reused: boolean,
+                              hostTab = false): Promise<void> {
   await chrome.debugger.detach(debuggee).catch(() => {});
+  if (hostTab) return;  // AH6：页内执行——页面留在原地（用户继续用）
   if (!reused) {
     await chrome.tabs.remove(tabId).catch(() => {});
     return;
@@ -309,6 +318,20 @@ async function execute(
 ): Promise<{ seq: number; result: string; evidence: any }> {
   const evidence: any = { network: [], toasts: [] };
   if (ins.op === "goto") {
+    // AH6 页内执行：目标≈当前 URL 则跳过导航——两次 Page.navigate 会
+    // 销毁页面上下文（悬浮面板/用户输入状态全丢）；已在目标页是页内
+    // 执行的常态（面板就在该系统页上发起）
+    try {
+      const cur = await chrome.debugger.sendCommand(debuggee,
+        "Runtime.evaluate", { expression: "location.href", returnByValue: true });
+      const curUrl = String(cur?.result?.value || "");
+      const same = curUrl.split("#")[0].split("?")[0]
+        === String(ins.url).split("#")[0].split("?")[0];
+      if (same) {
+        onProgress(`已在目标页（${curUrl.slice(0, 50)}）——跳过导航`);
+        return { seq: ins.seq, result: "ok", evidence };
+      }
+    } catch { /* 探测失败走正常导航 */ }
     onProgress(`导航 ${ins.url}`);
     await chrome.debugger.sendCommand(debuggee, "Page.enable").catch(() => {});
     // hash 路由 SPA（Odoo 等）会从 localStorage 恢复视图状态（如 kanban
@@ -1588,3 +1611,43 @@ function sleep(ms: number): Promise<void> {
 // 消息面在 uploader.ts 单一 listener 内分发（MV3 多 listener 的
 // sendResponse 竞争会互踩）——本模块只导出函数。
 
+
+// ---- AH6 页内链执行（SW 宿主：CDP 命令活动保活，MV3 不杀） ----
+
+export async function runChain(
+  chainId: number,
+  onProgress: (msg: string) => void,
+  shouldStop?: () => boolean,
+  hostTab?: number,
+): Promise<{ status: string; steps?: Array<{ step: number; status: string; runId?: number }> }> {
+  const chain = await api(`/chains/${chainId}`);
+  const steps = chain.steps || [];
+  if (!steps.length) return { status: "fail", steps: [] };
+  const runTs = Date.now();
+  const stepCtx: any[][] = [];
+  const results: Array<{ step: number; status: string; runId?: number }> = [];
+  for (let i = 0; i < steps.length; i++) {
+    if (shouldStop?.()) { onProgress(`已停止：第 ${i + 1} 步前中断`); break; }
+    const ovr = resolveStepOverrides(steps[i], stepCtx, runTs);
+    onProgress(`步骤 ${i + 1}/${steps.length}：#${steps[i].skill_id} ${steps[i].skill?.name ?? ""} …`);
+    try {
+      const r = await runSkill(steps[i].skill_id, ovr, onProgress, shouldStop, hostTab);
+      stepCtx.push(r.observed || []);
+      results.push({ step: i + 1, status: r.status, runId: r.runId });
+      onProgress(`步骤 ${i + 1} 完成：${r.status}`);
+      if (r.status !== "pass") {
+        onProgress(`链在第 ${i + 1} 步未通过——停止（已执行 ${i + 1}/${steps.length}）`);
+        break;
+      }
+    } catch (e: any) {
+      stepCtx.push([]);
+      results.push({ step: i + 1, status: "error" });
+      onProgress(`步骤 ${i + 1} 失败：${e.message}——停止`);
+      break;
+    }
+  }
+  const npass = results.filter((r) => r.status === "pass").length;
+  const overall = npass === steps.length && steps.length > 0 ? "pass" : "fail";
+  onProgress(`链执行结束：${npass}/${steps.length} 步通过（${overall}）`);
+  return { status: overall, steps: results };
+}

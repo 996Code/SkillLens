@@ -100,6 +100,10 @@ function mount(): void {
       .ch .del { color: #dc2626; background: none; }
       .empty { color: #6b7280; font-size: 12px; padding: 4px 0; }
       .note { padding: 8px 12px; font-size: 12px; border-top: 1px solid #f1f3f5; display: none; }
+      .prog { padding: 8px 12px; border-top: 1px solid #e5e7eb; background: #f8fafc; }
+      .prog .pg-t { font-size: 12px; font-weight: 600; color: #2563eb; }
+      .prog .pg-l { font-size: 11px; color: #6b7280; max-height: 90px; overflow-y: auto;
+                    font-family: Consolas, monospace; white-space: pre-wrap; margin-top: 4px; }
       .note.ok { color: #16a34a; }
       .note.err { color: #dc2626; }
       .foot { padding: 6px 12px 10px; }
@@ -129,6 +133,10 @@ function mount(): void {
         <div id="chs"><div class="empty">无</div></div>
       </div>
       <div class="note" id="nt"></div>
+      <div class="prog" id="pg" style="display:none">
+        <div class="pg-t" id="pgt">执行中…</div>
+        <div class="pg-l" id="pgl"></div>
+      </div>
       <div class="foot"></div>
     </div>
   `;
@@ -340,7 +348,15 @@ function mount(): void {
       one.title = "单独执行该技能";
       one.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        window.open(chrome.runtime.getURL(`executor.html?skill=${s.id}`), "_blank");
+        // AH6 页内执行：SW attach 本页直接驱动（不再开扩展内部页——
+        // 网页上下文 window.open 扩展页被 ERR_BLOCKED_BY_CLIENT 拦）
+        void chrome.storage.local.remove("sl_exec_log");
+        root.getElementById("pgl")!.textContent = "";
+        // web accessible 后 window.open 扩展页合法（ERR_BLOCKED_BY_CLIENT
+        // 根治）；执行页自带进度 UI（页内执行的兜底形态——SW 消息与
+        // storage 唤醒在此 CDP 环境均不可靠，真 Chrome 下三通道并存）
+        window.open(chrome.runtime.getURL(`executor.html?skill=${s.id}&auto=1`), "_blank");
+        note("已打开执行页（全程可见）", "ok");
       });
       row.append(one);
       listEl.append(row);
@@ -401,8 +417,10 @@ function mount(): void {
     if (!p) return;
     try {
       const r = await api("/chains", { method: "POST", body: JSON.stringify(p) });
-      window.open(chrome.runtime.getURL(`executor.html?chain=${r.id}`), "_blank");
-      note("已发起执行（执行页已打开）", "ok");
+      void chrome.storage.local.remove("sl_exec_log");
+      root.getElementById("pgl")!.textContent = "";
+      window.open(chrome.runtime.getURL(`executor.html?chain=${r.id}&auto=1`), "_blank");
+      note("已打开执行页（全程可见）", "ok");
     } catch (e: any) { note(`失败：${e.message}`, "err"); }
   });
 
@@ -426,8 +444,9 @@ function mount(): void {
         const run = document.createElement("button");
         run.className = "run"; run.textContent = "执行";
         run.addEventListener("click", () => {
-          window.open(chrome.runtime.getURL(`executor.html?chain=${c.id}`), "_blank");
-          note("已发起执行", "ok");
+          void chrome.storage.local.remove("sl_exec_log");
+          window.open(chrome.runtime.getURL(`executor.html?chain=${c.id}&auto=1`), "_blank");
+          note("已打开执行页（全程可见）", "ok");
         });
         const del = document.createElement("button");
         del.className = "del"; del.textContent = "删";
@@ -462,6 +481,35 @@ function mount(): void {
       window.open(chrome.runtime.getURL(`learn.html?sid=${encodeURIComponent(p.sid)}`), "_blank");
     }
   }).catch(() => {});
+
+  // 恢复历史执行进度（goto 导航销毁页面后，面板重开仍可见全程日志）
+  void chrome.storage.local.get("sl_exec_log").then(({ sl_exec_log: log }) => {
+    if (Array.isArray(log) && log.length) {
+      const pg = root.getElementById("pg")!;
+      const pgl = root.getElementById("pgl")!;
+      pg.style.display = "block";
+      pgl.textContent = log.join("\n");
+      pgl.scrollTop = pgl.scrollHeight;
+    }
+  }).catch(() => {});
+
+  // AH6 进度回流：SW 的 SL_PROGRESS 消息渲染到面板进度区（执行全程
+  // 在本页可见——页内执行的核心反馈）
+  chrome.runtime.onMessage.addListener((m: any) => {
+    if (m?.type === "SL_PROGRESS") {
+      const pg = root.getElementById("pg")!;
+      const pgt = root.getElementById("pgt")!;
+      const pgl = root.getElementById("pgl")!;
+      pg.style.display = "block";
+      if (String(m.msg).includes("链执行结束") || String(m.msg).includes("完成：")) {
+        pgt.textContent = String(m.msg).includes("pass") ? "执行完成（通过）" : "执行结束";
+        pgt.style.color = String(m.msg).includes("pass") ? "#16a34a" : "#dc2626";
+      }
+      pgl.textContent += `[${new Date().toTimeString().slice(0, 8)}] ${m.msg}
+`;
+      pgl.scrollTop = pgl.scrollHeight;
+    }
+  });
 
   // 录制状态徽标（只读展示——录制控制在 popup；面板提示防"录着忘了"）
   void chrome.storage.local.get("sl_recording").then(({ sl_recording: rec }) => {

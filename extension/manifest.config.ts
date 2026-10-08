@@ -27,5 +27,11 @@ export default defineManifest({
   background: { service_worker: "src/background/uploader.ts", type: "module" },
   // 注：CRXJS 对 web_accessible_resources 条目按原样复制（不做 TS→JS 转换），
   // 故该入口必须是纯 JS 文件（src/injected/net-hook.js）。
-  web_accessible_resources: [{ resources: ["src/injected/net-hook.js"], matches: ["<all_urls>"] }],
+  web_accessible_resources: [
+    { resources: ["src/injected/net-hook.js"], matches: ["<all_urls>"] },
+    // AH6：executor/learn 页声明 web accessible——面板（content script 的
+    // window.open）打开扩展页不再被 ERR_BLOCKED_BY_CLIENT 拦；页面带
+    // token 参数自证身份（无鉴权页面本身不含敏感数据）
+    { resources: ["executor.html", "learn.html"], matches: ["<all_urls>"] },
+  ],
 });
