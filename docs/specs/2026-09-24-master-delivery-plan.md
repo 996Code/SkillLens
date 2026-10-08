@@ -351,6 +351,25 @@ AG1 协议 server 侧 ✅（端点组+迁移+4 用例；契约文档 docs/arch/e
 
 **v2.4 执行序**：AH1 → AH2 → AH3 → AH4 → AH5（真机矩阵含环境预检：端口/登录态探活）。
 
+### 块 AJ：异常分类学与证据体验（v2.6 新增，2026-10-08 五路 harness 学习驱动）
+
+背景：用户问"超出链路预期的异常怎么办"→ 异常分类学设计 → 五路并行业界调研
+（zcode 二次/Playwright/Cypress/企业平台/AI 自愈，docs/references/harness-study-v2-*.md）
+交叉验证后定稿。核心认知：**失败分类是行业共同答案**（TestRail 三态/quarantine 流水线
+三分类与我们 42% 失败率实锤互证），E1/E2/blocked 混在"链失败"里污染通过率、烧无效自愈。
+
+| 片 | 内容 | 验收 |
+|---|---|---|
+| AJ1 失败分类地基 | failure_class(e1_env/e2_infra/e3_drift/e4_expected)+flaky_verdict 迁移；分类器纯函数（规则表）；blocked/retest 语义；E1/E2 不进分母；zcode 错误三码+行动指引 | TDD+口径文档 |
+| AJ2 登录守卫（E1 首实例） | 证据 URL 命中 login 特征→守卫（不烧介入额度）→适配器登录例程恢复→当前步重试；session_recovered 落库 | 真机：清登录态→自动恢复→链 pass |
+| AJ3 证据体验 | executed 对齐 TestStep+步内网络事件引用；交织时间线；每步语义快照悬停；断言软收集+有界重试；retain-on-failure | 详情页渲染 |
+| AJ4 自愈透明度 | 晋升 diff 视图+置信度面板+supersede 一键回滚+mabl 持久化门控（下游成功证据位） | 工作台 UI |
+| AJ5 编排增强 | on:fail/pass/always 清理钩子；步骤 checkbox；反向引用表；链变量五型；Healenium 权重预筛+LLM 精选 | 按片验收 |
+
+**领先点（业界对照确认，对外叙事）**：自愈三层链（比 mabl 证据厚、比 VON 论文多防回归闸）；
+supersede 版本链业界独有；证据驱动确定性判定；声明式零代码接入。
+
+
 ### 块 AI：测试工程师日常化（v2.5 新增，2026-10-08 用户视角评审驱动）
 
 背景：以测试工程师视角实地评审（管理平台 6/10、插件 5/10、链路 4/10）——底座优势
@@ -399,3 +418,4 @@ AG1 协议 server 侧 ✅（端点组+迁移+4 用例；契约文档 docs/arch/e
 - 2026-10-08 v2.3（三轮全库评审+修复+文档补全）：七域并行深审（安全鉴权/回放引擎/数据管道与学习/插件/工作台/脚本部署/适配器；报告 docs/reviews/2026-10-08-full-codebase-audit-round3.md）——本轮定位"声称的语义是否真的成立"：🔴 9 项全修（viewer 角色形同虚设→WRITE_GUARD 31 变更端点+C1 确认冒充→取登录态 / Skill.system 有模型无迁移→删列+schema 双向 drift 守卫 / induce 空骨架 NameError / 写水位被 GET 噪声击穿 / 脱敏词表四处漂移→16 词+跨文件一致性测试 / 注入模板转义丢层 / AdaptersView select 失败错写系统 / auto_record IP 兜底回归）；🟡 43 项修 34 缓 9（掩码回填防"保存即毁凭据"、net-hook 失败调用留痕 C3、export_shared 判定同源逐字内嵌、快照穿 iframe、classify 畸形防御+按身份消费、2 支脚本 fail-fast、端口 127.0.0.1 绑定+非 root+uv pin 等）；🟢 34 项清 22。新增四类防漂移装置（一致性测试/非空守卫/迁移 drift 守卫/同源内嵌）。文档 +8 篇 arch（replay-engine/ingestion-pipeline/adapters-subsystem/auth-and-role-matrix/redaction-defense-in-depth/env-contract/change-intelligence/schema-migration-discipline）+ lessons #38-#46。缓修 34 项逐条附理由（插件三处"路径激活型"须与真机矩阵轮同批；C2 学习分轨待产品决策；conftest test.db 并行互撞待 CI 分片）。测试基线 **server 546 / web 78 / extension 99**。
 - 2026-10-08 v2.4（用户方向裁定：空间与链编排）：**新增块 AH**——交互全在插件弹窗（工作台不参与执行流）、链=纯数据+通用规则（降耦合）。AH1 服务端 chain 数据层（表+CRUD+WRITE_GUARD）→ AH2 规则解释器（${unique:}）→ AH3 executor.html 链模式（顺序执行+整链 C1+步进报告）→ AH4 空间小窗（P2.5 match 识别当前系统→过滤→多选组链）→ AH5 真机验收（JeecG 269+118 链）。P2：跨步值绑定/执行历史/superseded 跟版。触发背景：JeecG 矩阵 3 轮验收（06a339e）+ popup 回放列表双根因修复后用户提出组合执行需求。
 - 2026-10-08 v2.5（测试工程师视角评审驱动）：**新增块 AI「测试工程师日常化」**——评审结论：底座优势真实但日常流三断点（录后断片/链不能传值/无 CI 出口）。AI1 录制闭环（停录自动学习，60s 进空间）→ AI2 跨步传值+override 防呆 UI → AI3 CI 出口（同步 run+退出码语义）→ AI4 库治理（批量清障+趋势）→ AI5 数据卫生（teardown+unique 推荐）。触发：用户问「以测试工程师角度好不好用」，四维评分 6/5/4/— 的诚实评审。
+- 2026-10-08 v2.6（五路 harness 学习驱动）：**新增块 AJ「异常分类学与证据体验」**——用户问'超出链路预期的异常怎么办'+启动 5 agent 并行学业界（zcode 二次深读 13 条新发现/Playwright 报告与软断言/Cypress 交织时间线/TestRail 失败三态互证/mabl 持久化门控+VON 论文）。核心：failure_class E1-E4 分类+blocked 不进分母+登录守卫（E1 首实例）+证据体验升级+自愈透明度。五份调研归档 docs/references/harness-study-v2-*.md+汇总路线图。
