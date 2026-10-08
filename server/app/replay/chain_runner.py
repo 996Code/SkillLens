@@ -80,6 +80,30 @@ def resolve_step_overrides(step: dict, step_ctx: list | None,
     return out
 
 
+def expand_steps(steps: list, chains_by_id: dict, depth: int = 0,
+                  inherit_setup: bool = False) -> list:
+    """链编排 v2：chain_id 步骤展开为子链步骤（递归，深度≤3 防环）。
+    setup 标记传染：父步骤标记 setup → 子链全部步骤继承（登录链整体
+    是前置——Playwright beforeEach 的声明式等价）。"""
+    if depth > 3:
+        raise ValueError(f"子链嵌套超过深度 3（疑似环）")
+    out: list = []
+    for st in steps:
+        if st.get("chain_id") is not None:
+            sub = chains_by_id.get(st["chain_id"])
+            if sub is None:
+                continue  # 子链已被删——跳过（不致命）
+            out.extend(expand_steps(
+                sub, chains_by_id, depth + 1,
+                inherit_setup=inherit_setup or bool(st.get("setup"))))
+        else:
+            s = dict(st)
+            if inherit_setup:
+                s["setup"] = True
+            out.append(s)
+    return out
+
+
 async def run_chain_server(db: Session, chain_id: int,
                            confirm_side_effect: bool) -> dict:
     """服务端链执行（CI 出口执行体）：顺序 run_replay，fail 即停。
@@ -94,9 +118,28 @@ async def run_chain_server(db: Session, chain_id: int,
     chain = db.get(Chain, chain_id)
     if not chain:
         return {"status": "error", "error": "chain not found", "steps": []}
-    steps = chain.steps or []
-    if not steps:
+    raw_steps = chain.steps or []
+    if not raw_steps:
         return {"status": "error", "error": "empty chain", "steps": []}
+
+    # v2：子链展开（chain_id → 子链步骤，setup 传染，深度守卫）
+    all_chains = {c.id: (c.steps or []) for c in db.query(Chain).all()}
+    try:
+        steps = expand_steps(raw_steps, all_chains)
+    except ValueError as e:
+        return {"status": "error", "error": str(e), "steps": []}
+
+    # v2：适配器自动登录（幂等——已登录直过；根治 CI 多系统登录态）
+    warnings: list[str] = []
+    from app.system import SYSTEM_ADAPTER
+    aid = SYSTEM_ADAPTER.get(chain.system or "")
+    if aid:
+        try:
+            ok = await _adapter_login(aid)
+            if not ok:
+                warnings.append(f"适配器登录未确认（{aid}）——继续执行")
+        except Exception as e:
+            warnings.append(f"适配器登录异常（{aid}）：{str(e)[:80]}")
 
     run_ts = int(time.time() * 1000)
     step_ctx: list = []
@@ -112,10 +155,17 @@ async def run_chain_server(db: Session, chain_id: int,
             step_ctx.append([])
             results.append({"step": i + 1, "status": "error", "error": str(e)[:200],
                             "skill_id": st["skill_id"]})
+        # v2 setup 语义：前置步骤 fail 不判链失败（登录已有效时登录链
+        # 自然 fail——storageState 复用的等价物）只记 warning
         if results[-1]["status"] != "pass":
-            break  # fail 即停（与插件端链模式同语义）
-    npass = sum(1 for r in results if r["status"] == "pass")
-    overall = "pass" if npass == len(steps) else (
+            if st.get("setup"):
+                warnings.append(
+                    f"前置步骤 #{results[-1]['step']} 未通过（{results[-1]['status']}）——已跳过继续")
+            else:
+                break  # 业务步骤 fail 即停（与插件端链模式同语义）
+    biz = [r for r, st in zip(results, steps) if not st.get("setup")]
+    biz_pass = sum(1 for r in biz if r["status"] == "pass")
+    overall = "pass" if biz and biz_pass == len(biz) else (
         "shadow" if results and results[-1]["status"] == "shadow" else "fail")
     # AI5 teardown：无论成败都清理（测试数据不残留——fail 时更需要清）
     cleaned = []
@@ -136,8 +186,35 @@ async def run_chain_server(db: Session, chain_id: int,
             cleaned.append({"skill_id": st.get("skill_id"), "ok": False,
                             "err": str(e)[:100]})
     return {"status": overall, "steps": results,
-            "pass_count": npass, "total": len(steps),
-            "teardown": cleaned}
+            "pass_count": biz_pass, "total": len(biz) or len(results),
+            "warnings": warnings, "teardown": cleaned}
+
+
+async def _adapter_login(adapter_id: str) -> bool:
+    """v2：目标系统适配器登录例程（幂等）——AF3 例程库的服务端入口。
+    独立上下文跑登录并把状态存为该系统的独立 state 文件（多系统并存，
+    按适配器 id 分文件；runner 按系统选择注入属 P2 接线）。"""
+    from pathlib import Path
+    from app.adapters.manifest import load_adapter_dir
+    from app.adapters.steps import login as adapter_login
+    from playwright.async_api import async_playwright
+    ms, _ = load_adapter_dir(Path("adapters"))
+    m = next((x for x in ms if x.id == adapter_id), None)
+    if m is None or m.login is None:
+        return True  # 无登录声明的系统视为通过
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        try:
+            ctx = await browser.new_context()
+            page = await ctx.new_page()
+            ok = await adapter_login(page, m)
+            if ok:
+                state_dir = Path("artifacts") / "states"
+                state_dir.mkdir(parents=True, exist_ok=True)
+                await ctx.storage_state(path=str(state_dir / f"{adapter_id}.json"))
+            return ok
+        finally:
+            await browser.close()
 
 
 # ---- AI5 数据卫生 ----

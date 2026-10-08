@@ -8,7 +8,7 @@
 - DELETE /chains/{id}   删除 —— WRITE_GUARD
 """
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -28,11 +28,23 @@ def get_db():
 
 
 class ChainStepIn(BaseModel):
-    skill_id: int
+    # v2：skill_id | chain_id 二选一（chain_id=引用子链——登录链被业务
+    # 链引用的组合编排形态）
+    skill_id: int | None = None
+    chain_id: int | None = None
     overrides: dict[str, str] = Field(default_factory=dict)
+    # v2 前置标记：setup 步骤 fail 不判链失败（登录已有效时登录链自然
+    # fail——Playwright storageState 复用的声明式等价）
+    setup: bool = False
     # AI5 teardown 声明：链结束（无论成败）后清理测试数据——docker 通道
     # 与 probes 同款（container+shell）；执行侧（chain_runner）消费
     cleanup: dict | None = None
+
+    @model_validator(mode="after")
+    def _exclusive_ids(self):
+        if (self.skill_id is None) == (self.chain_id is None):
+            raise ValueError("skill_id 与 chain_id 必须二选一")
+        return self
 
 
 class ChainIn(BaseModel):
@@ -42,10 +54,13 @@ class ChainIn(BaseModel):
 
 
 def _validate_steps(db: Session, steps: list[ChainStepIn]) -> None:
-    """skill_id 必须存在——技能删除后链不可静默悬空（创建时即拒绝）。"""
+    """skill_id/chain_id 必须存在——引用对象删除后链不可静默悬空（创建
+    时即拒绝）。自引用链（链引用自己）在执行侧深度守卫拦截。"""
     for st in steps:
-        if not db.get(Skill, st.skill_id):
+        if st.skill_id is not None and not db.get(Skill, st.skill_id):
             raise HTTPException(422, f"skill 不存在：{st.skill_id}")
+        if st.chain_id is not None and not db.get(Chain, st.chain_id):
+            raise HTTPException(422, f"chain 不存在：{st.chain_id}")
 
 
 def _fill_fields(db: Session, skill_id: int) -> list[dict]:
@@ -119,7 +134,17 @@ async def get_chain(chain_id: int, db: Session = Depends(get_db)) -> dict:
     for st in row.steps or []:
         brief = _skill_brief(db, st.get("skill_id", 0)) \
             if db.get(Skill, st.get("skill_id", 0)) else None
+        brief = None
+        cid = st.get("chain_id")
+        if cid is not None:
+            sub = db.get(Chain, cid)
+            brief = {"id": cid, "name": sub.name if sub else "(已删)",
+                     "is_chain": True}
+        elif st.get("skill_id") is not None:
+            brief = _skill_brief(db, st["skill_id"]) if db.get(Skill, st["skill_id"]) else None
         steps.append({"skill_id": st.get("skill_id"),
+                      "chain_id": cid,
+                      "setup": bool(st.get("setup")),
                       "overrides": st.get("overrides") or {},
                       "cleanup": st.get("cleanup"),
                       "skill": brief})

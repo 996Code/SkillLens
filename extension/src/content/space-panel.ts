@@ -348,25 +348,89 @@ function mount(): void {
   // token 直读 storage（content script 有 chrome.storage 权限——不经 SW
   // 消息，多 listener 通道竞争在 CDP 托管浏览器下不可靠的教训）
   async function token(): Promise<string> {
+    // storage 读加 2s race——CDP 托管环境 chrome.storage 在 CS 世界实测
+    // 挂起（detectSystem 永卡"识别系统中"）；超时按空 token 走 401→登录
     try {
-      const { sl_executor_token } = await chrome.storage.local.get("sl_executor_token") as {
-        sl_executor_token?: string;
-      };
-      return sl_executor_token || "";
+      return await Promise.race([
+        chrome.storage.local.get("sl_executor_token") as Promise<{
+          sl_executor_token?: string }>,
+        new Promise<{ sl_executor_token?: string }>((res) =>
+          setTimeout(() => res({}), 2000)),
+      ]).then((r) => r.sl_executor_token || "");
     } catch { return ""; }
   }
 
   async function detectSystem(): Promise<void> {
+    sysEl.textContent = "读 token…";
+    const t = await token();
+    sysEl.textContent = t ? "识别系统…" : "无 token";
     try {
-      const t = await token();
-      const r = await fetch(`${AGENT}/adapters/match?url=${encodeURIComponent(location.href)}`,
-        { headers: { Authorization: `Bearer ${t}` } });
+      const r = await Promise.race([
+        fetch(`${AGENT}/adapters/match?url=${encodeURIComponent(location.href)}`,
+          { headers: { Authorization: `Bearer ${t}` } }),
+        new Promise<never>((_, rej) =>
+          setTimeout(() => rej(new Error("match 超时")), 5000)),
+      ]);
+      if (r.status === 401) {
+        sysEl.textContent = "未登录";
+        showLogin();
+        return;
+      }
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const m = await r.json();
       systemName = m.system || "";
       sysEl.textContent = systemName || "未识别系统";
-    } catch {
-      sysEl.textContent = "识别失败（Agent 未连）";
+    } catch (e: any) {
+      sysEl.textContent = `Agent 未连（${String(e?.message || e).slice(0, 30)}）`;
     }
+  }
+
+  // P0 根治：面板内置登录（token 断链——工作台登录不会配 token 给插件，
+  // 装完插件第一次用必须在面板里登录一次；写 sl_executor_token 与
+  // executor.html?token= 同一存储位）
+  function showLogin(): void {
+    const body = root.querySelector(".body")!;
+    body.replaceChildren();
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "padding:8px 2px";
+    const h = document.createElement("div");
+    h.style.cssText = "font-weight:600;margin-bottom:6px";
+    h.textContent = "登录 SkillLens";
+    const sub = document.createElement("div");
+    sub.className = "lbl";
+    sub.textContent = "输入工作台账号（admin/reviewer）连接管理平台";
+    const uIn = document.createElement("input");
+    uIn.placeholder = "用户名";
+    uIn.style.cssText = "width:100%;padding:7px 10px;font:inherit;font-size:12px;border:1px solid #e5e7eb;border-radius:8px;outline:none;margin:6px 0";
+    const pIn = document.createElement("input");
+    pIn.placeholder = "密码";
+    pIn.type = "password";
+    pIn.style.cssText = uIn.style.cssText;
+    const btn = document.createElement("button");
+    btn.textContent = "登录";
+    btn.style.cssText = "width:100%;padding:8px 0;font:inherit;font-size:13px;font-weight:500;border:none;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer;margin-top:4px";
+    const err = document.createElement("div");
+    err.style.cssText = "color:#dc2626;font-size:11px;margin-top:4px;min-height:14px";
+    btn.addEventListener("click", async () => {
+      err.textContent = "登录中…";
+      try {
+        const r = await fetch(`${AGENT}/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: uIn.value.trim(), password: pIn.value }),
+        });
+        if (!r.ok) { err.textContent = `登录失败（${r.status}）`; return; }
+        const { token: tk } = await r.json();
+        await chrome.storage.local.set({ sl_executor_token: tk });
+        err.style.color = "#16a34a";
+        err.textContent = "登录成功——加载中…";
+        setTimeout(() => location.reload(), 600);
+      } catch (e: any) {
+        err.textContent = `无法连接（${String(e?.message || e).slice(0, 40)}）`;
+      }
+    });
+    wrap.append(h, sub, uIn, pIn, btn, err);
+    body.append(wrap);
   }
 
   function render(): void {
@@ -428,6 +492,7 @@ function mount(): void {
 
   async function loadSkills(): Promise<void> {
     try {
+      sysEl.textContent = sysEl.textContent + "·拉技能";
       const arr = await api("/executor/skills");
       skills = (Array.isArray(arr) ? arr : [])
         .filter((s) => showAllSystems || !systemName || (s.system || "") === systemName);
@@ -438,6 +503,7 @@ function mount(): void {
       d.className = "empty";
       d.textContent = `加载失败：${e?.message ?? e}`;
       listEl.append(d);
+      sysEl.textContent = `技能加载失败（${String(e?.message || e).slice(0, 30)}）`;
     }
   }
 
@@ -454,10 +520,14 @@ function mount(): void {
 
   async function api(path: string, init?: RequestInit): Promise<any> {
     const t = await token();
-    const r = await fetch(`${AGENT}${path}`, {
-      ...init,
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
-    });
+    const r = await Promise.race([
+      fetch(`${AGENT}${path}`, {
+        ...init,
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
+      }),
+      new Promise<never>((_, rej) =>
+        setTimeout(() => rej(new Error("请求超时")), 15000)),
+    ]);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json();
   }
@@ -589,7 +659,11 @@ function mount(): void {
 // 托管浏览器下不可靠（executeScript 与 popup 卸载竞态，多轮实锤），
 // 徽标自唤起是零依赖路径。
 window.addEventListener("skilllens:show-space", () => {
-  try { mount(); } catch { /* 幂等守卫已抛错——重复唤起直接忽略 */ }
+  try { mount(); } catch (e) { console.warn("[SL] mount fail:", e); }
+});
+// P0 排障：badge click 的 mount 错误也要浮出（幂等守卫抛错除外）
+window.addEventListener("error", (e) => {
+  console.warn("[SL] panel error:", e.message);
 });
 
 mountBadge();
@@ -615,7 +689,7 @@ function mountBadge(): void {
     <button class="b" title="SkillLens 空间">SL</button>
   `;
   root.querySelector("button")!.addEventListener("click", () => {
-    try { mount(); } catch { /* 已挂载则忽略 */ }
+    try { mount(); } catch (e) { console.warn("[SL] badge mount:", e); }
   });
   document.documentElement.appendChild(host);
 }

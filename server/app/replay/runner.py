@@ -63,11 +63,24 @@ async def _open_browser(p):
     return await p.chromium_launch()
 
 
-async def _open_context(browser):
-    """CDP 模式复用常驻 profile（带登录态与插件）；否则新开 context 注入登录态。"""
+async def _open_context(browser, system: str | None = None):
+    """CDP 模式复用常驻 profile（带登录态与插件）；否则新开 context 注入登录态。
+
+    链编排 v2 多系统登录态：system 给定时优先用 artifacts/states/<适配器>.json
+    （chain_runner 的 _adapter_login 按系统生成）；无则回落 env
+    REPLAY_STORAGE_STATE（单文件全局态——兼容旧行为）。"""
     if _cdp_url() and browser.contexts:
         return browser.contexts[0]
-    return await browser.new_context(storage_state=STORAGE_STATE or None)
+    state = STORAGE_STATE or None
+    if system:
+        from app.system import SYSTEM_ADAPTER
+        aid = SYSTEM_ADAPTER.get(system)
+        if aid:
+            from pathlib import Path as _P
+            per = _P("artifacts") / "states" / f"{aid}.json"
+            if per.exists():
+                state = str(per)
+    return await browser.new_context(storage_state=state or None)
 
 
 async def _check_row_checkbox(page, cb_locator, item_name: str) -> str:
@@ -879,6 +892,7 @@ async def _heal_with_llm_attribution(
 async def _attempt(db: Session, browser, skill_id: int, plan: dict,
                    assertions: list[dict], shared_ctx: bool,
                    repair_map: dict[str, dict] | None = None,
+                   system: str | None = None,
                    has_overrides: bool = False,
                    row_anchor_hints: list[str] | None = None) -> dict:
     """S24 块 U：单次执行尝试（无 DB 写）——_execute_skill 编排重试的基础。
@@ -889,7 +903,7 @@ async def _attempt(db: Session, browser, skill_id: int, plan: dict,
     """
     ctx = None
     try:
-        ctx = await _open_context(browser)
+        ctx = await _open_context(browser, system)
         page = await ctx.new_page()
         await page.goto(plan["url"])
         await page.wait_for_load_state("domcontentloaded", timeout=15000)
@@ -1029,7 +1043,8 @@ async def _attempt(db: Session, browser, skill_id: int, plan: dict,
 
 async def _execute_skill(db: Session, browser, skill_id: int,
                          overrides: dict[str, str],
-                         confirm_side_effect: bool) -> ReplayRun:
+                         confirm_side_effect: bool,
+                         system: str | None = None) -> ReplayRun:
     """单 skill 回放执行体——browser 已由调用方开启，本函数不碰浏览器生命周期。
 
     shadow 门控在内：shadow 直接落库返回，不触 browser/context。
@@ -1068,7 +1083,7 @@ async def _execute_skill(db: Session, browser, skill_id: int,
     row_hints = [str(v) for v in (overrides or {}).values() if str(v).strip()]
     attempt = await _attempt(db, browser, skill_id, plan, assertions, shared_ctx,
                              repair_map, has_overrides=has_overrides,
-                             row_anchor_hints=row_hints)
+                             row_anchor_hints=row_hints, system=system)
     flaky = False
     field_healed = False
     healed_fields: list[dict] = []
@@ -1256,8 +1271,11 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
         async with _launch() as p:
             browser = await _open_browser(p)
             try:
+                # 链编排 v2：按技能归属系统选择登录态（多系统 state 并存）
+                from app.system import skill_systems
+                sysname = skill_systems(db, [skill_id]).get(skill_id)
                 return await _execute_skill(db, browser, skill_id, overrides,
-                                            confirm_side_effect)
+                                            confirm_side_effect, system=sysname)
             finally:
                 # 关闭异常不掩盖已落库结果/原始异常
                 try:
