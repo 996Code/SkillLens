@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.agents.canvas import compile_and_run, validate_dag
 from app.db import SessionLocal
 from app.models import AgentRun, CanvasDag
+from app.api.auth import WRITE_GUARD
 
 router = APIRouter()
 
@@ -31,7 +32,7 @@ class CanvasCreateRequest(BaseModel):
     dag: dict
 
 
-@router.post("/canvas", status_code=201)
+@router.post("/canvas", status_code=201, dependencies=WRITE_GUARD)
 async def create_canvas(body: CanvasCreateRequest,
                         db: Session = Depends(get_db)) -> dict:
     ok, errors = validate_dag(body.dag)
@@ -73,7 +74,7 @@ async def get_canvas_flow(canvas_id: int, db: Session = Depends(get_db)) -> dict
     return {"canvas_id": row.id, "name": row.name, **flow}
 
 
-@router.post("/canvas/{canvas_id}/run")
+@router.post("/canvas/{canvas_id}/run", dependencies=WRITE_GUARD)
 async def run_canvas(canvas_id: int, db: Session = Depends(get_db)) -> dict:
     row = db.get(CanvasDag, canvas_id)
     if not row:

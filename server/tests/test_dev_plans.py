@@ -153,25 +153,24 @@ async def _make_plan(client, monkeypatch):
 
 
 async def test_confirm_flow_and_repeat_409(client, monkeypatch):
-    """T2：confirm → confirmed + reviewed_by 落库；重复 confirm 409。"""
+    """T2：confirm → confirmed + reviewed_by 落库；重复 confirm 409。
+    三轮评审 F2：确认人取登录态（夹具 admin），请求体自报 reviewed_by 被忽略。"""
     plan = await _make_plan(client, monkeypatch)
     rc = await client.post(f"/api/v1/dev-plans/{plan['id']}/confirm",
-                           json={"reviewed_by": "tester"})
+                           json={"reviewed_by": "冒充者"})
     assert rc.status_code == 200
     assert rc.json()["status"] == "confirmed"
-    assert rc.json()["reviewed_by"] == "tester"
+    assert rc.json()["reviewed_by"] == "s21-admin"
     detail = (await client.get(f"/api/v1/dev-plans/{plan['id']}")).json()
     assert detail["status"] == "confirmed"          # 落库持久化
-    assert detail["reviewed_by"] == "tester"
+    assert detail["reviewed_by"] == "s21-admin"
 
-    again = await client.post(f"/api/v1/dev-plans/{plan['id']}/confirm",
-                              json={"reviewed_by": "x"})
+    again = await client.post(f"/api/v1/dev-plans/{plan['id']}/confirm")
     assert again.status_code == 409
 
 
 async def test_confirm_missing_404(client):
-    resp = await client.post("/api/v1/dev-plans/99999/confirm",
-                             json={"reviewed_by": "t"})
+    resp = await client.post("/api/v1/dev-plans/99999/confirm")
     assert resp.status_code == 404
 
 

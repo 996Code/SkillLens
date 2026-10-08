@@ -34,6 +34,20 @@ def system_label(host: str) -> str:
     return HOST_SYSTEM.get(host, host)
 
 
+# 系统名 → 适配器清单 id（server/adapters/*.yaml）。URL 通配符未命中时的
+# 兜底配对通道——与 HOST_SYSTEM 同源维护，避免两处映射漂移
+SYSTEM_ADAPTER = {
+    "njmind 内网": "njmind",
+    "Odoo 销售": "odoo",
+    "Dolibarr 订单": "dolibarr",
+    "ERPNext 客户": "erpnext",
+    "Snipe 资产": "snipe",
+    "禅道项目": "zentao",
+    "若依权限": "ruoyi",
+    "JeecG 表单": "jeecg",
+}
+
+
 def _session_hosts(db: Session, session_ids: set[str] | None = None) -> dict[str, str]:
     """session_id → 首条 navigation 的 host（一次查询批量派生）。
     S42：给定 session_ids 时只查相关行——全表 navigation 扫描是

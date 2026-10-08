@@ -27,6 +27,7 @@ const name = ref("");
 const flowNodes = ref([]);
 const flowEdges = ref([]);
 let nodeSeq = 0;
+let selectSeq = 0; // 竞态守卫（同 AuditView）：快速切换画布时晚到响应不得覆盖新选中
 const selectedNodeId = ref(null);
 const saving = ref(false);
 const saveError = ref("");
@@ -108,6 +109,15 @@ function nodeClass(id) {
 function nodeArtifact(id) {
   return (lastRun.value?.node_outputs || []).find((s) => s.node === id) || null;
 }
+// 已有节点 id 的最大数字后缀（删过节点后 id 可能不连续，用 length 会撞 id）
+function maxNodeNum(nodes) {
+  let max = 0;
+  for (const n of nodes) {
+    const m = /^n(\d+)$/.exec(n.id);
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return max;
+}
 function dagPayload() { return { nodes: toCanvasNodes(), edges: toCanvasEdges() }; }
 async function onSave() {
   if (!name.value.trim()) { saveError.value = "请输入名称"; return; }
@@ -135,6 +145,7 @@ async function onRun() {
   } finally { running.value = false; }
 }
 async function onSelectCanvas() {
+  const seq = ++selectSeq;
   saveError.value = ""; runError.value = ""; runHint.value = ""; savedHint.value = "";
   lastRun.value = null; runs.value = []; selectedNodeId.value = null;
   if (!selectedCanvasId.value) {
@@ -143,12 +154,16 @@ async function onSelectCanvas() {
   }
   try {
     const d = await getCanvas(selectedCanvasId.value);
+    if (seq !== selectSeq) return; // 已切到别的画布，丢弃
     name.value = d.name;
     flowNodes.value = toFlowNodes(d.dag.nodes);
     flowEdges.value = toFlowEdges(d.dag.edges);
-    nodeSeq = d.dag.nodes.length;
+    nodeSeq = maxNodeNum(d.dag.nodes);
     currentCanvasId.value = d.id;
-  } catch (e) { saveError.value = e instanceof Error ? e.message : String(e); }
+  } catch (e) {
+    if (seq !== selectSeq) return;
+    saveError.value = e instanceof Error ? e.message : String(e);
+  }
 }
 onMounted(async () => {
   try { canvases.value = await listCanvases(); }

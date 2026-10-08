@@ -84,7 +84,7 @@ async def login(page: Page, manifest: Manifest) -> bool:
         await page.wait_for_timeout(2500)
         probe = manifest.login.success.url_not_contains
         if probe and probe not in page.url:
-            if getattr(manifest.login, "admin_nickname", None):
+            if manifest.login.admin_nickname:
                 nick = await page.evaluate(
                     "(() => (document.querySelector("
                     "'.user-nickname')||{textContent:''})"
@@ -124,9 +124,12 @@ async def login(page: Page, manifest: Manifest) -> bool:
 
 
 def _looks_like_swapped_user(nick: str) -> bool:
-    """昵称呈换参产物特征（E+数字/SL/M+大写标记开头）——非演示管理员。"""
+    """昵称呈换参产物特征（E+数字/SL/M+大写标记开头）——非演示管理员。
+    形态实证：v21_matrix `E{rnd}{ts}` 与 `M{A|B|C}{ts}x{n}`、zentao 清单
+    `SL回放${ts}`——旧正则 ^[ES][L0-9] 漏 M+大写标记形态（注释对、正则错，
+    评审三轮 #4 收口）。"""
     import re
-    return bool(re.match(r"^[ES][L0-9]", nick)) or nick.startswith("SL")
+    return bool(re.match(r"^(?:[ES][L0-9]|M[A-Z])", nick))
 
 
 async def _force_logout(page: Page) -> bool:

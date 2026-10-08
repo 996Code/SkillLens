@@ -107,6 +107,33 @@ async function get<T>(path: string): Promise<T> {
   return resp.json() as Promise<T>;
 }
 
+/** 写请求统一出口（评审：4 处 POST detail 解析样板收口）：
+ * 非 2xx 抛 ApiError——错误体带 detail 用 detail，否则回退状态行
+ * （"METHOD /路径(去 /api/v1) -> 状态码"，与收口前逐字一致）。 */
+async function send<T>(path: string, init: RequestInit): Promise<T> {
+  const resp = await authedFetch(path, init);
+  if (!resp.ok) {
+    let detail =
+      `${init.method ?? "POST"} ${path.replace("/api/v1", "")} -> ${resp.status}`;
+    try {
+      const j = (await resp.json()) as { detail?: string };
+      if (j?.detail) detail = j.detail;
+    } catch {
+      /* 非 JSON 错误体，保留状态行 */
+    }
+    throw new ApiError(resp.status, detail);
+  }
+  return resp.json() as Promise<T>;
+}
+
+function jsonInit(method: string, body: unknown): RequestInit {
+  return {
+    method,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  };
+}
+
 // ---------- 类型（与 card 端点 14 字段对齐） ----------
 
 export interface SkillListItem {
@@ -149,6 +176,7 @@ export interface LastRun {
   id: number;
   status: string; // pass | fail | shadow | error
   mode: string; // shadow | execute
+  flaky: boolean;
   ts: string;
 }
 
@@ -672,26 +700,12 @@ export function getSessionTrace(sessionId: string): Promise<SessionTrace> {
 
 /** 触发执行观测（observe，同步返回：server 处理完才返回，无需轮询）。
  * 409 = 业务安全拒绝（delta 未确认 / shadow 未执行）。 */
-export async function replayObserve(
+export function replayObserve(
   deltaId: number | string,
   body: ObserveRequest,
 ): Promise<ObserveResponse> {
-  const resp = await authedFetch(`/api/v1/expected-deltas/${deltaId}/observe`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!resp.ok) {
-    let detail = `POST /expected-deltas/${deltaId}/observe -> ${resp.status}`;
-    try {
-      const j = (await resp.json()) as { detail?: string };
-      if (j?.detail) detail = j.detail;
-    } catch {
-      /* 非 JSON 错误体，保留状态行 */
-    }
-    throw new ApiError(resp.status, detail);
-  }
-  return resp.json() as Promise<ObserveResponse>;
+  return send<ObserveResponse>(
+    `/api/v1/expected-deltas/${deltaId}/observe`, jsonInit("POST", body));
 }
 
 /** S14 块H：画布 CRUD / 运行 / 运行详情。 */
@@ -704,41 +718,15 @@ export function getCanvas(id: number | string): Promise<CanvasDetail> {
 }
 
 /** 保存画布（版本化新行）。422 = DAG 校验错误（detail 透出给界面）。 */
-export async function saveCanvas(
+export function saveCanvas(
   name: string,
   dag: CanvasDag,
 ): Promise<{ id: number }> {
-  const resp = await authedFetch("/api/v1/canvas", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name, dag }),
-  });
-  if (!resp.ok) {
-    let detail = `POST /canvas -> ${resp.status}`;
-    try {
-      const j = (await resp.json()) as { detail?: string };
-      if (j?.detail) detail = j.detail;
-    } catch {
-      /* 非 JSON 错误体，保留状态行 */
-    }
-    throw new ApiError(resp.status, detail);
-  }
-  return resp.json() as Promise<{ id: number }>;
+  return send<{ id: number }>("/api/v1/canvas", jsonInit("POST", { name, dag }));
 }
 
-export async function runCanvas(id: number | string): Promise<CanvasRunResponse> {
-  const resp = await authedFetch(`/api/v1/canvas/${id}/run`, { method: "POST" });
-  if (!resp.ok) {
-    let detail = `POST /canvas/${id}/run -> ${resp.status}`;
-    try {
-      const j = (await resp.json()) as { detail?: string };
-      if (j?.detail) detail = j.detail;
-    } catch {
-      /* 非 JSON 错误体，保留状态行 */
-    }
-    throw new ApiError(resp.status, detail);
-  }
-  return resp.json() as Promise<CanvasRunResponse>;
+export function runCanvas(id: number | string): Promise<CanvasRunResponse> {
+  return send<CanvasRunResponse>(`/api/v1/canvas/${id}/run`, { method: "POST" });
 }
 
 export function listCanvasRuns(
@@ -766,25 +754,10 @@ export function getReviews(decision?: ReviewDecision): Promise<ReviewItem[]> {
 }
 
 /** 提交评审。422 = decision 非法；404 = agent_run 不存在；409 = 同 run 重复评审。 */
-export async function createReview(
+export function createReview(
   body: CreateReviewRequest,
 ): Promise<ReviewItem> {
-  const resp = await authedFetch("/api/v1/reviews", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!resp.ok) {
-    let detail = `POST /reviews -> ${resp.status}`;
-    try {
-      const j = (await resp.json()) as { detail?: string };
-      if (j?.detail) detail = j.detail;
-    } catch {
-      /* 非 JSON 错误体，保留状态行 */
-    }
-    throw new ApiError(resp.status, detail);
-  }
-  return resp.json() as Promise<ReviewItem>;
+  return send<ReviewItem>("/api/v1/reviews", jsonInit("POST", body));
 }
 
 // ---------- S32：链路时间线 + LLM IO 全留存 ----------

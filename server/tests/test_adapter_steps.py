@@ -131,3 +131,70 @@ async def test_unknown_routine_rejected():
         await run_routine(page, "no_such")
     await browser.close()
     await pw.stop()
+
+
+def test_looks_like_swapped_user():
+    """评审三轮 #4：注释声明覆盖 E+数字/SL/M+大写标记——v21_matrix 实际
+    产 `M{A|B|C}{ts}x{n}`（M+大写标记）与 `E{rnd}{ts}`，旧正则 ^[ES][L0-9]
+    漏 M 形态（注释对、正则错）。"""
+    from app.adapters.steps import _looks_like_swapped_user
+    assert _looks_like_swapped_user("E112345") is True
+    assert _looks_like_swapped_user("SL回放123") is True
+    assert _looks_like_swapped_user("MA12345x67") is True
+    assert _looks_like_swapped_user("MB999x1") is True
+    assert _looks_like_swapped_user("管理员") is False
+    assert _looks_like_swapped_user("admin") is False
+    assert _looks_like_swapped_user("Super User") is False
+
+
+MANIFEST_NICK = MANIFEST.replace(
+    "login:\n  steps:", "login:\n  admin_nickname: 超级管理员\n  steps:")
+
+HOME_WRONG_NICK = """
+<html><body><div class="user-nickname">张三</div></body></html>
+"""
+
+
+async def test_admin_nickname_mismatch_forces_relogin(monkeypatch):
+    """评审三轮 #4：声明 admin_nickname 后，页面昵称不符（上轮换参用户
+    残留会话）必须强制退出重登——字段缺失时该分支是死代码。"""
+    import app.adapters.steps as S
+    logout_calls = []
+    orig_logout = S._force_logout
+
+    async def spy_logout(page):
+        logout_calls.append(page.url)
+        return await orig_logout(page)
+
+    monkeypatch.setattr(S, "_force_logout", spy_logout)
+
+    pw = await async_playwright().start()
+    browser = await pw.chromium.launch()
+    page = await browser.new_page()
+
+    async def route_fn(route):
+        cookie = route.request.headers.get("cookie") or ""
+        logged = "sess=1" in cookie
+        if route.request.url.rstrip("/") == "http://mock.local":
+            if logged:
+                await route.fulfill(status=200,
+                                    content_type="text/html; charset=utf-8",
+                                    body=HOME_WRONG_NICK)
+            else:
+                await route.fulfill(status=302, headers={"Location": "/login"})
+        else:
+            await route.fulfill(status=200,
+                                content_type="text/html; charset=utf-8",
+                                body=LOGIN_PAGE)
+
+    await page.route("http://mock.local/**", route_fn)
+    await browser.contexts[0].add_cookies(
+        [{"name": "sess", "value": "1", "url": "http://mock.local"}])
+    m, _ = load_manifest_text(MANIFEST_NICK)
+    assert m.login.admin_nickname == "超级管理员"  # 字段须真实到达模型
+    ok = await login(page, m)
+    await browser.close()
+    await pw.stop()
+    assert ok is True
+    # 身份不符 → 强制退出被触发（死代码复活的行为铁证）
+    assert len(logout_calls) == 1

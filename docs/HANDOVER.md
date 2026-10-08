@@ -61,7 +61,8 @@ LLM 边界纪律：**LLM 只做命名/结构化/归因/提案，一切判定确�
 - sprint40/41/42 无独立 user-test-report（当时验收以提交+HANDOVER 矩阵承载）。
 - 若依 checkout 的 livewire POST 语义（S42 探索遗留，骨架已带 POST 证据）。
 - LLM 依赖单网关单模型（deepseek-v4-flash-0731-oc），无 fallback 链。
-- **评审记录不修中危 13 项**（2026-10-07 全库评审，docs/reviews/2026-10-07-full-codebase-audit.md §三）——含 CORS `*`+events 豁免污染面、probes docker-exec 角色收紧、events 批量 409 整批回滚、execute() 巨型函数重构、执行器全局残留/listener 泄漏、AdaptersView 错误处理、token 进 URL。**私有化部署前必须处理前两项**。
+- **评审遗留（2026-10-08 三轮评审后）**：二轮 13 项中危已全部处置（修/缓修见
+  `docs/reviews/2026-10-07-full-codebase-audit.md` §三更新）；三轮（`docs/reviews/2026-10-08-full-codebase-audit-round3.md`）新增缓修/记录 34 项**逐条附理由与触发条件**（§六）——私有化前必做：events 共享 secret（A3）、token 一次性换票（A6/F5）、login 限速、`skill_id` FK 清洗迁移、`DateTime` tz 统一。**插件三处"路径激活型"修复（firstLocateAfterGoto off-by-one / Get Items 二拷贝 CSRF / hover-trigger 假报成功）须与下一次真机 52 链矩阵轮同批做**——修好即激活从未真机验证过的路径，预期通过率可能变化（那可能是暴露真缺陷）。
 - 采集层限制（已归档）：Odoo OWL SPA 壳、Snipe model-create 无表单标记、Dolibarr iframe 聚类 windows:0、禅道录制 label 歧义。
 
 ## 3. 开发路线图（建议优先级）
@@ -124,9 +125,9 @@ docs/arch/2026-10-07-platform-interaction-profile.md。
 ### 4.3 测试基线（每 Sprint 合并前提：三套全绿）
 
 ```bash
-cd server && uv run pytest -q                        # 508 passed
-cd server/web && npm test                            # 54 passed
-cd extension && npm run build && npm test            # 83 passed
+cd server && uv run pytest -q                        # 546 passed（勿并行两套 pytest——test.db 互撞）
+cd server/web && npm test                            # 78 passed
+cd extension && npm run build && npm test            # 99 passed
 ```
 
 （web/extension 的 Node 前缀：`export PATH="/d/github/.tools/node-v24.18.0-win-x64:$PATH"`）

@@ -60,6 +60,49 @@ credentials: {username: u, password_literal: p}
     assert match_adapter("http://old/x", [m]) is None
 
 
+def test_host_wildcard_no_cross_boundary_spoof():
+    """评审三轮 #5a：host 段 `*` 曾编译为 `.*`——可跨 `/`、`.` 边界，
+    `http://evil.com/.example.com/x` 伪装命中 `http://*.example.com/*`。
+    host 段必须收敛为单 label（[^./]*）。"""
+    pat = "http://*.example.com/*"
+    assert not url_pattern_match("http://evil.com/.example.com/x", pat)
+    assert not url_pattern_match("http://evil.com/x.example.com/y", pat)
+    assert not url_pattern_match("http://a.b.example.com/x", pat)
+    # 合法单子域照常命中
+    assert url_pattern_match("http://erp.example.com/sales/order", pat)
+
+
+def test_path_wildcard_still_crosses_slash():
+    """路径段 `*` 保持油猴语义（跨 `/`）——5a 只收敛 host 段。"""
+    assert url_pattern_match("http://h:1/a/b/c", "http://h:1/*")
+    assert url_pattern_match("http://h/app/online/cgform?id=3", "http://h/app/*")
+
+
+def test_query_pattern_never_matches_but_lints():
+    """评审三轮 #5b（选定方案：query 保持剥离+loader lint 警示）——
+    含 `?` 的模式按油猴语义永不命中，作者必须收到警告而非静默失效。"""
+    assert not url_pattern_match("http://x/app", "http://x/app?a=1")
+    doc = """
+id: q
+target: {base_url: "http://x"}
+credentials: {username: u, password_literal: p}
+url_matches: ["http://x/app?a=1"]
+"""
+    _, lints = load_manifest_text(doc)
+    assert any(l.code == "url_match_query" for l in lints)
+
+
+def test_equal_specificity_resolves_by_manifest_id():
+    """评审三轮 #5c：同 specificity 曾按迭代序（文件名序）偶中——
+    收敛为确定性 (specificity desc, manifest id asc)。"""
+    m1 = _manifest('["http://tie.local/*"]')
+    m1.id = "zzz"
+    m2 = _manifest('["http://tie.local/*"]')
+    m2.id = "aaa"
+    assert match_adapter("http://tie.local/x", [m1, m2]).id == "aaa"
+    assert match_adapter("http://tie.local/x", [m2, m1]).id == "aaa"
+
+
 async def test_match_api(client):
     r = await client.get("/api/v1/adapters/match",
                          params={"url": "http://127.0.0.1:8095/online/cgform"})

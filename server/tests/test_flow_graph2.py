@@ -65,14 +65,18 @@ async def test_build_state_machine(seeded_flow_data, client):
     labels = {n["label"] for n in sm["nodes"]}
     assert "status=active" in labels
     assert "status=resolved" in labels
+    # 评审#5：节点 id=复合键 field=value（裸 value 会让同值不同字段并点）
+    ids = {n["id"] for n in sm["nodes"]}
+    assert "status=active" in ids and "status=resolved" in ids
     # 转移边 active→resolved 出现两轮 → 计数 2
-    edge = next(e for e in sm["edges"] if e["from"] == "active" and e["to"] == "resolved")
+    edge = next(e for e in sm["edges"]
+                if e["from"] == "status=active" and e["to"] == "status=resolved")
     assert edge["count"] == 2
     # active 是 status 流初始态（无入边）、resolved 是其终态（无出边）
-    assert "active" in sm["initial"]
-    assert "resolved" in sm["final"]
+    assert "status=active" in sm["initial"]
+    assert "status=resolved" in sm["final"]
     # 常量信号（result=success 每步相同）无转移边，孤点不进 initial/final 误判
-    assert "resolved" not in sm["initial"]
+    assert "status=resolved" not in sm["initial"]
 
 
 async def test_build_learning_graph(seeded_flow_data, client):
@@ -123,7 +127,60 @@ async def test_skill_state_machine_endpoint(seeded_flow_data, client):
     assert resp.status_code == 200
     body = resp.json()
     assert any(n["label"] == "status=active" for n in body["nodes"])
-    assert "active" in body["initial"]
+    assert "status=active" in body["initial"]
+
+
+async def test_state_machine_fields_do_not_collide(client):
+    """评审#5：status=1 与 docstatus=1 曾并为同一节点（id=裸 value，首个
+    label 胜、两字段转移画在一个节点上）——复合键后是两个独立节点、
+    各自独立边；field/value 以新增属性下发（响应契约不变）。"""
+    from app.db import SessionLocal
+    from app.models import Alignment, SemanticAction, Skill
+    from app.replay.flow_graph import build_state_machine
+    db = SessionLocal()
+    try:
+        skeleton = [
+            {"signature": "click:提交", "session_window_seqs": {"sA": 0}},
+            {"signature": "click:审核", "session_window_seqs": {"sA": 1}},
+        ]
+        al = Alignment(session_ids=["sA"], skeleton=skeleton,
+                       param_variables=[], input_variables=[])
+        db.add(al)
+        db.flush()
+        db.add(SemanticAction(session_id="sA", window_seq=0, anchor_seq=0,
+                              anchor_type="click", target={"label": "提交"},
+                              api_calls=[], state_signals=[
+                                  {"field": "status", "value": 1},
+                                  {"field": "docstatus", "value": 0}]))
+        db.add(SemanticAction(session_id="sA", window_seq=1, anchor_seq=1,
+                              anchor_type="click", target={"label": "审核"},
+                              api_calls=[], state_signals=[
+                                  {"field": "status", "value": 2},
+                                  {"field": "docstatus", "value": 1}]))
+        sk = Skill(alignment_id=al.id, name="n", description="d",
+                   status="learned", skeleton=skeleton,
+                   param_variables=[], input_variables=[],
+                   confidence=1.0, evidence_count=1)
+        db.add(sk)
+        db.commit()
+        sm = build_state_machine(db, sk.id)
+    finally:
+        db.close()
+    by_id = {n["id"]: n for n in sm["nodes"]}
+    # 同值 1 的两个字段状态是不同节点
+    assert "status=1" in by_id and "docstatus=1" in by_id
+    assert by_id["status=1"]["label"] == "status=1"
+    assert by_id["docstatus=1"]["label"] == "docstatus=1"
+    assert by_id["status=1"]["field"] == "status"
+    assert by_id["docstatus=1"]["field"] == "docstatus"
+    assert by_id["status=1"]["value"] == "1"
+    # 各字段转移独立成边，无跨字段串边
+    edge_set = {(e["from"], e["to"]) for e in sm["edges"]}
+    assert ("status=1", "status=2") in edge_set
+    assert ("docstatus=0", "docstatus=1") in edge_set
+    assert len(edge_set) == 2
+    assert sm["initial"] == ["docstatus=0", "status=1"]
+    assert sm["final"] == ["docstatus=1", "status=2"]
 
 
 async def test_learning_graph_endpoint(client):

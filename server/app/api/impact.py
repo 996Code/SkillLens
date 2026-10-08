@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.learning.impact import analyze_impact
 from app.models import AgentRun
+from app.api.auth import WRITE_GUARD
 
 router = APIRouter()
 
@@ -33,7 +34,7 @@ class ImpactRequest(BaseModel):
         return self
 
 
-@router.post("/impact/analyze")
+@router.post("/impact/analyze", dependencies=WRITE_GUARD)
 async def analyze(body: ImpactRequest, db: Session = Depends(get_db)) -> dict:
     return analyze_impact(db, body.api_templates, body.anchor_labels)
 

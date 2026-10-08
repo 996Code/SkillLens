@@ -153,8 +153,13 @@ async def test_executor_finish_lands_run_with_executor_mark(client, monkeypatch)
 async def test_executor_intervention_exhausted_fails(client, monkeypatch):
     """协议 §4 超限语义：介入用满（=2）后再 miss → detach+intervention_
     exhausted+run fail。手工造 label 首步 run（真实 plan 首步是 goto 无
-    label，测不到介入链——ASGI 复现实证）。"""
+    label，测不到介入链——ASGI 实证）。
+
+    三轮评审修正：提案采纳改为确定性成员校验后，"LLM 返回任意串即 heal"
+    不再成立——本用例改为按钮改名场景（旧 label 不在页面上、提案取自
+    page_texts），每轮都真 heal（cursor 复位重发同步），第三轮判超限。"""
     monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_FAKE_RESPONSE", "保存")     # 提案取自页面证据
     from app.db import SessionLocal
     from app.models import ReplayRun
     db = SessionLocal()
@@ -162,7 +167,7 @@ async def test_executor_intervention_exhausted_fails(client, monkeypatch):
         skill_id=1, mode="execute", status="running",
         plan={"steps": [], "url": "http://t/",
               "executor_instructions": [
-                  {"seq": 1, "op": "click", "label": "保存", "labels": [],
+                  {"seq": 1, "op": "click", "label": "保存旧名", "labels": [],
                    "timeout_ms": 5},
                   {"seq": 2, "op": "detach", "timeout_ms": 5}],
               "executor_state": {"cursor": 0, "received": [],

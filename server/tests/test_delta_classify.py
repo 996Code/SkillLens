@@ -31,3 +31,44 @@ def test_empty_edges():
     assert r["unexpected"] and not r["expected"] and not r["missing"]
     r2 = classify_delta([{"type": "api_add", "value": "/x"}], [])
     assert r2["missing"] and not r2["unexpected"]
+
+
+def test_duplicate_observed_consumed_one_per_expected():
+    """评审#8：list.index 永远返回首个匹配 → 重复 (type,value) 观测条目
+    第二条永不被标记 matched。修复语义=逐条消费：两条相同 expected 各
+    消费一条相同 observed → 全 matched，无 unexpected。"""
+    exp = [{"type": "api_add", "value": "/a/save"},
+           {"type": "api_add", "value": "/a/save"}]
+    obs = [{"type": "api_add", "value": "/a/save"},
+           {"type": "api_add", "value": "/a/save"}]
+    r = classify_delta(exp, obs)
+    assert len(r["expected"]) == 2
+    assert r["unexpected"] == []
+    assert r["missing"] == []
+
+
+def test_duplicate_observed_single_expected_reports_extra():
+    """一条 expected 只消费一条 observed——多出的重复条目是真实的
+    额外发生（如重复提交），必须报 unexpected，不得静默吞掉。"""
+    r = classify_delta([{"type": "api_add", "value": "/a/save"}],
+                       [{"type": "api_add", "value": "/a/save"},
+                        {"type": "api_add", "value": "/a/save"}])
+    assert len(r["expected"]) == 1
+    assert len(r["unexpected"]) == 1
+
+
+def test_malformed_entries_recorded_not_raising():
+    """评审#7：人工修订的 changes 原样保留（expected.py），缺 type/value
+    的条目不得 KeyError 500——按 C3 记入 missing/unexpected 并带 reason，
+    可见不吞。"""
+    r = classify_delta(
+        [{"type": "api_add"},                    # 缺 value
+         {"value": "/a/save"},                   # 缺 type
+         {"type": "api_add", "value": "/ok"}],
+        [{"type": "api_add", "value": "/ok"},
+         {"type": "api_add"}])                   # observed 缺 value
+    assert len(r["expected"]) == 1
+    assert len(r["missing"]) == 2
+    assert all("reason" in m for m in r["missing"])
+    assert len(r["unexpected"]) == 1
+    assert "reason" in r["unexpected"][0]

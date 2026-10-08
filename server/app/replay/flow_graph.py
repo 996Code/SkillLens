@@ -87,7 +87,6 @@ def build_run_flow(run) -> dict:
         nodes[0]["screenshot"] = "start.png"
 
     # 操作链（含每步截图/成败）
-    shot_idx = 1
     for i, step in enumerate(executed, start=1):
         kind = str(step.get("kind", ""))
         label = str(step.get("label") or step.get("name") or kind)
@@ -103,7 +102,6 @@ def build_run_flow(run) -> dict:
         cur = add(node)
         edges.append({"from": prev, "to": cur})
         prev = cur
-        shot_idx = i + 1
 
     # 业务状态（执行时派生随 plan 落库：plan.business_states）
     for st in plan.get("business_states") or []:
@@ -136,7 +134,13 @@ def build_state_machine(db, skill_id: int) -> dict:
 
     证据范围与断言同源：骨架各步 session_window_seqs 指向的
     semantic_action.state_signals（field/value），按窗口序聚转移边并计数。
-    初始态=无入边状态；终态=无出边状态。节点 id=状态值（如 active）。
+    初始态=无入边状态；终态=无出边状态。
+    评审#5：节点 id=复合键 field=value——裸 value 作 id 会把 status=1 与
+    docstatus=1 并成同一节点（首个 label 胜、两个字段的转移画在一个节点
+    上）。响应契约保持（web FlowGraph/StateMachineDTO 消费
+    {id,type,label,status} + edges{from,to,count} + initial/final 节点 id
+    列表）：label 仍为 field=value 显示文本不变，field/value 以**新增**
+    属性下发（不改既有键名）。
     """
     from sqlalchemy import select
 
@@ -166,29 +170,34 @@ def build_state_machine(db, skill_id: int) -> dict:
                     continue
                 by_field.setdefault(field, []).append(value)
 
-    # 聚合：节点=去重 field=value（id 用 value，label 用 field=value）；
-    # 边=同 field 流内的顺序转移，跨轮去重计数
-    node_label: dict[str, str] = {}
+    # 聚合：节点=去重 field=value（id=复合键 field=value，label 同文本；
+    # field/value 另以独立属性下发）；边=同 field 流内的顺序转移，跨轮去重计数
+    node_field: dict[str, str] = {}   # node id -> field
+    node_value: dict[str, str] = {}   # node id -> value
     edge_count: dict[tuple[str, str], int] = {}
     for sid, by_field in streams.items():
         for field, values in by_field.items():
             seq = []
             for v in values:
-                if v not in node_label:
-                    node_label[v] = f"{field}={v}"
-                if v not in seq:
-                    seq.append(v)
+                nid = f"{field}={v}"
+                if nid not in node_field:
+                    node_field[nid] = field
+                    node_value[nid] = v
+                if nid not in seq:
+                    seq.append(nid)
             for a, b in zip(seq, seq[1:]):
                 edge_count[(a, b)] = edge_count.get((a, b), 0) + 1
 
     has_in = {b for (_, b) in edge_count}
     has_out = {a for (a, _) in edge_count}
-    nodes = [{"id": v, "type": "state", "label": node_label[v], "status": "ok"}
-             for v in node_label]
+    nodes = [{"id": nid, "type": "state",
+              "label": f"{node_field[nid]}={node_value[nid]}", "status": "ok",
+              "field": node_field[nid], "value": node_value[nid]}
+             for nid in node_field]
     edges = [{"from": a, "to": b, "count": n} for (a, b), n in edge_count.items()]
     return {"nodes": nodes, "edges": edges,
-            "initial": sorted(v for v in node_label if v not in has_in),
-            "final": sorted(v for v in node_label if v not in has_out)}
+            "initial": sorted(nid for nid in node_field if nid not in has_in),
+            "final": sorted(nid for nid in node_field if nid not in has_out)}
 
 
 def build_learning_graph(db, limit_sessions: int = 30) -> dict:

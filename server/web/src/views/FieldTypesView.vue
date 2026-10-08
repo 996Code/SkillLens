@@ -89,6 +89,7 @@ async function saveEdit(): Promise<void> {
 }
 
 async function remove(id: number): Promise<void> {
+  if (!window.confirm("确定删除该规则？（不可恢复）")) return;
   busy.value = true;
   try {
     await deleteFieldType(id);

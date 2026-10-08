@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
 from app.learning.devplan import generate_dev_plan
-from app.models import DevPlan
+from app.models import DevPlan, User
+from app.api.auth import WRITE_GUARD, require_role
 
 router = APIRouter()
 
@@ -30,7 +31,7 @@ class DevPlanCreateRequest(BaseModel):
     target_form: str = Field(min_length=1, max_length=100)
 
 
-@router.post("/dev-plans", status_code=201)
+@router.post("/dev-plans", status_code=201, dependencies=WRITE_GUARD)
 async def create_dev_plan(body: DevPlanCreateRequest,
                           db: Session = Depends(get_db)) -> dict:
     row = await generate_dev_plan(db, body.requirement_text, body.target_form)
@@ -58,27 +59,24 @@ async def get_dev_plan(plan_id: int, db: Session = Depends(get_db)) -> dict:
             "created_at": row.created_at.isoformat() if row.created_at else None}
 
 
-class ConfirmRequest(BaseModel):
-    reviewed_by: str = Field(min_length=1, max_length=100)
-
-
 @router.post("/dev-plans/{plan_id}/confirm")
-async def confirm_dev_plan(plan_id: int, body: ConfirmRequest,
-                           db: Session = Depends(get_db)) -> dict:
-    """C1 延伸门控：draft → confirmed（人工确认，同 expected-delta 模式）。"""
+async def confirm_dev_plan(plan_id: int, db: Session = Depends(get_db),
+                           user: User = Depends(require_role("admin", "reviewer"))) -> dict:
+    """C1 延伸门控：draft → confirmed（人工确认，同 expected-delta 模式）。
+    确认人取登录态——请求体自报 reviewed_by 可被任意 viewer 冒充 admin。"""
     row = db.get(DevPlan, plan_id)
     if not row:
         raise HTTPException(404, "dev plan not found")
     if row.status == "confirmed":
         raise HTTPException(409, "已确认过，不可重复确认")
     row.status = "confirmed"
-    row.reviewed_by = body.reviewed_by
+    row.reviewed_by = user.username
     db.commit()
     db.refresh(row)
     return {"id": row.id, "status": row.status, "reviewed_by": row.reviewed_by}
 
 
-@router.post("/dev-plans/{plan_id}/execute")
+@router.post("/dev-plans/{plan_id}/execute", dependencies=WRITE_GUARD)
 async def execute_dev_plan(plan_id: int, db: Session = Depends(get_db)) -> dict:
     """仅 confirmed 可执行（C1 延伸：draft 计划不可执行）。
     执行走浏览器自动化（常驻窗口可见），全程落 execution_log（C3）。"""

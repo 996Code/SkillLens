@@ -68,7 +68,9 @@ async def main() -> None:
     cfg = dotenv_values(ROOT / "server" / ".env")
     user = cfg.get("NJMIND_USER") or ""
     password = cfg.get("NJMIND_PASS") or ""
-    login_url = cfg.get("NJMIND_LOGIN_URL") or "http://192.168.99.22/mb3/1/"
+    login_url = cfg.get("NJMIND_LOGIN_URL")
+    if not login_url:
+        sys.exit("缺少 NJMIND_LOGIN_URL（server/.env）——内网网关地址不入库")
     note = NOTE
     if "--note" in sys.argv:
         i = sys.argv.index("--note")
@@ -78,7 +80,10 @@ async def main() -> None:
     if not user or not password:
         sys.exit("缺少 NJMIND_USER/NJMIND_PASS（server/.env）——"
                  "缺凭据时会以表单定位超时的间接症状报错，这里显式报")
-    if "://" not in FORM_URL:
+    # "://" 判定无效：NJMIND_HOST 缺失时拼出 "http:///mb3/..." 仍含 "://"，
+    # 必须直接校验来源环境变量本身
+    if not (os.environ.get("NJMIND_DESIGNER_URL")
+            or os.environ.get("NJMIND_HOST")):
         sys.exit("缺少 NJMIND_DESIGNER_URL/NJMIND_HOST（环境变量）——内网网关地址不入库")
 
     try:
@@ -94,8 +99,8 @@ async def main() -> None:
                            browser.contexts[0])
                 owns_ctx = False
             else:
-                profile = Path(f"/tmp/skilllens-ext-profile"
-                               f"{'' if channel == 'chromium' else '-' + channel}")
+                # profile 项目内相对路径（评审：/tmp 在 Windows 依赖盘符解析）
+                profile = ROOT / f".ext-profile{'' if channel == 'chromium' else '-' + channel}"
                 ctx = await p.chromium.launch_persistent_context(
                     str(profile),
                     headless=False,
@@ -145,7 +150,7 @@ async def main() -> None:
         # 独占运行：模式串会匹配并发第二实例的浏览器，本脚本设计为单实例。
         # Windows 无 pkill，跳过（ctx.close() 已正常收尾）
         if shutil.which("pkill"):
-            subprocess.run(["pkill", "-f", "skilllens-ext-profile"],
+            subprocess.run(["pkill", "-f", ".ext-profile"],
                            capture_output=True)
 
     # 5) 落库验证：server 无事件查询端点，直接查 SQLite（与 server 同目录）

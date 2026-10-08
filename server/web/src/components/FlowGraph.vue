@@ -94,15 +94,21 @@ const vfEdges = computed(() =>
   })),
 );
 
+// 截图竞态守卫（评审）：快速连点两个带截图节点时旧响应不得覆盖新选中
+let shotSeq = 0;
+
 async function onNodeClick({ node }: { node: { id: string } }): Promise<void> {
   const n = props.nodes.find((x) => x.id === node.id);
   if (!n) return;
+  const seq = ++shotSeq;
   selected.value = n;
   if (shotUrl.value) URL.revokeObjectURL(shotUrl.value);
   shotUrl.value = null;
   if (n.screenshot && props.runId != null) {
     try {
-      shotUrl.value = await fetchStepScreenshot(props.runId, n.screenshot);
+      const url = await fetchStepScreenshot(props.runId, n.screenshot);
+      if (seq !== shotSeq) { URL.revokeObjectURL(url); return; }
+      shotUrl.value = url;
     } catch {
       /* 截图缺失不阻塞 */
     }
@@ -111,6 +117,7 @@ async function onNodeClick({ node }: { node: { id: string } }): Promise<void> {
 
 // blob URL 泄漏收口（评审）：路由切换/组件卸载时释放
 onBeforeUnmount(() => {
+  shotSeq += 1; // 卸载后晚到的响应直接 revoke
   if (shotUrl.value) URL.revokeObjectURL(shotUrl.value);
 });
 </script>

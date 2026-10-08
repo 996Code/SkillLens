@@ -867,3 +867,77 @@ async def test_locate_scored_fallback_button_prefix_ambiguity():
         await browser.close()
     assert strategy == "scored"
     assert info["txt"] == "Get Items" and info["inModal"]
+
+
+INTERCEPT_WITH_GET_NOISE_HTML = """
+<html><body>
+  <form><input name="qty" value="">
+  <p class="help-block error" style="display:none">必填项缺失。</p>
+  <button type="submit" id="b">Save</button></form>
+  <script>
+    for (let i = 0; i < 3; i++) { fetch("http://mock.local/poll?i=" + i); }
+    document.getElementById("b").addEventListener("click", (e) => {
+      e.preventDefault();
+      document.querySelector(".help-block.error").style.display = "block";
+    });
+  </script>
+</body></html>
+"""
+
+
+async def test_execute_plan_intercepted_submit_fails_despite_get_noise():
+    """三轮评审 🔴：页面自带 GET 轮询噪声时，写按钮被前端校验拦下（点击后
+    零写请求）仍必须判"提交被拦"。水位曾按 observed 总条数比较——GET 噪声
+    即抬高水位使拦截判定形同虚设，被拦提交放行成 pass。"""
+    from app.replay.runner import execute_plan
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.route("**/poll**", lambda route: route.fulfill(
+            status=200, body="[]"))
+        await page.route("http://mock.local/", lambda route: route.fulfill(
+            status=200, content_type="text/html; charset=utf-8",
+            body=INTERCEPT_WITH_GET_NOISE_HTML))
+        await page.goto("http://mock.local/")
+        await page.wait_for_timeout(500)
+        plan = {"url": "about:blank", "steps": [{"kind": "click", "label": "Save"}]}
+        result = await execute_plan(page, plan)
+        step = result["executed"][0]
+        assert step["ok"] is False
+        assert "提交被拦" in (step.get("error") or "")
+        await browser.close()
+
+
+PREFETCH_WRITE_HTML = """
+<html><body>
+  <div class="list-item"><label><input type="checkbox" value="on"> 选择</label></div>
+  <button type="submit" id="b">Save</button>
+  <script>
+    document.querySelector("input[type=checkbox]").addEventListener("change", () => {
+      fetch("http://mock.local/run_doc_method", {method: "POST", body: "{}"});
+    });
+    document.getElementById("b").addEventListener("click", (e) => e.preventDefault());
+  </script>
+</body></html>
+"""
+
+
+async def test_execute_plan_prefetch_write_releases_later_button():
+    """预拉放行语义保留（与上一条成对）：勾选触发框架 POST 预拉后，写按钮
+    点击无新请求（框架去重）不算拦截。水位改为只认写响应后此路仍须放行。"""
+    from app.replay.runner import execute_plan
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.route("**/run_doc_method", lambda route: route.fulfill(
+            status=200, body='{"ok":true}'))
+        await page.route("http://mock.local/", lambda route: route.fulfill(
+            status=200, content_type="text/html; charset=utf-8",
+            body=PREFETCH_WRITE_HTML))
+        await page.goto("http://mock.local/")
+        plan = {"url": "about:blank", "steps": [
+            {"kind": "click", "label": "选择"},
+            {"kind": "click", "label": "Save"}]}
+        result = await execute_plan(page, plan)
+        assert all(s.get("ok") for s in result["executed"]), result["executed"]
+        await browser.close()

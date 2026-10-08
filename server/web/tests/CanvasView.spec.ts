@@ -337,4 +337,65 @@ describe("CanvasView", () => {
     expect(root.textContent).toContain("运行历史");
     expect(root.textContent).toContain("#11");
   });
+
+  it("loads canvas with non-contiguous node ids: new node id = max suffix + 1",
+    async () => {
+      // 评审#8：nodeSeq 曾取 nodes.length——删过节点后（n1,n3）新节点会撞 n3
+      const sparseDag = {
+        nodes: [
+          { id: "n1", type: "aggregate", params: {}, x: 0, y: 0 },
+          { id: "n3", type: "aggregate", params: {}, x: 200, y: 0 },
+        ],
+        edges: [],
+      };
+      const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method || "GET").toUpperCase();
+        if (method === "POST" && url.endsWith("/api/v1/canvas")) {
+          return jsonResp({ id: 43 });
+        }
+        if (/\/canvas\/8$/.test(url)) {
+          return jsonResp({ id: 8, name: "稀疏画布", dag: sparseDag,
+                            created_at: "2026-09-25T10:00:00" });
+        }
+        if (url.includes("/api/v1/canvas")) {
+          return jsonResp([{ id: 8, name: "稀疏画布",
+                             created_at: "2026-09-25T10:00:00" }]);
+        }
+        return new Response("not found", { status: 404 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      const root = document.createElement("div");
+      document.body.appendChild(root);
+      await mountCanvas(root);
+      await flush();
+      await flush();
+
+      const select =
+        root.querySelector("[data-testid='canvas-select']") as HTMLSelectElement;
+      select.value = "8";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      await flush();
+      await flush();
+
+      (root.querySelector("[data-testid='palette-aggregate']") as Element).click();
+      await flush();
+
+      setInput(
+        root.querySelector("[data-testid='canvas-name']") as HTMLInputElement,
+        "撞号回归");
+      (root.querySelector("[data-testid='save-btn']") as Element).click();
+      await flush();
+      await flush();
+
+      const saveCall = fetchMock.mock.calls
+        .map((c) => [String(c[0]), c[1] as RequestInit | undefined])
+        .find(([u, init]) =>
+          u.endsWith("/api/v1/canvas") &&
+          (init?.method || "GET").toUpperCase() === "POST");
+      const body = JSON.parse(saveCall![1]!.body as string);
+      const ids = body.dag.nodes.map((n: { id: string }) => n.id);
+      expect(ids).toEqual(["n1", "n3", "n4"]); // 非 length+1 的 "n3"（撞号）
+      expect(new Set(ids).size).toBe(ids.length);
+    });
 });

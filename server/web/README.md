@@ -13,12 +13,28 @@ export PATH="/d/github/.tools/node-v24.18.0-win-x64:$PATH"
 npm install        # 首次
 npm run build      # 构建到 dist/（server 启动时挂载；已挂载则新 dist 直接生效）
 npm run dev        # 开发模式（vite dev server，代理见 vite.config.ts → 127.0.0.1:8710）
-npm test           # vitest 单测（tests/*.spec.ts，jsdom 环境）
+npm test           # vitest 单测（tests/*.spec.ts，jsdom 环境；当前 78 用例全绿）
 ```
 
 注意：dist 是静态文件，StaticFiles 每次请求读盘——server 运行中替换 dist 即生效；
 但 `main.py` 在**启动时**判断 dist 存在性决定是否挂载，server 启动早于首次 build 时
 不挂载（需重启 server 才会挂上）。
+
+## 共享模块与开发约定（三轮评审沉淀）
+
+- `src/run-format.ts`：断言摘要/时间格式化的**单一来源**（`assertExpect`/`fmtTime` 等）——
+  视图不得再各写一份 payload 摘要（SkillGraphView 的 `payloadSummary` 双源漂移已删，行为由
+  `tests/run-format.spec.ts` 定版）。
+- `src/system-group.ts`：系统分组排序（`SYSTEM_ORDER`）与配色（`SYSTEM_COLORS`/`systemColor()`，
+  未列系统回退默认灰）——GraphOverview 圆点等处一律经它取色，**不要再写 CSS 属性选择器**
+  （曾因短名 vs 全名失配全成死样式）。`tests/system-group.spec.ts` 定版。
+- `src/api.ts` 的 `send<T>()`/`jsonInit()`：写请求统一出口（detail 提取 + 状态行回退文案与
+  历史逐字一致）——新增 POST 不再手抄 15 行样板。
+- **竞态守卫（seq 单调递增）**已是规范模式，落地于 AuditView/SkillGraphView/TimelineView/
+  FlowGraph/ShotGallery/CanvasView 六处：异步结果回来先比对 seq，过期即丢弃并 revoke blob。
+  新写"选择→异步加载"视图必须照此办理。
+- 路由参数变化须 `watch(route.params.*)` 重载（ReplayLaunch/ReplayRunView 曾缺——组件复用
+  时展示旧数据）。
 
 ## 路由表
 

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.learning.synthesis import synth_flow
 from app.models import SynthFlow
+from app.api.auth import WRITE_GUARD
 
 router = APIRouter()
 
@@ -29,7 +30,7 @@ class FlowGenerateRequest(BaseModel):
     system_hint: str = Field(min_length=1, max_length=200)
 
 
-@router.post("/flows/generate", status_code=201)
+@router.post("/flows/generate", status_code=201, dependencies=WRITE_GUARD)
 async def generate_flow(body: FlowGenerateRequest,
                         db: Session = Depends(get_db)) -> dict:
     row = await synth_flow(db, body.goal, body.system_hint)
@@ -62,7 +63,7 @@ class FlowExecuteRequest(BaseModel):
     confirm_side_effect: bool = False
 
 
-@router.post("/flows/{flow_id}/execute")
+@router.post("/flows/{flow_id}/execute", dependencies=WRITE_GUARD)
 async def execute_flow(flow_id: int, body: FlowExecuteRequest,
                        db: Session = Depends(get_db)) -> dict:
     """执行生成流程。C1：步骤 click 锚点关联写 API（POST/PUT/DELETE）→

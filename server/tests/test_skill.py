@@ -334,3 +334,41 @@ def test_parse_llm_skill_shape_agnostic():
     from app.learning.skill import parse_llm_skill
     d = parse_llm_skill('{"changes": [{"op": "add_field"}]}')
     assert d == {"changes": [{"op": "add_field"}]}
+
+
+async def test_induce_empty_skeleton_with_existing_skills(client, fake_llm):
+    """空骨架重归纳且该对齐已有旧技能：曾走"删旧 skill+子表"路径，其中
+    OutcomeAssertion 未导入 → NameError/500（三轮评审 🔴，该路径从未成功执行）。
+    现统一走 S15 supersede：旧行保留作历史并标记取代，新行 version 递增。"""
+    from app.db import SessionLocal
+    from app.models import Alignment, OutcomeAssertion, Skill
+
+    aid = await _make_alignment(client)
+    v1 = (await client.post(f"/api/v1/alignments/{aid}/induce")).json()
+
+    db = SessionLocal()
+    try:
+        db.add(OutcomeAssertion(skill_id=v1["id"], layer=1, kind="api_status",
+                                api_template="POST /x", payload={"expect_status": 200}))
+        al = db.get(Alignment, aid)
+        al.skeleton = []
+        db.commit()
+    finally:
+        db.close()
+
+    res = await client.post(f"/api/v1/alignments/{aid}/induce")
+    assert res.status_code == 200, res.text
+    v2 = res.json()
+    assert v2["status"] == "candidate"
+    assert "骨架为空" in v2["notes"]
+
+    db = SessionLocal()
+    try:
+        old = db.get(Skill, v1["id"])
+        assert old.status == "superseded"
+        assert old.superseded_by == v2["id"]
+        assert db.query(OutcomeAssertion).filter(
+            OutcomeAssertion.skill_id == v1["id"]).count() == 1  # 历史断言保留
+        assert db.get(Skill, v2["id"]).version == old.version + 1
+    finally:
+        db.close()

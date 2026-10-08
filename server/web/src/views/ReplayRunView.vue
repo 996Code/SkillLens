@@ -2,7 +2,7 @@
 // S34 块 1：执行 run 详情页（竞品差距补齐——run 级下钻：步骤+截图墙+
 // 断言明细+归因+前后快照对比，一页全览）。
 // 入口：时间线 replay 项"下钻查看"；数据 GET /replay-runs/{id}。
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { getReplayRun, getRunFlow } from "../api";
 import type { FlowGraphDTO, ReplayRunDetail } from "../api";
@@ -38,7 +38,12 @@ const shotItems = computed<ShotItem[]>(() => {
   }));
 });
 
-onMounted(async () => {
+async function load(): Promise<void> {
+  loading.value = true;
+  notFound.value = false;
+  error.value = "";
+  run.value = null;
+  flow.value = null;
   try {
     [run.value, flow.value] = await Promise.all([
       getReplayRun(String(route.params.runId)),
@@ -53,7 +58,14 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+}
+
+// 同 SkillGraphView（S41）：路由参数变化重载，复用组件不刷整页
+watch(() => route.params.runId, () => {
+  if (route.name === "graph-run") void load();
 });
+
+onMounted(() => void load());
 </script>
 
 <template>

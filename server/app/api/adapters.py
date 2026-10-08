@@ -10,7 +10,9 @@ import yaml
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.adapters.manifest import load_manifest_text, load_adapter_dir
+from app.adapters.manifest import (
+    load_manifest_text, load_adapter_dir, redact_manifest_text,
+    restore_masked_secrets)
 from app.api.auth import require_role
 
 router = APIRouter()
@@ -68,7 +70,9 @@ async def get_adapter_yaml(adapter_id: str) -> dict:
     f = ADAPTERS_DIR / f"{adapter_id}.yaml"
     if not f.is_file():
         raise HTTPException(404, "adapter not found")
-    return {"yaml": f.read_text(encoding="utf-8")}
+    # 安全红线（评审三轮 #1）：清单内联 password_literal（本地演示容器）——
+    # 回显前统一脱敏，viewer 也不得见秘密值
+    return {"yaml": redact_manifest_text(f.read_text(encoding="utf-8"))}
 
 
 class SaveRequest(BaseModel):
@@ -78,14 +82,18 @@ class SaveRequest(BaseModel):
 @router.put("/adapters/{adapter_id}", dependencies=_WRITE_GUARD)
 async def save_adapter(adapter_id: str, body: SaveRequest) -> dict:
     _check_adapter_id(adapter_id)
+    dest = ADAPTERS_DIR / f"{adapter_id}.yaml"
+    # GET 回显是脱敏文本——编辑器原样保存会把 "***" 写进清单销毁凭据，
+    # 仍是掩码的敏感键按磁盘旧值回填（用户改写过的值以新值为准）
+    old_text = dest.read_text(encoding="utf-8") if dest.is_file() else None
+    text = restore_masked_secrets(body.yaml, old_text)
     try:
-        m, lints = load_manifest_text(body.yaml)
+        m, lints = load_manifest_text(text)
     except Exception as e:
         raise HTTPException(422, f"清单校验失败: {str(e)[:200]}")
     if m.id != adapter_id:
         raise HTTPException(422, f"id 不匹配（body={m.id}, path={adapter_id}）")
-    dest = ADAPTERS_DIR / f"{adapter_id}.yaml"
-    dest.write_text(body.yaml, encoding="utf-8", newline="\n")
+    dest.write_text(text, encoding="utf-8", newline="\n")
     return {"saved": str(dest), "lints": [l.message for l in lints]}
 
 

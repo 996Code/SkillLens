@@ -2,7 +2,7 @@
 // S39/S42 自动化流程图（图工作台内）：骨架+断言 → 节点图 + 详情面板。
 // S42：SkillDetail 独有能力（断言表/变量/自愈提案/视觉回归/导出）并入——
 // 单一流程详情页，旧 /skills/:id 视图废弃。
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import {
   currentUser,
@@ -18,7 +18,6 @@ import {
   resetVisualBaseline,
 } from "../../api";
 import type {
-  AssertionRow,
   FlowGraphDTO,
   LocateProposalItem,
   SkillCard,
@@ -26,6 +25,7 @@ import type {
   StateMachineDTO,
   VisualBaselineResponse,
 } from "../../api";
+import { assertExpect } from "../../run-format";
 import FlowGraph from "../../components/FlowGraph.vue";
 
 const route = useRoute();
@@ -161,22 +161,13 @@ watch(() => route.params.skillId, () => {
   if (route.name === "graph-skill") void load();
 });
 
-/** 断言 payload 摘要：按 kind 提取人读期望。 */
-function payloadSummary(a: AssertionRow): string {
-  const p = a.payload || {};
-  switch (a.kind) {
-    case "api_status":
-      return `${p.api_template} → ${p.expect_status}`;
-    case "state_signal":
-      return `${p.field}=${p.expect_value}（${p.api_template}）`;
-    case "ui_text":
-      return `${p.label}: ${p.before} → ${p.after}`;
-    case "field_change":
-      return `${p.field}: ${p.before} → ${p.after}（${p.api_template}）`;
-    default:
-      return JSON.stringify(p);
-  }
-}
+// blob URL 泄漏收口（评审）：组件卸载时释放视觉回归两图
+onBeforeUnmount(() => {
+  if (visualBaselineUrl.value) URL.revokeObjectURL(visualBaselineUrl.value);
+  if (visualLatestUrl.value) URL.revokeObjectURL(visualLatestUrl.value);
+  visualBaselineUrl.value = "";
+  visualLatestUrl.value = "";
+});
 
 function varValues(values: Record<string, string> | undefined): string[] {
   return Object.values(values ?? {});
@@ -242,7 +233,7 @@ onMounted(() => void load());
             <tr v-for="a in card.assertions" :key="a.id">
               <td><span class="badge badge-kind">{{ a.kind }}</span></td>
               <td>L{{ a.layer }}</td>
-              <td class="mono">{{ payloadSummary(a) }}</td>
+              <td class="mono">{{ assertExpect(a) }}</td>
             </tr>
           </tbody>
         </table>

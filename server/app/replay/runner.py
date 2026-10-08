@@ -22,8 +22,15 @@ from app.replay.flow_graph import derive_states
 from app.replay.visual import compare_images, dhash, visual_dir
 
 MAX_BODY = 8192
+WRITE_METHODS = ("POST", "PUT", "PATCH")
 from app.config import REPLAY_ARTIFACT_DIR as ARTIFACT_DIR
 STORAGE_STATE = os.environ.get("REPLAY_STORAGE_STATE", "")
+
+
+def write_response_count(observed: list[dict]) -> int:
+    """写方法响应计数。预拉放行水位只认写响应——按 observed 总条数比较时，
+    页面加载/轮询的 GET 噪声即抬高水位，被前端校验拦下的提交会被放行成 pass。"""
+    return sum(1 for o in observed if o.get("method") in WRITE_METHODS)
 
 
 def _launch():
@@ -540,12 +547,13 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                     while time.monotonic() < deadline:
                         await _poll_toasts()
                         recent = [o for o in observed[write_base:]
-                                  if o.get("method") in ("POST", "PUT", "PATCH")]
+                                  if o.get("method") in WRITE_METHODS]
                         if recent:
                             saw_write = True
                             break
                         await page.wait_for_timeout(300)
-                    if not saw_write and len(observed) > recent_write_mark:
+                    if (not saw_write
+                            and write_response_count(observed) > recent_write_mark):
                         # 预拉放行：前一交互（勾选）已触发框架写请求
                         # （run_doc_method 预拉），按钮点击无新请求是
                         # 框架去重，业务动作已发生——非拦截
@@ -568,23 +576,25 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                 # 拉单/保存 ERPNext map_docs ~2-4s，完成前页面结构未变
                 # 后续定位必失败）。等待与 toast 快照并行——串行等待会
                 # 吃掉瞬态 toast 的存活窗口（600ms toast vs 300+400ms）
-                base = len(req_times)
+                # 在途请求快照用集合差而非 len 切片：on_response 会 pop
+                # 已完成项，前面的条目出队会把后续 pending 请求左移滑出切片
+                inflight_before = set(req_times)
                 url_before = page.url
                 obs_base = len(observed)
                 t0 = time.monotonic()
                 while time.monotonic() - t0 < 8:
                     await page.evaluate(
                         "() => {}")
-                    pend_writes = [r for r in list(req_times)[base:]
-                                   if r.method in ("POST", "PUT", "PATCH")]
+                    pend_writes = [r for r in set(req_times) - inflight_before
+                                   if r.method in WRITE_METHODS]
                     await _poll_toasts()
                     if not pend_writes and time.monotonic() - t0 > 0.4:
                         break
                     await page.wait_for_timeout(300)
                 # 框架预拉水位更新（本窗口出现过写响应即记录）
-                if any(o.get("method") in ("POST", "PUT", "PATCH")
+                if any(o.get("method") in WRITE_METHODS
                        for o in observed[obs_base:]):
-                    recent_write_mark = len(observed)
+                    recent_write_mark = write_response_count(observed)
                 # S43-4：写后 SPA 跳转（Save→详情页）——url 变化时等
                 # 新文档加载完，否则后续 locate 在导航窗口空转
                 if page.url != url_before:

@@ -39,6 +39,8 @@ const runError = ref("");
 // ---------- 历史 ----------
 const historySuiteId = ref<number | null>(null);
 const history = ref<SuiteRunSummary[]>([]);
+const historyLoading = ref(false);
+const historyError = ref("");
 
 function toggleSkill(id: number): void {
   if (checked.value.has(id)) checked.value.delete(id);
@@ -85,7 +87,17 @@ async function showHistory(id: number): Promise<void> {
     return;
   }
   historySuiteId.value = id;
-  history.value = await listSuiteRuns(id);
+  history.value = []; // 换套件先清旧数据，防上一套件的历史残留
+  historyError.value = "";
+  historyLoading.value = true;
+  try {
+    history.value = await listSuiteRuns(id);
+  } catch (e) {
+    history.value = [];
+    historyError.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    historyLoading.value = false;
+  }
 }
 
 async function remove(id: number): Promise<void> {
@@ -216,7 +228,11 @@ onMounted(() => void load());
     <!-- 执行历史 -->
     <div v-if="historySuiteId !== null" class="block" data-testid="suite-history">
       <h2>执行历史</h2>
-      <table class="tbl">
+      <p v-if="historyLoading" class="muted">加载中…</p>
+      <p v-else-if="historyError" class="error" data-testid="history-error">
+        加载失败：{{ historyError }}
+      </p>
+      <table v-else class="tbl">
         <thead><tr><th>#</th><th>汇总</th><th>时间</th></tr></thead>
         <tbody>
           <tr v-for="h in history" :key="h.id">

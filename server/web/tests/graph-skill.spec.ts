@@ -191,6 +191,30 @@ describe("SkillGraphView 详情面板（S42 合并）", () => {
     expect(root.querySelector("[data-testid='visual-reset-btn']")).not.toBeNull();
   });
 
+  it("卸载时 revoke 视觉基线 blob URL（评审#2 泄漏收口）", async () => {
+    loginAs("reviewer");
+    const baseline = {
+      skill_id: 3, file_path: "x/baseline.png", image_hash: "ab12",
+      width: 1280, height: 720, source_run_id: 9,
+      created_at: "2026-09-26T08:00:00",
+    };
+    const revoke = vi.fn();
+    vi.stubGlobal("URL", Object.assign(URL, {
+      createObjectURL: () => "blob:mock",
+      revokeObjectURL: revoke,
+    }));
+    vi.stubGlobal("fetch", mockFetch({
+      visual: { baseline, last_result: null },
+    }));
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const { app } = await mountView(root);
+    for (let i = 0; i < 10; i++) await flush();
+
+    app.unmount();
+    expect(revoke).toHaveBeenCalledWith("blob:mock");
+  });
+
   it("路由参数变化时重新加载（S41 修复回归）", async () => {
     loginAs("viewer");
     const fetchMock = mockFetch();

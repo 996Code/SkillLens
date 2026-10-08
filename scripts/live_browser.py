@@ -39,6 +39,11 @@ async def main() -> None:
     login_url = cfg.get("NJMIND_LOGIN_URL")
     if not login_url:
         sys.exit("缺少 NJMIND_LOGIN_URL（server/.env）——内网网关地址不入库")
+    user = cfg.get("NJMIND_USER") or ""
+    password = cfg.get("NJMIND_PASS") or ""
+    if not user or not password:
+        sys.exit("缺少 NJMIND_USER/NJMIND_PASS（server/.env）——"
+                 "缺凭据时会以表单定位超时的间接症状报错，这里显式报")
     port = sys.argv[1] if len(sys.argv) > 1 else "9222"
 
     async with async_playwright() as p:
@@ -56,8 +61,7 @@ async def main() -> None:
             timeout=60000,
         )
         page = ctx.pages[0] if ctx.pages else await ctx.new_page()
-        await login_in_page(page, cfg.get("NJMIND_USER") or "",
-                            cfg.get("NJMIND_PASS") or "", login_url)
+        await login_in_page(page, user, password, login_url)
         print(f"常驻浏览器已就绪：CDP http://127.0.0.1:{port}（Ctrl+C 关闭）")
         while True:
             await asyncio.sleep(3600)

@@ -14,11 +14,14 @@ uv run uvicorn app.main:app --port 8710   # 起服务
 
 LLM/njmind 凭据经 `server/.env`（gitignore 排除，键名见 `.env.docker.example`）。无 key 时 LLM 走 FakeProvider（`LLM_FAKE_RESPONSE` 可定制脚本响应）。
 
-## 认证（S21 块 S）
+## 认证与角色（S21 块 S；三轮评审后契约升级，详见 `docs/arch/2026-10-08-auth-and-role-matrix.md`）
 
-- 工作台 API 默认要求 `Authorization: Bearer <token>`；豁免通道仅 `/health` 与插件上报（`POST /sessions`、`POST /sessions/{id}/events`）。
-- 账号三级：`admin`（建号/全权）> `reviewer`（可评审）> `viewer`（只读）；建号：`uv run python -m app.create_user <用户名> <密码> <role>`（空库无默认账号）。
-- 会话 DB 化（`auth_token` 表存 SHA-256 哈希，7 天过期，登出即删）；密码 pbkdf2（stdlib，无新依赖）。
+- 工作台 API 默认要求 `Authorization: Bearer <token>`；豁免通道仅 `/health`、`/auth/login|logout` 与插件上报（`POST /sessions`、`POST /sessions/{id}/events`，改验 `X-SkillLens-Agent` 头 + 单批 ≤2000 条）。
+- 账号三级：`admin`（建号/全权）> `reviewer`（可评审/可写）> `viewer`（**只读**）。viewer=只读由
+  `WRITE_GUARD`（`api/auth.py:55`，require_role(admin,reviewer)）在 **31 个变更端点**逐个声明强制
+  （`POST /replay`、各 execute/run、DELETE、LLM 调用组等）；C1 确认类（change/dev_plans confirm）另取登录态落 `reviewed_by`。建号：`uv run python -m app.create_user <用户名> <密码> <role>`（空库无默认账号）。
+- 会话 DB 化（`auth_token` 表存 SHA-256 哈希，7 天过期，登出即删）；密码 pbkdf2-100k（stdlib）；
+  login 计时侧信道已抹平（未知用户也跑一次哈希）。
 - 评审人从登录态取（`review.user_id` 关联账号，存量行 NULL 兼容展示）。
 
 ## 视觉回归（S22 块 T）
@@ -85,11 +88,16 @@ llm/               ④ LLM Gateway（自研薄封装）
   provider.py      FakeProvider / OpenAICompatProvider
   gateway.py       complete()：成功与失败（脱敏 URL）均落 llm_call_log（C3）
 
-replay/            ⑤ 回放 Runner
-  plan.py          骨架→执行计划；requires_confirmation（C1 门控依据：POST/write）
-  locate.py        语义定位（placeholder/role-button，非 CSS）
-  runner.py        execute_plan（水合竞态防护）+ run_replay（shadow 短路/截图/LLM 归因）
-  assert_eval.py   确定性断言评估（path_matches 模板匹配）
+replay/            ⑤ 回放 Runner（内部架构详见 docs/arch/2026-10-08-replay-engine.md）
+  plan.py          骨架→执行计划（goto 步 URL 已归一化：草稿尾缀重写/query 剥离）
+  locate.py        语义定位（placeholder/role-button；两级全 frame 遍历；12 轮重试）
+  runner.py        execute_plan + run_replay（写水位=write_response_count 只数写响应；
+                   预拉放行/在途写等待=集合差；失败收敛 _error_run）
+  repair.py        自愈提案（幻觉"只记录不拦截"，确定性 locate 复核——与 executor 硬门禁的分歧见 arch 文档§6）
+  assert_eval.py   确定性断言评估（_ID_SEGMENT 动态 id 归一）
+  export_shared.py 导出判定单一事实源（exporter 逐字内嵌进生成脚本）
+  exporter.py      Playwright 导出（_safe_doc_text 防模板注入）
+  page_snapshot.py 页面快照（全 frame 聚合；脱敏词表与插件同源——一致性由 redact-parity 测试守护）
   环境开关：REPLAY_HEADLESS=0 前台 / REPLAY_CHANNEL=chrome 真Chrome / REPLAY_CDP_URL 常驻窗口
 
 adapters/          ⑦ 平台化适配架构（v2.1 块 AF + 平台化四阶段）
@@ -126,11 +134,15 @@ change/            ⑥ 变更智能
 
 ## 测试与运维
 
-- 测试：`uv run pytest -q`（conftest 预置空 key → FakeProvider 铁律；浏览器测试走 playwright chromium）
+- 测试：`uv run pytest -q`（conftest 预置空 key → FakeProvider 铁律；浏览器测试走 playwright chromium）。
+  **勿与另一 pytest 进程并行**（conftest 硬编码 ./test.db 会互撞，lessons #43）；全量 20 分钟一轮，
+  日志重定向文件查看（管道 tail 会丢输出）。
+- 守卫测试（提交前必绿）：`tests/test_schema_drift.py`（模型↔迁移 列+索引 双向比对——加列必须同批写迁移）。
 - 基线快照：`uv run python ../scripts/baseline_snapshot.py` → `demo/baseline/*.json`
 - 全自动闭环：`uv run python ../scripts/auto_record.py --note <标记>`（RECORD_CDP_URL 可连常驻窗口）
 - 常驻可视化浏览器：`uv run python ../scripts/live_browser.py 9222`（配合 REPLAY_CDP_URL）
-- 部署：Docker Compose（见 `deploy/README.md`）
+- 部署：Docker Compose（见 `deploy/README.md`；端口全部 127.0.0.1 绑定、非 root 运行、uv pin 0.8.4）
+- 环境变量契约（全部 env 的权威清单）：`docs/arch/2026-10-08-env-contract.md`——**表外即违例**。
 
 ## 设计红线速查
 

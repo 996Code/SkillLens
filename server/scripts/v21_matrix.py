@@ -23,16 +23,29 @@ from playwright.async_api import async_playwright
 SERVER = "http://127.0.0.1:8710/api/v1"
 CDP = "http://127.0.0.1:9222"
 
+# 录制基线单据号——验收脚本绑定特定 demo 库快照，需预置该已提交 Quotation
+ERPNEXT_BASE_QUOTATION = "SAL-QTN-2026-00070"
+
 
 def _ext_id() -> str:
-    """插件 id 动态读 dist manifest（评审：硬编码 EXT id 在插件重载后失效）。"""
-    import json
-    from pathlib import Path
-    p = Path(__file__).resolve().parents[2] / "extension" / "dist" / "manifest.json"
-    return json.loads(p.read_text(encoding="utf-8")).get("name", "")
+    """插件 id 运行时从 CDP 目标列表发现（评审：manifest 的 name 不是 id，
+    且插件重载后 id 会变——从常驻浏览器实际加载的扩展目标反查才可靠）。"""
+    r = httpx.get(f"{CDP}/json", timeout=10)
+    for t in r.json():
+        url = t.get("url", "")
+        if url.startswith("chrome-extension://"):
+            return url.split("/")[2]
+    raise SystemExit(f"CDP {CDP} 未发现 chrome-extension:// 目标——"
+                     "常驻浏览器未起或插件未加载")
 
 
-EXT = _ext_id()
+def _erpnext_manifest():
+    from pathlib import Path as _P
+    from app.adapters.manifest import load_manifest_text
+    m, _ = load_manifest_text(
+        (_P(__file__).resolve().parents[1] / "adapters" / "erpnext.yaml")
+        .read_text(encoding="utf-8"))
+    return m
 
 # S43-4 验证过的七系统核心链（demo/sprint43/*-chain.json + 报告）
 CHAINS = {
@@ -88,8 +101,10 @@ def skill_vars(token, skill_id):
             vs = [v["name"] for v in r.json().get("input_variables", [])]
             if vs:
                 declared = set(vs)
-    except Exception:
-        pass  # server 未起/卡片缺失——退化为仅指令派生（评审：不整脚本崩）
+    except Exception as e:
+        # 评审：静默 pass 会把"卡片获取失败"降级成"无变量可换"掩盖真实故障
+        print(f"[warn] skill #{skill_id} 卡片获取失败，退化为仅指令派生: "
+              f"{type(e).__name__}: {str(e)[:100]}", file=sys.stderr, flush=True)
     # fill 换参 key 用**fill 指令的 value 本身**（服务端 overrides 按
     # value/name 精确替换——258 跨技能数据依赖实证：变量名≠value 时
     # fill_ 变量名匹配不上 ins.value）。声明变量（其 value 即变量默认值）
@@ -115,11 +130,7 @@ def skill_vars(token, skill_id):
         # SL-STD 被换参致 items 行无效）
         try:
             import httpx as _hx
-            from pathlib import Path as _P
-            from app.adapters.manifest import load_manifest_text
-            _m, _ = load_manifest_text(
-                (_P(__file__).resolve().parents[1] / "adapters" / "erpnext.yaml")
-                .read_text(encoding="utf-8"))
+            _m = _erpnext_manifest()
             _c = _hx.Client(timeout=8, base_url=_m.target.base_url)
             _c.post("/api/method/login",
                     data={"usr": _m.credentials.username,
@@ -166,7 +177,8 @@ async def server_rounds(token, out):
             ts = int(time.time()) % 100000
             row = {"system": sys_id, "round": rnd, "results": {}}
             for sid in cfg["skills"]:
-                vs = skill_vars(token, sid)
+                # skill_vars 内是同步 httpx+SQLAlchemy——to_thread 防阻塞事件循环
+                vs = await asyncio.to_thread(skill_vars, token, sid)
                 overrides = {v: f"M{mark}{ts}x{sid % 100}" for v in vs}
                 row["results"][sid] = await replay(token, sid, overrides)
                 await asyncio.sleep(1)
@@ -192,6 +204,7 @@ async def ext_rounds(token, out):
     from app.adapters.steps import login as _alogin
     _manifests, _ = _lad(_P(__file__).resolve().parent.parent / "adapters")
     _by_id = {m.id: m for m in _manifests}
+    ext_id = await asyncio.to_thread(_ext_id)
     for sys_id, cfg in CHAINS.items():
         # 系统级登录（每系统一轮前）
         try:
@@ -246,18 +259,19 @@ async def ext_rounds(token, out):
                             # Quotation）例外：value 用**最新已提交单号**
                             # 而 key 保持录制旧单号（236 铁证：key 也换成
                             # 新单号后与 fill value 不匹配——替换不发生）
-                            vs = skill_vars(token, sid)
+                            vs = await asyncio.to_thread(skill_vars, token, sid)
                             ts = chain_ts
                             new_val = f"E{rnd}{ts}"
                             extra_qs = []
                             if sys_id == "erpnext":
                                 try:
                                     import httpx as _hx
+                                    _m = _erpnext_manifest()
                                     _c = _hx.Client(timeout=8,
-                                                    base_url="http://127.0.0.1:8090")
+                                                    base_url=_m.target.base_url)
                                     _c.post("/api/method/login",
-                                            data={"usr": "Administrator",
-                                                  "pwd": "admin"})
+                                            data={"usr": _m.credentials.username,
+                                                  "pwd": _m.credentials.password_literal or ""})
                                     _r = _c.get("/api/resource/Quotation",
                                                 params={"limit_page_length": 1,
                                                         "order_by": "creation desc",
@@ -267,17 +281,17 @@ async def ext_rounds(token, out):
                                     if _qn:
                                         vs = [v for v in vs
                                               if v not in ("search_term",
-                                                           "SAL-QTN-2026-00070")]
+                                                           ERPNEXT_BASE_QUOTATION)]
                                         extra_qs.append(
                                             f"fill_search_term={_qn}")
                                         extra_qs.append(
-                                            "fill_SAL-QTN-2026-00070=" + _qn)
+                                            f"fill_{ERPNEXT_BASE_QUOTATION}=" + _qn)
                                 except Exception:
                                     pass
                             fill_qs = "&".join(
                                 [f"fill_{v}={new_val}" for v in vs] + extra_qs)
                             await page.goto(
-                                f"chrome-extension://{EXT}/executor.html"
+                                f"chrome-extension://{ext_id}/executor.html"
                                 f"?skill={sid}&token={token}&auto=1"
                                 + (f"&{fill_qs}" if fill_qs else ""),
                                 timeout=15000)

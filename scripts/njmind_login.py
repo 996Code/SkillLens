@@ -2,8 +2,9 @@
 
 用法：
     cd server && uv run python ../scripts/njmind_login.py [输出路径]
-默认输出 /tmp/njmind-state.json。凭据读 server/.env（NJMIND_USER/NJMIND_PASS/NJMIND_LOGIN_URL），
-不入库、不打印。
+默认输出 .njmind-state.json（仓库根，已 gitignore——含内网登录 cookie，
+不入 /tmp 防世界可读泄露，Windows 下 /tmp 还依赖盘符解析）。凭据读 server/.env
+（NJMIND_USER/NJMIND_PASS/NJMIND_LOGIN_URL），不入库、不打印。
 """
 import os
 import sys
@@ -12,7 +13,8 @@ from pathlib import Path
 from dotenv import dotenv_values
 from playwright.async_api import async_playwright
 
-ENV_PATH = Path(__file__).resolve().parents[1] / "server" / ".env"
+ROOT = Path(__file__).resolve().parents[1]
+ENV_PATH = ROOT / "server" / ".env"
 
 
 async def main() -> None:
@@ -21,7 +23,7 @@ async def main() -> None:
     password = cfg.get("NJMIND_PASS") or os.environ.get("NJMIND_PASS", "")
     login_url = (cfg.get("NJMIND_LOGIN_URL")
                  or os.environ.get("NJMIND_LOGIN_URL", ""))
-    out = sys.argv[1] if len(sys.argv) > 1 else "/tmp/njmind-state.json"
+    out = sys.argv[1] if len(sys.argv) > 1 else str(ROOT / ".njmind-state.json")
     if not user or not password:
         sys.exit("缺少 NJMIND_USER/NJMIND_PASS（server/.env）")
     if not login_url:

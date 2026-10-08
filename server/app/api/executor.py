@@ -24,6 +24,7 @@ from app.replay.plan import compile_skeleton_plan, requires_confirmation
 from app.replay.repair import load_repair_map
 from app.replay.resolver import compile_resolve_candidates
 from app.sanitize import sanitize_error
+from app.api.auth import WRITE_GUARD
 from sqlalchemy import select
 
 router = APIRouter()
@@ -73,12 +74,15 @@ def _reap_stale_runs(db: Session) -> int:
 
 @router.get("/executor/skills")
 async def list_executor_skills(db: Session = Depends(get_db)) -> list:
+    from app.system import skill_systems
     _reap_stale_runs(db)
+    rows = db.query(Skill).filter(Skill.status != "superseded").all()
+    systems = skill_systems(db, [s.id for s in rows])
     items = []
-    for s in db.query(Skill).filter(Skill.status != "superseded").all():
+    for s in rows:
         items.append({
             "id": s.id, "name": s.name, "status": s.status,
-            "system": s.system or "通用",
+            "system": systems.get(s.id) or "通用",
             "requires_confirmation": requires_confirmation(s.skeleton or []),
         })
     return items
@@ -147,7 +151,7 @@ def compile_executor_plan(plan: dict) -> list[dict]:
     return out
 
 
-@router.post("/executor/skills/{skill_id}/plan")
+@router.post("/executor/skills/{skill_id}/plan", dependencies=WRITE_GUARD)
 async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
                         db: Session = Depends(get_db)) -> dict:
     skill = db.get(Skill, skill_id)
@@ -235,20 +239,20 @@ async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
     # P1 交互画像随 plan 下发（执行器解释——系统交互差异声明式适配）；
     # 同时落 run.plan（复现/诊断可查）。
     # P2.5 定位方式：goto URL → url_matches 通配符自动配对（油猴 @match
-    # 语义——新系统接入零改代码）；URL 未命中回退 skill.system 映射
+    # 语义——新系统接入零改代码）；URL 未命中回退技能所属系统映射
     ip_dump = None
     try:
         from app.adapters.manifest import load_adapter_dir as _lad
         from app.adapters.urlmatch import match_adapter as _ma
+        from app.system import SYSTEM_ADAPTER, skill_systems
         from pathlib import Path as _P
         _mans, _ = _lad(_P(__file__).resolve().parents[2] / "adapters")
         _goto_url = next((i.get("url") for i in instructions
                           if i.get("op") == "goto"), "")
         _m = _ma(_goto_url, _mans) if _goto_url else None
         if _m is None:
-            _sys = {("禅道项目"): "zentao", ("若依权限"): "ruoyi", ("JeecG 表单"): "jeecg",
-                    ("ERPNext 客户"): "erpnext", ("Snipe 资产"): "snipe",
-                    ("Dolibarr 订单"): "dolibarr", ("Odoo 销售"): "odoo"}.get(skill.system or "")
+            _label = skill_systems(db, [skill.id]).get(skill.id, "")
+            _sys = SYSTEM_ADAPTER.get(_label)
             _m = next((x for x in _mans if x.id == _sys), None) if _sys else None
         if _m and _m.interaction_profile:
             ip_dump = _m.interaction_profile.model_dump()
@@ -269,7 +273,7 @@ class ExecutorStepReport(BaseModel):
     evidence: dict = {}
 
 
-@router.post("/executor/runs/{run_id}/step")
+@router.post("/executor/runs/{run_id}/step", dependencies=WRITE_GUARD)
 async def executor_step(run_id: int, body: ExecutorStepReport,
                         db: Session = Depends(get_db)) -> dict:
     run = db.get(ReplayRun, run_id)
@@ -380,18 +384,28 @@ async def executor_step(run_id: int, body: ExecutorStepReport,
             _infra_error = ("Token额度" in proposed or "token 额度" in proposed
                             or "Rate limit" in proposed or "rate_limit" in proposed
                             or "quota" in proposed.lower())
-            if proposed and proposed != label and not _infra_error:
-                db.add(LocateProposal(skill_id=run.skill_id, step_label=label,
-                                      proposed_label=proposed, status="proposed"))
+            # 宪法 C1「判定全确定性」：提案必须逐字出现在本轮证据里。幻觉
+            # label 照单采纳 = 白烧一次介入额度（总额度 2）+ 污染提案库
+            # （verify/promote 链会把不存在的 label 晋升进骨架）。
+            # 不采纳也留痕（status=rejected / strategy=not_on_page）供人工复核。
+            if not proposed or proposed == label or _infra_error:
+                pass  # 空提案/原样/基础设施错误串：不采纳（额度已计数）
+            else:
+                on_page = proposed in {t.strip() for t in texts + forms if t.strip()}
+                db.add(LocateProposal(
+                    skill_id=run.skill_id, step_label=label, proposed_label=proposed,
+                    status="proposed" if on_page else "rejected",
+                    strategy="" if on_page else "not_on_page"))
                 db.commit()
-                from app.replay.resolver import compile_resolve_candidates
-                healed = compile_resolve_candidates(proposed, cur_ins.get("labels"))
-                # heal 只影响当轮响应（healed 指令随响应下发重试）——
-                # **不写回 plan.executor_instructions**（跨轮污染实证：
-                # 上轮 heal 改写被持久化，后续轮直接执行错误指令）
-                state["cursor"] = cursor
-                nxt = {**cur_ins, "label": proposed,
-                       "resolve_candidates": healed, "healed": True}
+                if on_page:
+                    from app.replay.resolver import compile_resolve_candidates
+                    healed = compile_resolve_candidates(proposed, cur_ins.get("labels"))
+                    # heal 只影响当轮响应（healed 指令随响应下发重试）——
+                    # **不写回 plan.executor_instructions**（跨轮污染实证：
+                    # 上轮 heal 改写被持久化，后续轮直接执行错误指令）
+                    state["cursor"] = cursor
+                    nxt = {**cur_ins, "label": proposed,
+                           "resolve_candidates": healed, "healed": True}
         except Exception:
             pass  # 介入失败不破坏步循环（fail-open；C3 已留痕 received）
 
@@ -428,7 +442,7 @@ class ExecutorFinishRequest(BaseModel):
     summary: dict = {}
 
 
-@router.post("/executor/runs/{run_id}/finish")
+@router.post("/executor/runs/{run_id}/finish", dependencies=WRITE_GUARD)
 async def executor_finish(run_id: int, body: ExecutorFinishRequest,
                           db: Session = Depends(get_db)) -> dict:
     run = db.get(ReplayRun, run_id)

@@ -19,6 +19,7 @@ from app.agents.canvas import compile_and_run
 from app.db import SessionLocal
 from app.models import AgentRun, CanvasDag, Skill, SuiteRun, TestSuite
 from app.system import skill_systems
+from app.api.auth import WRITE_GUARD
 
 router = APIRouter()
 
@@ -97,7 +98,7 @@ def _summary_from_agent_run(db: Session, run: AgentRun) -> dict:
     return {"results": results, "counts": counts}
 
 
-@router.post("/suites")
+@router.post("/suites", dependencies=WRITE_GUARD)
 async def create_suite(body: SuiteIn, db: Session = Depends(get_db)) -> dict:
     for sid in body.skill_ids:
         if db.get(Skill, sid) is None:
@@ -131,7 +132,7 @@ async def get_suite(suite_id: int, db: Session = Depends(get_db)) -> dict:
     return _suite_item(db, row)
 
 
-@router.delete("/suites/{suite_id}")
+@router.delete("/suites/{suite_id}", dependencies=WRITE_GUARD)
 async def delete_suite(suite_id: int, db: Session = Depends(get_db)) -> dict:
     row = db.get(TestSuite, suite_id)
     if not row:
@@ -141,7 +142,7 @@ async def delete_suite(suite_id: int, db: Session = Depends(get_db)) -> dict:
     return {"ok": True}
 
 
-@router.post("/suites/{suite_id}/run")
+@router.post("/suites/{suite_id}/run", dependencies=WRITE_GUARD)
 async def run_suite(suite_id: int, body: SuiteRunIn,
                     db: Session = Depends(get_db)) -> dict:
     suite = db.get(TestSuite, suite_id)

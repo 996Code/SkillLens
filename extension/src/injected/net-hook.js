@@ -2,7 +2,10 @@
 // 注意：CRXJS 对 web_accessible_resources 条目按原样复制（不做 TS→JS 转换），
 // 因此本文件必须是纯 JavaScript（不可含 TS 注解），路径与 manifest/capture.ts 引用一致。
 const MASK = "[REDACTED]";
-const SENSITIVE = /password|passwd|secret|token|authorization|cookie/i;
+// 词表与 shared/redact.ts BASE_SENSITIVE_PATTERNS 逐字一致（一致性由
+// shared/redact-parity.test.ts 断言）。CRXJS 对本文件原样复制、不做 TS 转换，
+// 因此只能手工镜像——录制路径漏词即凭据明文入 IndexedDB 与 server。
+const SENSITIVE = /password|passwd|secret|token|authorization|cookie|api_key|apikey|private_key|credential|密码|口令|密钥|令牌|凭证|验证码/i;
 
 function redact(obj) {
   if (Array.isArray(obj)) return obj.map(redact);
@@ -70,11 +73,26 @@ function post(detail) {
 const origFetch = window.fetch;
 window.fetch = async (...args) => {
   const started = performance.now();
-  const resp = await origFetch(...args);
+  const [input, init] = args;
+  const url = typeof input === "string" ? input : input && input.url;
+  const method = init?.method ?? "GET";
+  let resp;
   try {
-    const [input, init] = args;
-    const url = typeof input === "string" ? input : input && input.url;
-    const method = init?.method ?? "GET";
+    resp = await origFetch(...args);
+  } catch (err) {
+    // 宪法 C3「全链路落库（含失败调用）」：网络层失败原样抛出，但先留痕——
+    // 失败分支消失会让回放对账无从判因（服务端 executor 侧有 loadingFailed，
+    // 录制侧此前只挂成功路径）。脱敏与成功路径同源，失败不豁免。
+    try {
+      post({
+        method, url: redactUrl(url), status: 0,
+        duration: Math.round(performance.now() - started),
+        reqBody: redactReqBody(init?.body ?? null), resBody: "", error: "network",
+      });
+    } catch { /* 观察失败不影响页面 */ }
+    throw err;
+  }
+  try {
     const clone = resp.clone();
     const resBody = redactBody(await clone.text().catch(() => ""));
     post({
@@ -93,6 +111,16 @@ XMLHttpRequest.prototype.open = function (method, url, ...rest) {
 };
 XMLHttpRequest.prototype.send = function (body) {
   this._t0 = performance.now();
+  const fail = (kind) => {
+    // C3：error/timeout/abort 也是链路的一部分（load 之外的失败此前全丢）
+    try {
+      post({
+        method: this._m, url: redactUrl(this._u), status: 0,
+        duration: Math.round(performance.now() - (this._t0 ?? 0)),
+        reqBody: redactReqBody(body), resBody: "", error: kind,
+      });
+    } catch { /* 观察失败不影响页面 */ }
+  };
   this.addEventListener("load", () => {
     // responseType 非 text 时访问 responseText 抛 InvalidStateError，须容错
     let resBody = "";
@@ -105,5 +133,8 @@ XMLHttpRequest.prototype.send = function (body) {
       reqBody: redactReqBody(body), resBody,
     });
   });
+  this.addEventListener("error", () => fail("network"));
+  this.addEventListener("timeout", () => fail("timeout"));
+  this.addEventListener("abort", () => fail("abort"));
   return OrigSend.call(this, body);
 };

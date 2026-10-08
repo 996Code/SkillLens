@@ -154,31 +154,3 @@ def _apply_proposal_version(db: Session, proposal: "LocateProposal") -> None:
                                 payload=dict(a.payload or {}),
                                 evidence_count=a.evidence_count))
     proposal.applied_skill_id = new.id
-
-
-def _label_related(original: str, proposed: str) -> bool:
-    """确定性词级关联：英文按词重叠，任意语言按 ≥2 字符公共子串。
-
-    语义：同一 UI 元素的标签变更（改名/加图标/换占位）保留主要词或
-    词干；完全无重叠的提案（页面错位/无关页面归因）是噪声。
-    """
-    import re
-    o_words = {w.lower() for w in re.split(r"[\s_/]+", original) if w}
-    p_words = {w.lower() for w in re.split(r"[\s_/]+", proposed) if w}
-    if o_words & p_words:
-        return True
-    o, p = original.lower(), proposed.lower()
-    # 公共子串 ≥3（中文 1 字=1 字符信息量大，≥2 即可；英文 2 字符
-    # 噪声太多——'at'/'or' 到处出现，实测 'SalesMaintenanceShopping
-    # Cart' vs 'Delivery Date' 恰有 'at' 重叠漏网）
-    min_len = 2 if _has_cjk(original) or _has_cjk(proposed) else 3
-    if len(o) < min_len or len(p) < min_len:
-        return False
-    for i in range(len(o) - min_len + 1):
-        if o[i:i + min_len] in p:
-            return True
-    return False
-
-
-def _has_cjk(s: str) -> bool:
-    return any('一' <= ch <= '鿿' for ch in s)

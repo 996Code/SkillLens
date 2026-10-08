@@ -4,7 +4,7 @@
 // observe 的 replay 概要在响应里，断言明细/快照再取 GET /replay-runs/{id}。
 // C1 门控：模式单选 shadow（默认）/execute + "我已确认副作用"复选，
 // execute 时二者不齐禁用提交（二要素齐备才发 confirm_side_effect=true）。
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { getReplayRun, getSkillCard, replayObserve } from "../api";
 import type { ReplayRunDetail, SkillCard } from "../api";
@@ -88,7 +88,22 @@ async function submit() {
   }
 }
 
-onMounted(async () => {
+async function load(): Promise<void> {
+  loading.value = true;
+  notFound.value = false;
+  error.value = "";
+  card.value = null;
+  // 路由参数切换重载时表单/结果状态一并复位（防跨 skill 残留）
+  mode.value = "shadow";
+  confirmed.value = false;
+  deltaId.value = "";
+  for (const k of Object.keys(overrides)) delete overrides[k];
+  submitting.value = false;
+  observeError.value = "";
+  observeErrorStatus.value = 0;
+  runId.value = null;
+  replayStatus.value = "";
+  runDetail.value = null;
   try {
     card.value = await getSkillCard(String(route.params.skillId));
     for (const v of card.value.input_variables) {
@@ -103,7 +118,14 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+}
+
+// 同 SkillGraphView（S41）：路由参数变化重载，复用组件不刷整页
+watch(() => route.params.skillId, () => {
+  if (route.name === "replay-launch") void load();
 });
+
+onMounted(() => void load());
 </script>
 
 <template>

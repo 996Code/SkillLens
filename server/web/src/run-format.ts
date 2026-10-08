@@ -1,18 +1,22 @@
 // S34：执行 run 展示共享格式化（ReplayLaunch / ReplayRunView 两处同源）。
 import type { AssertionResult, PageSnapshot, ReplayPlan } from "./api";
 
-/** 断言明细的人读期望。 */
-export function assertExpect(r: AssertionResult): string {
+/** 断言明细的人读期望（AssertionResult 结果行 / AssertionRow 断言行通用）。
+ * api_template 可选降级：缺失时不渲染括号后缀（评审：双源合并统一行为）。 */
+export function assertExpect(
+  r: { kind?: string; payload?: Record<string, unknown> | null },
+): string {
   const p = r.payload || {};
+  const tpl = p.api_template ? `（${p.api_template}）` : "";
   switch (r.kind) {
     case "api_status":
       return `${p.api_template} → ${p.expect_status}`;
     case "state_signal":
-      return `${p.field}=${p.expect_value}（${p.api_template}）`;
+      return `${p.field}=${p.expect_value}${tpl}`;
     case "ui_text":
       return `${p.label}: ${p.before} → ${p.after}`;
     case "field_change":
-      return `${p.field}: ${p.before} → ${p.after}`;
+      return `${p.field}: ${p.before} → ${p.after}${tpl}`;
     default:
       return JSON.stringify(p);
   }

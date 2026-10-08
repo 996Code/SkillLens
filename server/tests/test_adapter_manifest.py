@@ -188,3 +188,104 @@ credentials: {username: u, password_literal: p}
 """
     m, _ = load_manifest_text(doc)
     assert m.interaction_profile is None
+
+
+def test_probe_container_rejects_option_injection():
+    """评审三轮 #2：container 直入 docker CLI argv——`-` 开头会被 docker
+    解析为选项（--user=0 → root 进容器），清单可由 reviewer 写盘 → 必须
+    schema 层拒绝。"""
+    for bad in ("--user=0", "-x", ".hidden"):
+        doc = ZENTAO_MIN.replace("container: zentao", f"container: '{bad}'")
+        with pytest.raises(Exception, match="container"):
+            load_manifest_text(doc)
+
+
+def test_probe_container_accepts_normal_names():
+    for name in ("erpnext-mariadb-1", "odoo18_db_1", "a.b-c_1", "zentao"):
+        doc = ZENTAO_MIN.replace("container: zentao", f"container: {name}")
+        m, _ = load_manifest_text(doc)
+        assert m.probes[0].container == name
+
+
+def test_login_admin_nickname_parsed():
+    """评审三轮 #4：steps.login 读 manifest.login.admin_nickname——模型缺
+    字段时 pydantic extra=ignore 静默丢弃，身份校验分支永不触发（死代码）。"""
+    doc = ZENTAO_MIN.replace("login:\n  steps:",
+                             "login:\n  admin_nickname: 超级管理员\n  steps:")
+    m, _ = load_manifest_text(doc)
+    assert m.login.admin_nickname == "超级管理员"
+
+
+def test_url_matches_with_query_lints():
+    """评审三轮 #5b：匹配引擎按油猴语义剥离 query——模式含 `?` 永不命中，
+    loader 必须产 lint 警示清单作者（不静默）。"""
+    doc = ZENTAO_MIN + '\nurl_matches: ["http://127.0.0.1:8082/app?a=1"]\n'
+    _, lints = load_manifest_text(doc)
+    assert any(l.code == "url_match_query" for l in lints)
+    # 无 query 的模式零警告
+    doc2 = ZENTAO_MIN + '\nurl_matches: ["http://127.0.0.1:8082/*"]\n'
+    _, lints2 = load_manifest_text(doc2)
+    assert not any(l.code == "url_match_query" for l in lints2)
+
+
+def test_load_adapter_dir_survives_bad_file(tmp_path: Path):
+    """评审三轮 #6：单份坏 YAML 不得拖垮整个目录（GET /adapters 全 500）——
+    降级为 lint 错误条目，健康清单照常返回。"""
+    d = tmp_path / "ad"
+    d.mkdir()
+    (d / "good.yaml").write_text(ZENTAO_MIN, encoding="utf-8")
+    (d / "bad.yaml").write_text("id: [unclosed\n  x: }\n", encoding="utf-8")
+    manifests, lints = load_adapter_dir(d)
+    assert [m.id for m in manifests] == ["zentao"]
+    bad = [l for l in lints if l.file == "bad.yaml"]
+    assert bad and bad[0].code == "parse_error"
+
+
+class TestRedactManifestText:
+    """评审三轮 #1：GET /adapters/{id}/yaml 原文回显清单——password_literal
+    泄漏给所有登录用户（含 viewer）。redact_manifest_text 纯函数收口。"""
+
+    def test_password_literal_masked(self):
+        from app.adapters.manifest import redact_manifest_text
+        doc = ('id: demo\ntarget: {base_url: "http://t"}\n'
+               'credentials: {username: u, password_literal: "Sup3rS3cret"}\n')
+        out = redact_manifest_text(doc)
+        assert "Sup3rS3cret" not in out
+        assert "***" in out
+        assert "demo" in out and "username" in out
+
+    def test_password_env_reference_not_masked(self):
+        """password_env 存的是环境变量名（非秘密值）——脱敏会毁排障信息。"""
+        from app.adapters.manifest import redact_manifest_text
+        doc = ('id: demo\ntarget: {base_url: "http://t"}\n'
+               'credentials: {username: u, password_env: DEMO_PW}\n')
+        out = redact_manifest_text(doc)
+        assert "DEMO_PW" in out
+
+    def test_nested_sensitive_keys_masked(self):
+        from app.adapters.manifest import redact_manifest_text
+        doc = ('id: demo\ntarget: {base_url: "http://t"}\n'
+               'credentials: {username: u, password_env: E}\n'
+               'probes:\n'
+               '  - id: p\n    kind: http\n'
+               '    request: {method: POST, url: "http://t/x",\n'
+               '              json: {api_key: AKIA-FAKE, token: tk-FAKE,'
+               ' user: keepme}}\n')
+        out = redact_manifest_text(doc)
+        assert "AKIA-FAKE" not in out and "tk-FAKE" not in out
+        assert "keepme" in out
+
+    def test_unparseable_input_still_masked(self):
+        """YAML 解析失败降级行级正则掩码——绝不原文返回。"""
+        from app.adapters.manifest import redact_manifest_text
+        text = 'credentials: {password_literal: "Sup3rS3cret", broken: [unclosed'
+        out = redact_manifest_text(text)
+        assert "Sup3rS3cret" not in out
+        assert "***" in out
+
+    def test_non_secret_keys_untouched(self):
+        from app.adapters.manifest import redact_manifest_text
+        doc = ZENTAO_MIN
+        out = redact_manifest_text(doc)
+        assert "zentao" in out and "ZENTAO_PW" in out
+        assert "story_count" in out and "http://127.0.0.1:8082" in out

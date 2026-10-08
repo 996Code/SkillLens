@@ -37,20 +37,27 @@ shared/
   types.ts           RawEvent/Snapshot/消息协议（EVENT_MSG 等）
   describe-element   语义描述（aria-label→placeholder→title→关联label→文本）
   input-key.ts       输入框回退链（name→id→placeholder→aria-label）
-  redact.ts          敏感脱敏（SENSITIVE_KEY_RE + redactValue +
-                     redactNetworkBody/redactNetworkUrl——执行器 CDP 网络
-                     证据与录制侧 net-hook 同源语义）
+  redact.ts          敏感脱敏正典（BASE_SENSITIVE_PATTERNS 16 词=10 英文+6 中文
+                     label 形态；redactValue + redactNetworkBody/Url）
   assign-session     事件归属会话
   page-id.ts         页面实例标识（跨页事件不丢）
 ```
+
+**脱敏词表四处副本**（redact.ts 正典 / injected/net-hook.js / server page_snapshot.py /
+executor.ts 页内 SENS——CRXJS 原样复制不转译、页内注入不能 import，副本无法消除）：
+**修改词表必须四处于同批改齐**，`shared/redact-parity.test.ts` 读四处源码断言词集相等——
+漏改即测试红（docs/arch/2026-10-08-redaction-defense-in-depth.md）。
 
 ## 采集协议
 
 事件（RawEvent）：`{ sessionId, pageId, seq, ts, kind, payload }`
 - `action`：click/submit/input（target=describeElement 语义描述，非 CSS）
-- `network`：method/url/status/reqBody/resBody（插件侧首次脱敏）
+- `network`：method/url/status/reqBody/resBody（插件侧首次脱敏；**失败调用也留痕**——
+  fetch reject/XHR error/timeout/abort 落 `{status:0,error:…}`，C3 含失败调用）
 - `navigation`：page-load
 - `snapshot`：锚点前后 UI 状态（forms/labels/tables，结构见 `docs/arch/2026-09-24-ui-snapshot.md`）
+- 全部携带的 `url`（含文档 URL location.href）过 `redactNetworkUrl`——SSO 回跳 `?token=` 不落库，
+  host/path 保留（系统派生依赖）
 
 上报：CS → EVENT_MSG(runtime) → SW 缓冲 → 批量 POST。**CS 与 SW 不共享 IndexedDB**（经验 #8）；**SW 自发自收不触发 onMessage**（经验 #6，驱动插件须经扩展页面中转）。
 
@@ -69,4 +76,10 @@ shared/
 
 ## 测试
 
-vitest + jsdom（`*.test.ts` 同目录）：describe-element/input-key/redact（含网络脱敏）/page-id/assign-session/snapshot/capture/net-hook 共 83 用例。
+vitest + jsdom（`*.test.ts` 同目录）共 **99 用例**：describe-element / input-key / redact /
+page-id / assign-session / snapshot / capture / capture-redact（文档 URL 脱敏）/ net-hook
+（脱敏+失败留痕）/ **redact-parity**（四处词表一致性）/ **executor-injected-regex**
+（注入表达式转义扫描——模板串内转义必须双写 `\s`，否则页面收到字面 s）。
+
+**注入页内 JS 纪律**：executor.ts 的 `Runtime.evaluate({expression: \`…\`})` 模板串里，
+`\s`/`\n` 会被编译吃掉一层——所有转义一律双写（`\\s`），扫描测试带非空守卫防实现改名后恒绿。

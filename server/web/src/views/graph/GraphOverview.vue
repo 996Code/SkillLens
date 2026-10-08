@@ -4,7 +4,7 @@
 import { computed, onMounted, ref } from "vue";
 import { getSkills, listSuites } from "../../api";
 import type { SkillListItem, SuiteItem } from "../../api";
-import { groupBySystem } from "../../system-group";
+import { groupBySystem, systemColor } from "../../system-group";
 
 const suites = ref<SuiteItem[]>([]);
 const skills = ref<SkillListItem[]>([]);
@@ -107,7 +107,7 @@ onMounted(async () => {
         <h2>自动化流程（{{ skills.length }}）</h2>
         <div v-for="[sys, list] in bySystem" :key="sys" class="sys-group">
           <div class="sys-head">
-            <span class="sys-dot" :data-sys="sys"></span>
+            <span class="sys-dot" :style="{ background: systemColor(sys) }"></span>
             <span class="sys-name">{{ sys }}</span>
             <span class="muted">{{ list.length }} 个</span>
           </div>
@@ -217,13 +217,8 @@ onMounted(async () => {
   height: 10px;
   border-radius: 50%;
   display: inline-block;
-  background: #6b7280; /* 未列系统的默认色（禅道/若依/JeecG 等不再无色） */
+  /* 配色经 systemColor() 内联绑定（未列系统回退默认灰） */
 }
-.sys-dot[data-sys="njmind"] { background: #3b82f6; }
-.sys-dot[data-sys="Odoo"] { background: #8b5cf6; }
-.sys-dot[data-sys="Dolibarr"] { background: #f59e0b; }
-.sys-dot[data-sys="ERPNext"] { background: #10b981; }
-.sys-dot[data-sys="其他"] { background: #9ca3af; }
 .sys-name {
   font-weight: 700;
   font-size: 14px;

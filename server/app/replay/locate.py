@@ -287,7 +287,7 @@ async def locate(page: Page, label: str, *,
     3×1s 实测不够）——5×1s。"""
     # S43-4：导航/重渲窗口（Save 后页面跳转详情页再渲染）需更长
     # 重试——5×1s 实测不够（ERPNext Submit 按钮在写请求+页面刷新
-    # 后 ~4.5s 才出现），扩到 8 轮
+    # 后 ~4.5s 才出现），扩到 12 轮（约 11s，覆盖最慢的重渲窗口）
     for attempt in range(12):
         for lbl in [label, *(labels or [])]:
             if not lbl:
@@ -300,8 +300,7 @@ async def locate(page: Page, label: str, *,
     if path:
         segs = [s for s in path.split(">") if s]
         if segs:
-            last = segs[-1]
-            sel = " ".join(segs) if len(segs) == 1 else f"{' '.join(segs[:-1])} {last}"
+            sel = " ".join(segs)
             if ordinal and ordinal > 1:
                 sel += f":nth-of-type({ordinal})"
             for fr in page.frames:

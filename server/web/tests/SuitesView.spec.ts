@@ -166,4 +166,40 @@ describe("SuitesView", () => {
     expect(hist).not.toBeNull();
     expect(hist?.textContent).toContain("通过 1 / 失败 0");
   });
+
+  it("history load failure clears stale rows and surfaces error", async () => {
+    // 评审#9：showHistory 曾无 try/catch——失败即未处理拒绝+旧数据残留
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/suites/1/runs")) {
+        return new Response(JSON.stringify({ detail: "db down" }), {
+          status: 500, headers: { "content-type": "application/json" } });
+      }
+      if (url.includes("/api/v1/skills")) {
+        return new Response(JSON.stringify(skills), {
+          status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url.includes("/api/v1/suites")) {
+        return new Response(JSON.stringify(suites), {
+          status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response("not found", { status: 404 });
+    }));
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    await mountView(root);
+    await flush();
+    await flush();
+
+    const btns = root.querySelectorAll(".suite-card .btn-secondary");
+    (btns[0] as HTMLElement).click();
+    await flush();
+    await flush();
+
+    const hist = root.querySelector("[data-testid='suite-history']");
+    expect(hist).not.toBeNull();
+    expect(root.querySelector("[data-testid='history-error']")?.textContent)
+      .toContain("加载失败");
+    expect(hist?.querySelectorAll("tbody tr").length ?? 0).toBe(0);
+  });
 });

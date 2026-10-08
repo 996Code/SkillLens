@@ -288,3 +288,44 @@ async def test_rebuild_assertions_preserves_evidence_count(client, monkeypatch):
     t2 = next(r for r in rows2 if r["kind"] == "api_status"
               and r["payload"]["api_template"] == target["payload"]["api_template"])
     assert t2["payload"].get("layer4_verified") is True
+
+
+# ---------- 评审#7：畸形 JSON 列条目不得 KeyError（人工修订 changes 原样保留） ----------
+
+async def test_check_one_malformed_payload_no_raise(client):
+    """payload 缺键 → verify 判 False（可见失败），不抛 KeyError。"""
+    from app.db import SessionLocal
+    from app.learning.outcome import _check_one
+    db = SessionLocal()
+    try:
+        for kind in ("api_status", "state_signal", "ui_text", "field_change"):
+            assert _check_one(db, "no-such-session", kind, {}) is False
+            assert _check_one(db, "no-such-session", kind, {"field": "x"}) is False
+    finally:
+        db.close()
+
+
+async def test_generate_assertions_malformed_evidence_skipped(client, monkeypatch):
+    """api_calls/state_signals/changes 里的畸形条目（缺键/非 dict）——
+    跳过并记录，不得 500；良构条目照常生成断言。"""
+    skill_id, sid = await _make_learned_skill(client, monkeypatch)
+    from app.db import SessionLocal
+    from app.models import FieldChange, SemanticAction
+    db = SessionLocal()
+    try:
+        act = db.query(SemanticAction).filter_by(session_id=sid).first()
+        act.api_calls = list(act.api_calls or []) + [{"method": "POST"}, "junk"]
+        act.state_signals = list(act.state_signals or []) + [
+            {"field": "code"}, "junk", {"api": "/x", "field": "code"}]
+        db.add(FieldChange(session_id=sid, api_template="/orders/{id}/save",
+                           before_seq=1, after_seq=2,
+                           changes=[{"field": "broken"}, "not-a-dict",
+                                    {"field": "note", "before": "a"}]))
+        db.commit()
+    finally:
+        db.close()
+    resp = await client.post(f"/api/v1/skills/{skill_id}/assertions")
+    assert resp.status_code == 200
+    rows = (await client.get(f"/api/v1/skills/{skill_id}/assertions")).json()
+    assert rows  # 良构证据仍生成断言
+    assert all(r["payload"].get("field") != "broken" for r in rows)

@@ -118,3 +118,27 @@ def test_skeleton_plan_override_without_event_prepends():
     plan = compile_skeleton_plan(events, skeleton, "s1", {"新变量": "v"}, [])
     kinds = [(s["kind"], s.get("label") or s.get("name")) for s in plan["steps"]]
     assert kinds == [("input", "新变量"), ("click", "保存")]
+
+
+def test_skeleton_plan_goto_uses_normalized_url():
+    """评审#3：goto 步必须携带归一化 URL（Frappe 一次性草稿尾缀重写为
+    /app/{doctype}/new + query/hash 剥除）——原始 query 可能带会话 token，
+    不得持久化进 plan；一次性草稿地址回放重定向结果随机。"""
+    events = [
+        {"seq": 0, "ts": 0, "kind": "navigation",
+         "payload": {"type": "page-load", "url": "http://erp.local/app/home"}},
+        {"seq": 1, "ts": 100, "kind": "action",
+         "payload": {"type": "click", "target": {"label": "新建"}}},
+        {"seq": 2, "ts": 200, "kind": "navigation",
+         "payload": {"type": "page-load",
+                     "url": "http://erp.local/desk/sales-order/"
+                            "new-sales-order-ab12cd?sid=TOKEN#top"}},
+        {"seq": 3, "ts": 300, "kind": "action",
+         "payload": {"type": "click", "target": {"label": "保存"}}},
+    ]
+    skeleton = [_win("新建", 0), _win("保存", 1)]
+    plan = compile_skeleton_plan(events, skeleton, "s1", {}, [])
+    gotos = [s for s in plan["steps"] if s["kind"] == "goto"]
+    assert len(gotos) == 1
+    assert gotos[0]["url"] == "http://erp.local/app/sales-order/new"
+    assert "TOKEN" not in str(plan["steps"])

@@ -10,8 +10,9 @@
 | 0.2 | Compose | `docker compose version` | v2+ |
 | 0.3 | 网络 | 目标系统与 LLM 网关可达 | — |
 
-国内网络注意：Dockerfile 从 ghcr.io 拉 uv 工具镜像可能超时——失败重试或预拉
-`docker pull ghcr.io/astral-sh/uv:latest`。
+国内网络注意：Dockerfile 从 ghcr.io 拉 uv 工具镜像（已 pin `ghcr.io/astral-sh/uv:0.8.4`，
+与开发机一致保证可复现）可能超时——失败重试或预拉
+`docker pull ghcr.io/astral-sh/uv:0.8.4`。
 
 ## 步骤 1：配置凭据
 
@@ -77,7 +78,7 @@ docker compose up -d   # 重建容器加载新 env
 ## 步骤 5：验证闭环（全自动，可选）
 
 ```bash
-cd server && uv run python ../scripts/njmind_login.py /tmp/njmind-state-auto.json
+cd server && uv run python ../scripts/njmind_login.py ../.njmind-state-auto.json
 ```
 
 容器内回放需要登录态，挂载方式（compose override）：
@@ -86,12 +87,13 @@ cd server && uv run python ../scripts/njmind_login.py /tmp/njmind-state-auto.jso
 services:
   server:
     volumes:
-      - /tmp/njmind-state-auto.json:/data/njmind-state.json:ro
+      - ../.njmind-state-auto.json:/data/njmind-state.json:ro
     environment:
       REPLAY_STORAGE_STATE: /data/njmind-state.json
 ```
 
 **预期**：state 文件 ~220KB；空文件会令容器内 Playwright 抛 JSONDecodeError（重新登录刷新）。
+（state 含内网登录 cookie：放仓库根相对路径并已 gitignore，**不放 /tmp**——世界可读。）
 手动路径：插件 popup → 开始录制 → 操作 → 停止；然后 process → align → induce →
 assertions → expected-deltas（生成+confirm）→ observe → report。
 
@@ -128,7 +130,7 @@ curl http://127.0.0.1:8710/api/v1/skills    # 数据回来
 
 | 症状 | 原因 | 处置 |
 |---|---|---|
-| 构建时 ghcr.io 超时 | 国内网络 | 预拉 `docker pull ghcr.io/astral-sh/uv:latest` 后重试 |
+| 构建时 ghcr.io 超时 | 国内网络 | 预拉 `docker pull ghcr.io/astral-sh/uv:0.8.4` 后重试 |
 | health 404 | 迁移未跑 | `docker compose exec server uv run alembic upgrade head` |
 | 插件连不上 | CORS/端口 | 查步骤 4；确认 8710 映射 |
 | 回放 JSONDecodeError | state 文件空/过期 | 重新跑 njmind_login.py 刷新 |

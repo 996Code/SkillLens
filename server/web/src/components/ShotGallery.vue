@@ -19,7 +19,12 @@ const urls = ref<Record<string, string>>({});
 const loading = ref(false);
 const zoomed = ref<string | null>(null); // file 名
 
+// 竞态守卫（评审）：props 快速变化时并发的 load 会互相 revoke 对方的
+// blob URL（图裂）——seq 单调递增，晚到的旧加载即丢弃并释放
+let loadSeq = 0;
+
 async function load(): Promise<void> {
+  const seq = ++loadSeq;
   for (const [, u] of Object.entries(urls.value)) URL.revokeObjectURL(u);
   urls.value = {};
   if (!props.items.length) return;
@@ -27,19 +32,22 @@ async function load(): Promise<void> {
   try {
     for (const it of props.items) {
       try {
-        urls.value[it.file] = await fetchStepScreenshot(props.runId, it.file);
+        const u = await fetchStepScreenshot(props.runId, it.file);
+        if (seq !== loadSeq) { URL.revokeObjectURL(u); return; }
+        urls.value[it.file] = u;
       } catch {
         /* 单张失败不阻塞整墙 */
       }
     }
   } finally {
-    loading.value = false;
+    if (seq === loadSeq) loading.value = false;
   }
 }
 
 watch(() => [props.runId, props.items], () => void load(), { immediate: true });
 
 onUnmounted(() => {
+  loadSeq += 1; // 卸载后晚到的响应直接 revoke
   for (const [, u] of Object.entries(urls.value)) URL.revokeObjectURL(u);
 });
 

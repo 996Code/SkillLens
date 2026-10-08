@@ -128,9 +128,6 @@ class Skill(Base):
     version: Mapped[int] = mapped_column(default=1, server_default="1")
     superseded_by: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
-    # UX 整改：技能按目标系统分类（对齐 session 首导航 URL 的端口推导；
-    # 「通用」=未识别系统的兜底分类）
-    system: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
 class SkillStrategy(Base):
@@ -168,8 +165,10 @@ class DiscoveredFeature(Base):
     __tablename__ = "discovered_feature"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(String(36), index=True)
-    api_template: Mapped[str | None] = mapped_column(String(300), nullable=True)
-    anchor_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    api_template: Mapped[str | None] = mapped_column(String(300), nullable=True,
+                                                     index=True)
+    anchor_label: Mapped[str | None] = mapped_column(String(200), nullable=True,
+                                                     index=True)
     observed_count: Mapped[int] = mapped_column(default=1)
     first_seen: Mapped[datetime] = mapped_column(default=utcnow)
     last_seen: Mapped[datetime] = mapped_column(default=utcnow)

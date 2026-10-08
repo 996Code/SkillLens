@@ -108,6 +108,61 @@ def test_put_adapter_invalid_rejected(adapter_client):
     assert r.status_code == 422
 
 
+def test_get_yaml_redacts_secrets(adapter_client):
+    """评审三轮 #1（安全红线）：GET /adapters/{id}/yaml 原文回显——
+    password_literal 泄漏给所有登录用户（含 viewer）。响应必须脱敏，
+    但保留 id 等非秘密结构（前端编辑器仍可用）。"""
+    import app.api.adapters as api_mod
+    (api_mod.ADAPTERS_DIR / "t2.yaml").write_text(
+        'id: t2\nlabel: 泄漏演示\ntarget: {base_url: "http://t:2"}\n'
+        'credentials: {username: u, password_literal: "Sup3rS3cret"}\n',
+        encoding="utf-8")
+    r = adapter_client.get("/api/v1/adapters/t2/yaml")
+    assert r.status_code == 200
+    body = r.json()["yaml"]
+    assert "Sup3rS3cret" not in body
+    assert "***" in body
+    assert "t2" in body
+
+
+def test_put_round_trip_preserves_masked_secret(adapter_client):
+    """脱敏回显的回归面（评审三轮 #1 后续）：GET 拿到的是 password_literal: '***'，
+    编辑器只改 label 就 PUT 时，掩码必须回填磁盘旧值——否则一次无关编辑就把
+    演示容器口令写成 "***"，登录静默失败且无从排查。"""
+    import app.api.adapters as api_mod
+    (api_mod.ADAPTERS_DIR / "t3.yaml").write_text(
+        'id: t3\nlabel: 原名\ntarget: {base_url: "http://t:3"}\n'
+        'credentials: {username: u, password_literal: "Sup3rS3cret"}\n',
+        encoding="utf-8")
+    echoed = adapter_client.get("/api/v1/adapters/t3/yaml").json()["yaml"]
+    assert "Sup3rS3cret" not in echoed
+
+    r = adapter_client.put("/api/v1/adapters/t3",
+                           json={"yaml": echoed.replace("原名", "改名")})
+    assert r.status_code == 200, r.text
+    saved = (api_mod.ADAPTERS_DIR / "t3.yaml").read_text(encoding="utf-8")
+    assert "Sup3rS3cret" in saved, "掩码被写回清单，凭据已销毁"
+    assert "改名" in saved
+
+
+def test_put_explicit_secret_overrides_mask(adapter_client):
+    """用户在编辑器里显式改写凭据 → 以新值为准（回填只针对仍是掩码的键）。"""
+    import re
+
+    import app.api.adapters as api_mod
+    (api_mod.ADAPTERS_DIR / "t4.yaml").write_text(
+        'id: t4\nlabel: L\ntarget: {base_url: "http://t:4"}\n'
+        'credentials: {username: u, password_literal: "OldPass1"}\n',
+        encoding="utf-8")
+    echoed = adapter_client.get("/api/v1/adapters/t4/yaml").json()["yaml"]
+    edited = re.sub(r"(password_literal:\s*)\S+", r"\1'NewPass9'", echoed)
+    assert "NewPass9" in edited
+    r = adapter_client.put("/api/v1/adapters/t4", json={"yaml": edited})
+    assert r.status_code == 200, r.text
+    saved = (api_mod.ADAPTERS_DIR / "t4.yaml").read_text(encoding="utf-8")
+    assert "NewPass9" in saved and "OldPass1" not in saved
+
+
 def test_adapter_id_traversal_rejected(adapter_client):
     """安全红线（全量评审）：adapter_id 拼文件路径——Windows 反斜杠穿越
     （%5C 解码后单段命中路由）必须被白名单字符校验拦截。"""

@@ -102,3 +102,23 @@ async def test_duplicate_user_409(bare_client, client):
 def _uid(db, username):
     from app.models import User
     return db.query(User).filter_by(username=username).first().id
+
+
+async def test_unknown_user_runs_equal_strength_verify(bare_client, client, monkeypatch):
+    """三轮评审：用户名枚举侧信道。未知用户直接 401 会省掉一次 100k 轮
+    pbkdf2（数十毫秒），已知用户+错口令则跑满——响应时差足以枚举有效账号。
+    未知用户也必须走一次等强度校验（对 dummy hash，结果丢弃）。"""
+    import app.api.auth as auth_api
+    seen: list[str] = []
+    real = auth_api.verify_password
+
+    def spy(password: str, stored: str) -> bool:
+        seen.append(stored)
+        return real(password, stored)
+
+    monkeypatch.setattr(auth_api, "verify_password", spy)
+    resp = await bare_client.post("/api/v1/auth/login",
+                                 json={"username": "根本没有这个人", "password": "x"})
+    assert resp.status_code == 401
+    assert len(seen) == 1, "未知用户跳过了口令校验（时差可枚举用户名）"
+    assert seen[0].startswith("pbkdf2$")

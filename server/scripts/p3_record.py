@@ -21,6 +21,7 @@ from app.adapters.manifest import load_adapter_dir
 
 SERVER = "http://127.0.0.1:8710/api/v1"
 CDP = "http://127.0.0.1:9222"
+URLOPEN_TIMEOUT = 10  # CDP 端点挂起时防线程永久阻塞
 
 
 def mint_token() -> str:
@@ -97,7 +98,8 @@ async def open_page():
     def _new():
         req = urllib.request.Request(
             f"{CDP}/json/new?about:blank", method="PUT")
-        return json.loads(urllib.request.urlopen(req).read())
+        return json.loads(urllib.request.urlopen(req,
+                                                 timeout=URLOPEN_TIMEOUT).read())
     target = await asyncio.to_thread(_new)
     ws = await websockets.connect(
         target["webSocketDebuggerUrl"], max_size=10**7)
@@ -111,7 +113,8 @@ async def close_page(target_id):
     def _close():
         try:
             urllib.request.urlopen(
-                f"{CDP}/json/close/{target_id}").read()
+                f"{CDP}/json/close/{target_id}",
+                timeout=URLOPEN_TIMEOUT).read()
         except Exception:
             pass
     await asyncio.to_thread(_close)
@@ -119,7 +122,8 @@ async def close_page(target_id):
 
 async def sw_evaluate(expr: str):
     def _list():
-        return json.loads(urllib.request.urlopen(f"{CDP}/json").read())
+        return json.loads(urllib.request.urlopen(f"{CDP}/json",
+                                                 timeout=URLOPEN_TIMEOUT).read())
     targets = await asyncio.to_thread(_list)
     sw = [t for t in targets if t.get("type") == "service_worker"
           and "chrome-extension" in t.get("url", "")]

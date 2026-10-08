@@ -32,14 +32,15 @@ async function mountReplay(root: HTMLElement, path: string) {
       { path: "/graph/run/:runId", component: { render: () => null } },
       { path: "/", component: { render: () => null } },
       { path: "/graph/skill/:id", component: { render: () => null } },
-      { path: "/graph/replay/:skillId", component: { render: () => null } },
+      { path: "/graph/replay/:skillId", name: "replay-launch",
+        component: { render: () => null } },
     ],
   });
   await router.push(path);
   const app = createApp({ render: () => h(ReplayLaunch) });
   app.use(router);
   app.mount(root);
-  return app;
+  return { app, router };
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -228,5 +229,52 @@ describe("ReplayLaunch 结果渲染", () => {
     expect(root.textContent).toContain("旧标题 → 新标题");
     expect(root.textContent).toContain("草稿 → 已提交");
     expect(root.textContent).not.toContain("旧备注 → 旧备注");
+  });
+});
+
+describe("ReplayLaunch 路由参数切换（评审#4）", () => {
+  it("skillId 变化时重载 card 并复位表单/结果状态", async () => {
+    const card7 = { ...card, id: 7, name: "CreateRole",
+                    input_variables: [{ name: "角色名", values: { s1: "r" } }] };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/v1/skills/7/card")) {
+        return new Response(JSON.stringify(card7), {
+          status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url.includes("/api/v1/skills/6/card")) {
+        return new Response(JSON.stringify(card), {
+          status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const { router } = await mountReplay(root, "/graph/replay/6");
+    await flush();
+    await flush();
+    expect(root.textContent).toContain("SaveFormAndTableConfig");
+
+    // 脏表单状态：delta id + override 输入
+    const deltaInput = root.querySelector(
+      'input[aria-label="expected_delta_id"]') as HTMLInputElement;
+    deltaInput.value = "5";
+    deltaInput.dispatchEvent(new Event("input"));
+    (root.querySelector(".override-row input") as HTMLInputElement).value = "x";
+    await flush();
+
+    await router.push("/graph/replay/7");
+    for (let i = 0; i < 4; i++) await flush();
+
+    expect(root.textContent).toContain("CreateRole");
+    expect(fetchMock.mock.calls.some(([u]) =>
+      String(u).includes("/skills/7/card"))).toBe(true);
+    // 表单复位：delta 清空，overrides 换成新 card 的变量
+    expect((root.querySelector(
+      'input[aria-label="expected_delta_id"]') as HTMLInputElement).value)
+      .toBe("");
+    expect(root.querySelectorAll(".override-row").length).toBe(1);
+    expect(root.textContent).toContain("角色名");
   });
 });

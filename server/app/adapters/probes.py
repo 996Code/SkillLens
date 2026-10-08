@@ -16,7 +16,18 @@ from pathlib import Path
 
 import httpx
 
-from app.adapters.manifest import Manifest, Probe
+from app.adapters.manifest import Manifest, Probe, _CONTAINER_PATTERN
+from app.sanitize import sanitize_error
+
+# 评审三轮 #2 防御层：schema pattern 之外的运行时复验——程序化构造的
+# manifest（model_construct）不得绕过 docker argv 选项注入面
+_CONTAINER_RE = re.compile(_CONTAINER_PATTERN)
+
+
+def _check_container(container: str) -> None:
+    if not _CONTAINER_RE.match(container or ""):
+        raise ValueError(
+            f"非法 container 名（docker argv 选项注入面）: {container!r}")
 
 
 def interpolate(template: str, manifest: Manifest) -> str:
@@ -35,30 +46,49 @@ def interpolate(template: str, manifest: Manifest) -> str:
     return out
 
 
+def _run_docker(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
+    """docker 子进程统一出口：非零 rc 必抛（评审三轮 #3——曾只读 stdout，
+    容器名错/脚本缺/SQL 报错全被吞成"空输出=通过"）；stderr 摘要经
+    sanitize_error 脱敏（URL/主机不落日志与库）。"""
+    res = subprocess.run(cmd, capture_output=True, text=True,
+                         encoding="utf-8", errors="replace", timeout=timeout)
+    if res.returncode != 0:
+        detail = sanitize_error((res.stderr or "").strip())[:200]
+        raise RuntimeError(
+            f"docker 命令失败 rc={res.returncode}: {' '.join(cmd[:3])}… {detail}")
+    return res
+
+
 def _ensure_helper_scripts(container: str) -> None:
     """辅助脚本注入：adapters/scripts/*.sh → 指定容器 /opt/skilllens/（幂等）。
     复杂 shell（密码抽取等）不塞 manifest——设计原则①的 escape hatch。"""
+    _check_container(container)
     scripts_dir = Path(__file__).resolve().parent.parent.parent / "adapters" / "scripts"
     if not scripts_dir.is_dir():
         return
-    subprocess.run(
-        ["docker", "exec", container, "sh", "-c", "mkdir -p /opt/skilllens"],
-        capture_output=True, timeout=30)
+    _run_docker(["docker", "exec", container, "sh", "-c",
+                 "mkdir -p /opt/skilllens"])
     for f in scripts_dir.glob("*.sh"):
-        subprocess.run(
-            ["docker", "cp", str(f), f"{container}:/opt/skilllens/{f.name}"],
-            capture_output=True, timeout=30)
+        _run_docker(["docker", "cp", str(f),
+                     f"{container}:/opt/skilllens/{f.name}"])
 
 
 def _exec_docker(manifest: Manifest, probe: Probe) -> list[tuple]:
+    _check_container(probe.container or "")
     _ensure_helper_scripts(probe.container or "")
     shell = interpolate(probe.shell or "", manifest)
     env = {**os.environ, "MSYS_NO_PATHCONV": "1"}
-    out = subprocess.run(
+    res = subprocess.run(
         ["docker", "exec", probe.container or "", "sh", "-c", shell],
         capture_output=True, text=True,
         encoding="utf-8", errors="replace", timeout=60, env=env,
-    ).stdout.strip()
+    )
+    if res.returncode != 0:
+        detail = sanitize_error((res.stderr or "").strip())[:200]
+        raise RuntimeError(
+            f"探针 {probe.id} docker exec 失败 "
+            f"rc={res.returncode}: {detail}")
+    out = (res.stdout or "").strip()
     return [tuple(l.split("\t")) for l in out.splitlines() if l]
 
 
@@ -94,6 +124,16 @@ def parse_probe_output(raw: str, regex: str | None) -> str:
     return m.group(1) if m else ""
 
 
+def _empty_observation(v) -> bool:
+    """观测空值判定：None/空行集/空串视为"命令无产出"（死探针信号）。
+    bool False 是 http 探针的合法观测值——不算空。"""
+    if v is None:
+        return True
+    if isinstance(v, str):
+        return v == ""
+    return hasattr(v, "__len__") and len(v) == 0
+
+
 def compare_expect(expect: str, before, after) -> bool:
     if expect == "increased":
         def n(v):
@@ -103,5 +143,10 @@ def compare_expect(expect: str, before, after) -> bool:
                 return -1
         return n(after) > n(before)
     if expect == "equals":
+        # 评审三轮 #3：空观测（容器名错/脚本缺/SQL 报错 → 无产出）不得判
+        # "状态一致"——[] == [] 曾让死探针静默通过。仓内存量清单无
+        # "期望空"合法用例（equals 全部前后实体对比），空即 False。
+        if _empty_observation(before) or _empty_observation(after):
+            return False
         return before == after
     raise ValueError(f"未知 expect 语义: {expect}")

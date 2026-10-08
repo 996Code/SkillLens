@@ -1,7 +1,11 @@
+import logging
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Alignment, FieldChange, OutcomeAssertion, SemanticAction, Skill
+
+logger = logging.getLogger("skilllens")
 
 
 def _ui_text_rows(action: SemanticAction) -> list[tuple]:
@@ -45,15 +49,27 @@ def generate_assertions(db: Session, skill_id: int) -> list[OutcomeAssertion]:
                 # RPC 虽走 POST 但语义是列表轮询/读取，与流程无因果（URL
                 # 直达回放时不出现），observed None 判 fail 是假阴性；业务
                 # 结果由真写方法+状态信号判定
+                # 评审#7：畸形条目（非 dict/缺 template）跳过并记录（C3
+                # 可见不吞），不得 KeyError
+                if not isinstance(call, dict):
+                    logger.warning("generate_assertions: skip malformed api_call %r", call)
+                    continue
                 t = call.get("template") or ""
+                if not t:
+                    logger.warning("generate_assertions: api_call missing template: %r", call)
+                    continue
                 if any(k in t for k in ("reportview", "search_link", "search_widget",
                                         "get_count", "list_view", "get_list")):
                     continue
                 if (call.get("method") or "GET").upper() == "GET":
                     continue
-                rows.append(("api_status", call["template"], 3,
-                             {"api_template": call["template"], "expect_status": call.get("status")}))
+                rows.append(("api_status", t, 3,
+                             {"api_template": t, "expect_status": call.get("status")}))
             for sig in action.state_signals or []:
+                if (not isinstance(sig, dict) or not sig.get("api")
+                        or sig.get("field") is None or "value" not in sig):
+                    logger.warning("generate_assertions: skip malformed state_signal %r", sig)
+                    continue
                 payload = {"api_template": sig["api"], "field": sig["field"],
                            "expect_value": sig["value"]}
                 # S42：GET /{id} 行读取是行上下文（回放命中行≠录制行，
@@ -71,10 +87,17 @@ def generate_assertions(db: Session, skill_id: int) -> list[OutcomeAssertion]:
             select(FieldChange).where(FieldChange.session_id == sid)
         ).scalars().all()
         for fc in changes:
-            for ch in fc.changes:
+            for ch in fc.changes or []:
+                # 评审#7：changes 可能含人工修订的畸形条目（expected.py
+                # 原样保留）——非 dict/缺 field 或 before/after 证据键的
+                # 无法构成断言，跳过并记录（C3 可见不吞），不得 KeyError
+                if not isinstance(ch, dict) or not ch.get("field") \
+                        or "before" not in ch or "after" not in ch:
+                    logger.warning("generate_assertions: skip malformed change %r", ch)
+                    continue
                 # _truncated 是截断标记行而非业务字段变化，不得生成断言
                 # （否则污染 C2 基线锚的 assertion_count/pass_rate）
-                if ch.get("field") == "_truncated":
+                if ch["field"] == "_truncated":
                     continue
                 rows.append(("field_change", fc.api_template, 2,
                              {"api_template": fc.api_template, "field": ch["field"],
@@ -129,38 +152,56 @@ def verify_against_session(db: Session, assertion_id: int) -> dict:
 
 
 def _check_one(db: Session, sid: str, kind: str, p: dict) -> bool:
+    # 评审#7：payload 缺键（人工修订/旧数据）→ verify 判 False（可见失败），
+    # 不得 KeyError 把回验打成 500
+    p = p if isinstance(p, dict) else {}
     if kind == "api_status":
+        tpl = p.get("api_template")
+        if tpl is None:
+            return False
         actions = db.execute(select(SemanticAction).where(SemanticAction.session_id == sid)).scalars().all()
         statuses = [c.get("status") for act in actions for c in (act.api_calls or [])
-                    if c.get("template") == p["api_template"]]
-        return bool(statuses) and all(s == p["expect_status"] for s in statuses)
+                    if isinstance(c, dict) and c.get("template") == tpl]
+        return bool(statuses) and all(s == p.get("expect_status") for s in statuses)
     if kind == "state_signal":
+        tpl = p.get("api_template")
+        field = p.get("field")
+        if tpl is None or field is None:
+            return False
         actions = db.execute(select(SemanticAction).where(SemanticAction.session_id == sid)).scalars().all()
-        values = [s["value"] for act in actions for s in (act.state_signals or [])
-                  if s["api"] == p["api_template"] and s["field"] == p["field"]]
-        return bool(values) and all(v == p["expect_value"] for v in values)
+        values = [s.get("value") for act in actions for s in (act.state_signals or [])
+                  if isinstance(s, dict) and s.get("api") == tpl and s.get("field") == field]
+        return bool(values) and all(v == p.get("expect_value") for v in values)
     if kind == "ui_text":
+        label = p.get("label")
+        if label is None:
+            return False
         # 层 2 存在性语义：session 任一语义动作窗的快照差集里该 label 发生了变化即过
         # （与 field_change 同口径：before/after 是证据值，跨 session 天然可不同）
         actions = db.execute(select(SemanticAction).where(SemanticAction.session_id == sid)).scalars().all()
         for act in actions:
             b_map = {f.get("label"): f.get("value")
-                     for f in ((act.state_before or {}).get("forms") or [])}
+                     for f in ((act.state_before or {}).get("forms") or [])
+                     if isinstance(f, dict)}
             a_map = {f.get("label"): f.get("value")
-                     for f in ((act.state_after or {}).get("forms") or [])}
-            if p["label"] in b_map and p["label"] in a_map \
-                    and b_map[p["label"]] != a_map[p["label"]]:
+                     for f in ((act.state_after or {}).get("forms") or [])
+                     if isinstance(f, dict)}
+            if label in b_map and label in a_map and b_map[label] != a_map[label]:
                 return True
         return False
     if kind == "field_change":
+        tpl = p.get("api_template")
+        field = p.get("field")
+        if tpl is None or field is None:
+            return False
         fcs = db.execute(select(FieldChange).where(FieldChange.session_id == sid)).scalars().all()
         # before/after 是证据值：可能含输入变量（如 note=n111/n222），跨 session 天然不同，
         # 不能作为恒等条件；层 2 回放断言的语义是"该模板上该字段发生了变化"（存在性）。
         for fc in fcs:
-            if fc.api_template != p["api_template"]:
+            if fc.api_template != tpl:
                 continue
-            for ch in fc.changes:
-                if ch["field"] == p["field"]:
+            for ch in fc.changes or []:
+                if isinstance(ch, dict) and ch.get("field") == field:
                     return True
         return False
     return False

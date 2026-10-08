@@ -7,6 +7,7 @@ from app.ingestion.fieldchange import extract_field_changes
 from app.learning.outcome import generate_assertions, verify_against_session
 from app.learning.skill import induce_skill
 from app.models import FieldChange, OutcomeAssertion, RecordingSession, Skill
+from app.api.auth import WRITE_GUARD
 
 router = APIRouter()
 
@@ -19,7 +20,7 @@ def get_db():
         db.close()
 
 
-@router.post("/sessions/{session_id}/field-changes")
+@router.post("/sessions/{session_id}/field-changes", dependencies=WRITE_GUARD)
 async def run_field_changes(session_id: str, db: Session = Depends(get_db)) -> dict:
     if not db.get(RecordingSession, session_id):
         raise HTTPException(status_code=404, detail="session not found")
@@ -36,7 +37,7 @@ async def list_field_changes(session_id: str, db: Session = Depends(get_db)) -> 
              "after_seq": r.after_seq, "changes": r.changes} for r in rows]
 
 
-@router.post("/alignments/{alignment_id}/induce")
+@router.post("/alignments/{alignment_id}/induce", dependencies=WRITE_GUARD)
 async def induce(alignment_id: int, db: Session = Depends(get_db)) -> dict:
     from app.models import Alignment
     if not db.get(Alignment, alignment_id):
@@ -78,7 +79,7 @@ async def list_skills(db: Session = Depends(get_db)) -> list:
              "system": systems.get(r.id, "未知系统")} for r in rows]
 
 
-@router.post("/skills/{skill_id}/assertions")
+@router.post("/skills/{skill_id}/assertions", dependencies=WRITE_GUARD)
 async def create_assertions(skill_id: int, db: Session = Depends(get_db)) -> dict:
     skill = db.get(Skill, skill_id)
     if not skill:
@@ -89,7 +90,7 @@ async def create_assertions(skill_id: int, db: Session = Depends(get_db)) -> dic
     return {"assertions": len(rows)}
 
 
-@router.post("/assertions/{assertion_id}/verify")
+@router.post("/assertions/{assertion_id}/verify", dependencies=WRITE_GUARD)
 async def verify_assertion(assertion_id: int, db: Session = Depends(get_db)) -> dict:
     assertion = db.get(OutcomeAssertion, assertion_id)
     if not assertion:

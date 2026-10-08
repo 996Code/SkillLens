@@ -159,7 +159,10 @@ def compile_skeleton_plan(events: list[dict], skeleton: list[dict], ref_session_
                 path = f"{m.group(1)}/app/{m.group(3)}/new"
             if nav_url and path not in seen_urls:
                 seen_urls.add(path)
-                steps.append({"kind": "goto", "url": nav_url})
+                # 评审#3：goto 步携带归一化 URL（草稿尾缀已重写、query/hash
+                # 已剥）——原始 query 可能带会话 token，不得持久化进 plan；
+                # runner/executor 侧直接 page.goto 该 URL（归一化由编译侧保证）
+                steps.append({"kind": "goto", "url": path})
         if e.get("kind") == "action" and payload.get("type") == "input":
             name = payload.get("name") or ""
             # S42-7：录制到的 input 全部进步骤（不只变量）——常量字段

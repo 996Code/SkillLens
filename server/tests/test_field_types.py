@@ -112,6 +112,73 @@ def test_password_rule():
         db.close()
 
 
+# ---------- 评审#4：确定性修复（重复 pattern / 身份证日期段 / 重复解析） ----------
+
+def test_record_success_duplicate_pattern_deterministic():
+    """同 pattern 多行（manual+learned 并存）不得 MultipleResultsFound——
+    按 success_count 降序、id 升序确定性选取，重复调用落同一行。"""
+    db = _db()
+    try:
+        db.add(FieldTypeHint(label_pattern="微信号", field_type="phone",
+                             example_value="a", source="manual", success_count=5))
+        db.add(FieldTypeHint(label_pattern="微信号", field_type="email",
+                             example_value="b", source="manual", success_count=1))
+        db.commit()
+        row = ft.record_success(db, "微信号", "13800001111")
+        assert row is not None and row.field_type == "phone"   # 高 success_count 胜
+        first_id, first_count = row.id, row.success_count
+        row2 = ft.record_success(db, "微信号", "13800002222")
+        assert row2.id == first_id and row2.success_count == first_count + 1
+    finally:
+        db.close()
+
+
+def test_record_success_duplicate_pattern_tie_lowest_id():
+    """success_count 打平 → 取最小 id（稳定可复现）。"""
+    db = _db()
+    try:
+        db.add(FieldTypeHint(label_pattern="工号", field_type="int",
+                             example_value="", source="manual", success_count=0))
+        db.add(FieldTypeHint(label_pattern="工号", field_type="int",
+                             example_value="", source="learned", success_count=0))
+        db.commit()
+        ids = sorted(r.id for r in
+                     db.query(FieldTypeHint).filter_by(label_pattern="工号").all())
+        row = ft.record_success(db, "工号", "42")
+        assert row.id == ids[0]
+    finally:
+        db.close()
+
+
+def test_gen_id_card_birth_segment_is_real_date():
+    """评审#4a：日段曾是 randint(10000,99999) 前两位（10-99）——多数月份
+    非法日期，严格校验器必拒。现月 1-12、日 1-28，校验位仍按 GB11643。"""
+    import datetime as _dt
+    weights = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2]
+    for _ in range(200):
+        v = ft._gen_id_card()
+        assert len(v) == 18 and v[:17].isdigit()
+        d = _dt.datetime.strptime(v[6:14], "%Y%m%d").date()   # 非法日期直接抛
+        assert 1 <= d.month <= 12 and 1 <= d.day <= 28
+        s = sum(int(c) * w for c, w in zip(v[:17], weights))
+        assert v[17] == "10X98765432"[s % 11]
+
+
+def test_resolve_type_repeatable():
+    """评审#4b：有界扫描改造后重复调用结果稳定一致。"""
+    db = _db()
+    try:
+        ft.record_success(db, "手机号码", "13800000000")
+        r1 = ft.resolve_type(db, "手机号码")
+        r2 = ft.resolve_type(db, "手机号码")
+        assert r1 is not None and r1["field_type"] == "phone"
+        assert r2["field_type"] == r1["field_type"]
+        assert ft.resolve_type(db, "不存在的字段") is None
+        assert ft.resolve_type(db, "不存在的字段") is None
+    finally:
+        db.close()
+
+
 # ---------- S43-3：LLM 归因（层 3）——规则外字段经 LLM 分类回填知识库 ----------
 
 def _db_clean():

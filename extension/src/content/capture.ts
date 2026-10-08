@@ -1,7 +1,7 @@
 import { describeElement } from "../shared/describe-element";
 import { inputKey } from "../shared/input-key";
 import { makePageId } from "../shared/page-id";
-import { redactValue } from "../shared/redact";
+import { redactNetworkUrl, redactValue } from "../shared/redact";
 import { EVENT_MSG } from "../shared/types";
 import type { RawEvent } from "../shared/types";
 import { collectSnapshot } from "./snapshot";
@@ -21,6 +21,13 @@ let recording = false;
 let seq = 0;
 function nextSeq(): number {
   return seq++;
+}
+
+// 安全红线：文档 URL 也是证据。net-hook 只管 fetch/XHR，location.href 走本
+// 模块入库——?token=/?api_key= 明文会进 IndexedDB、raw_event，再进 LLM 归因
+// prompt。host/path 不动（目标系统派生依赖首条 navigation 的 host）。
+function pageUrl(): string {
+  return redactNetworkUrl(location.href);
 }
 
 async function refreshState(): Promise<void> {
@@ -248,7 +255,7 @@ document.addEventListener(
     if (!target) return;
     flushPendingInputs();
     emitSnapshotsAroundAnchor();
-    void emit("action", { type: "click", target: describeElement(target), url: location.href });
+    void emit("action", { type: "click", target: describeElement(target), url: pageUrl() });
   },
   { capture: true },
 );
@@ -261,7 +268,7 @@ document.addEventListener(
     // S35：描述提交按钮（e.submitter）而非 form——form 的 textContent
     // 含内联脚本，label 被污染且无法用于回放定位
     const el = (e as SubmitEvent).submitter ?? (e.target as Element);
-    void emit("action", { type: "submit", target: describeElement(el), url: location.href });
+    void emit("action", { type: "submit", target: describeElement(el), url: pageUrl() });
   },
   { capture: true },
 );
@@ -272,7 +279,7 @@ document.addEventListener(
 // 的 page-load 是重复/噪声，且会污染目标系统派生（首条 navigation URL）。
 void refreshState().then(() => {
   if (recording && window.top === window) {
-    void emit("navigation", { type: "page-load", url: location.href, title: document.title });
+    void emit("navigation", { type: "page-load", url: pageUrl(), title: document.title });
   }
 });
 
@@ -287,5 +294,5 @@ document.documentElement.appendChild(s);
 // 活跃 session_id 混入事件流，服务端按 pageUrl 与锚点页面跨源过滤
 window.addEventListener("message", (e) => {
   if (e.source !== window || e.data?.source !== "skilllens-net") return;
-  void emit("network", { ...e.data.detail, pageUrl: location.href });
+  void emit("network", { ...e.data.detail, pageUrl: pageUrl() });
 });

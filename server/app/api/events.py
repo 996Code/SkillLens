@@ -13,6 +13,11 @@ from app.schemas import RawEventIn
 
 router = APIRouter()
 
+# 单批事件上限：逐条 commit 的实现下，超大批会把 worker 钉死数分钟并写入
+# 任意多行——本端点豁免鉴权（插件直连），必须有确定性的体量闸门。
+# 插件侧 BATCH=50（background/uploader.ts），此处留 40x 余量。
+MAX_EVENTS_PER_BATCH = 2000
+
 
 def get_db():
     db = SessionLocal()
@@ -49,6 +54,8 @@ async def create_session(body: SessionCreate, db: Session = Depends(get_db)) -> 
 @router.post("/sessions/{session_id}/events", dependencies=[Depends(_ingest_guard)])
 async def ingest_events(session_id: str, events: list[RawEventIn],
                         db: Session = Depends(get_db)) -> dict:
+    if len(events) > MAX_EVENTS_PER_BATCH:
+        raise HTTPException(413, f"批量过大：单请求上限 {MAX_EVENTS_PER_BATCH} 条")
     if not db.get(RecordingSession, session_id):
         raise HTTPException(404, detail="session not found")
     # 批量 409 降级（评审 #5）：一条旧 seq 会让整批事件永久丢失（重发同错）。

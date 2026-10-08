@@ -65,7 +65,7 @@ class SPAStaticFiles(StaticFiles):
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     # S13 F1：NIGHTLY_CRON=nightly 时拉起夜间图调度循环（默认 off 不启动）
-    from app.agents.scheduler import start_nightly_scheduler
+    from app.agents.scheduler import start_nightly_scheduler, stop_nightly_scheduler
     # S14 H4：启动时若 canvas_dag 空则播种预置"定向回归流水线"；
     # 迁移未跑（表缺失）时跳过不阻断启动
     from app.db import SessionLocal
@@ -81,7 +81,10 @@ async def _lifespan(app: FastAPI):
         import logging
         logging.warning("canvas 预置播种跳过: %s", exc)
     await start_nightly_scheduler()
-    yield
+    try:
+        yield
+    finally:
+        await stop_nightly_scheduler()
 
 
 app = FastAPI(title="SkillLens Local Agent", lifespan=_lifespan)

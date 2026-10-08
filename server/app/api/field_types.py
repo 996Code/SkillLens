@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.models import FieldTypeHint
 from app.replay.field_types import BUILTIN_RULES
+from app.api.auth import WRITE_GUARD
 
 router = APIRouter()
 
@@ -47,7 +48,7 @@ async def list_field_types(db: Session = Depends(get_db)) -> dict:
             "builtin_types": sorted({r["field_type"] for r in BUILTIN_RULES})}
 
 
-@router.post("/field-types")
+@router.post("/field-types", dependencies=WRITE_GUARD)
 async def create_field_type(body: FieldTypeIn,
                             db: Session = Depends(get_db)) -> dict:
     dup = db.execute(select(FieldTypeHint).where(
@@ -63,7 +64,7 @@ async def create_field_type(body: FieldTypeIn,
     return _item(row)
 
 
-@router.put("/field-types/{hint_id}")
+@router.put("/field-types/{hint_id}", dependencies=WRITE_GUARD)
 async def update_field_type(hint_id: int, body: FieldTypeIn,
                             db: Session = Depends(get_db)) -> dict:
     row = db.get(FieldTypeHint, hint_id)
@@ -77,7 +78,7 @@ async def update_field_type(hint_id: int, body: FieldTypeIn,
     return _item(row)
 
 
-@router.delete("/field-types/{hint_id}")
+@router.delete("/field-types/{hint_id}", dependencies=WRITE_GUARD)
 async def delete_field_type(hint_id: int,
                             db: Session = Depends(get_db)) -> dict:
     row = db.get(FieldTypeHint, hint_id)

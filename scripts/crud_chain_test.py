@@ -336,10 +336,11 @@ async def main():
 
         with_vars = []
         for s in all_skills:
-            card = httpx.get(
+            card = (await asyncio.to_thread(
+                httpx.get,
                 SERVER + "/api/v1/skills/" + str(s["id"]) + "/card",
                 headers={"Authorization": "Bearer " + token},
-            ).json()
+            )).json()
             if card.get("input_variables"):
                 with_vars.append(s["id"])
 
@@ -348,10 +349,11 @@ async def main():
         pass_count = 0
         for skill_id in with_vars[-5:]:  # 最新的 5 个
             for data in replay_data:
-                card = httpx.get(
+                card = (await asyncio.to_thread(
+                    httpx.get,
                     SERVER + "/api/v1/skills/" + str(skill_id) + "/card",
                     headers={"Authorization": "Bearer " + token},
-                ).json()
+                )).json()
                 vars = [v["name"] for v in card.get("input_variables", [])]
                 overrides = {v: data for v in vars}
 

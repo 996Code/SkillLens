@@ -1,4 +1,6 @@
-// J4 PII 规则配置化：基础词表与 server/app/replay/page_snapshot.py 同源；
+// J4 PII 规则配置化：基础词表与 server/app/replay/page_snapshot.py、
+// injected/net-hook.js 三处同源（CRXJS 原样复制 injected JS，无法 import TS）；
+// 漂移由 shared/redact-parity.test.ts 兜住。
 // buildSensitiveRe(extraPatterns) 供后续配置注入通道（popup 设置页）追加自定义敏感字段
 export const BASE_SENSITIVE_PATTERNS = [
   "password",
@@ -11,6 +13,13 @@ export const BASE_SENSITIVE_PATTERNS = [
   "apikey",
   "private_key",
   "credential",
+  // 中文系统（njmind/若依/禅道/JeecG）的表单 label 与字段名形态
+  "密码",
+  "口令",
+  "密钥",
+  "令牌",
+  "凭证",
+  "验证码",
 ];
 
 export function buildSensitiveRe(extraPatterns: string[] = []): RegExp {

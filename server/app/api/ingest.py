@@ -8,6 +8,7 @@ from app.ingestion.process import load_windows, process_session
 from app.ingestion.variables import input_variables, param_variables
 from app.models import Alignment, FilteredWindow, RawEvent, RecordingSession, SemanticAction
 from app.schemas import AlignRequest
+from app.api.auth import WRITE_GUARD
 
 router = APIRouter()
 
@@ -20,7 +21,7 @@ def get_db():
         db.close()
 
 
-@router.post("/sessions/{session_id}/process")
+@router.post("/sessions/{session_id}/process", dependencies=WRITE_GUARD)
 async def process(session_id: str, db: Session = Depends(get_db)) -> dict:
     if not db.get(RecordingSession, session_id):
         raise HTTPException(status_code=404, detail="session not found")
@@ -54,7 +55,7 @@ async def list_filtered_windows(session_id: str, db: Session = Depends(get_db)) 
     return [{"window_seq": r.window_seq, "reason": r.reason} for r in rows]
 
 
-@router.post("/align")
+@router.post("/align", dependencies=WRITE_GUARD)
 async def align(body: AlignRequest, db: Session = Depends(get_db)) -> dict:
     for sid in body.session_ids:
         if not db.get(RecordingSession, sid):

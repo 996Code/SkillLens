@@ -56,7 +56,7 @@ def _top_level_json_spans(text: str) -> list[str]:
 
 
 def parse_llm_skill(text: str) -> dict | None:
-    """从 LLM 输出提取 JSON 提案（形状无关：skill 命名/dev_plan/flow/generic 共用）。
+    r"""从 LLM 输出提取 JSON 提案（形状无关：skill 命名/dev_plan/flow/generic 共用）。
 
     S27 彩排发现：思维链模型会先输出散文、且可能重复 JSON 块——贪婪 `\{.*\}`
     跨块匹配非法，而 `\{[^{}]*\}` 又会拆碎嵌套对象。改为平衡括号扫描取全部
@@ -89,24 +89,34 @@ def _confidence(alignment: Alignment) -> float:
     return round(api_steps / total * 0.6 + has_vars * 0.4, 2)
 
 
+def _supersede(old_skills: list[Skill], new_id: int) -> None:
+    for old in old_skills:
+        if old.status != "superseded":  # 已 superseded 的行保持原链指向不变
+            old.status = "superseded"
+            old.superseded_by = new_id
+
+
 async def induce_skill(db: Session, alignment_id: int) -> Skill:
     alignment = db.get(Alignment, alignment_id)
+    old_skills = db.query(Skill).filter(Skill.alignment_id == alignment_id).all()
+    max_version = max((s.version or 1) for s in old_skills) if old_skills else 0
     # 空骨架（不同锚点流不归并的合法场景）→ 不调 LLM：无证据可命名，
-    # 调用只会产生幻觉名（网易实测：空骨架被命名为无关业务名）
+    # 调用只会产生幻觉名（网易实测：空骨架被命名为无关业务名）。
+    # 旧版本同走 S15 supersede——此分支曾删旧 skill 及其策略/断言：既与
+    # "不覆盖旧版本"相悖（新行还不带 version），又因 OutcomeAssertion 未
+    # 导入而 NameError→500（该路径从未成功执行过）
     if not alignment.skeleton:
-        old = db.query(Skill).filter(Skill.alignment_id == alignment_id).all()
-        for s in old:
-            db.query(SkillStrategy).filter(SkillStrategy.skill_id == s.id).delete()
-            db.query(OutcomeAssertion).filter(OutcomeAssertion.skill_id == s.id).delete()
-        db.query(Skill).filter(Skill.alignment_id == alignment_id).delete()
         skill = Skill(
             alignment_id=alignment_id, name="EmptyFlow", description="",
             status="candidate", skeleton=[], param_variables=[],
             input_variables=alignment.input_variables, confidence=0.0,
             evidence_count=len(alignment.session_ids),
             notes="骨架为空（各会话锚点无公共步），无可归纳流程",
+            version=max_version + 1,
         )
         db.add(skill)
+        db.flush()
+        _supersede(old_skills, skill.id)
         db.commit()
         db.refresh(skill)
         return skill
@@ -126,8 +136,6 @@ async def induce_skill(db: Session, alignment_id: int) -> Skill:
     # status→"superseded" + superseded_by=新行 id（只取代当前活跃行，链式指向
     # 直接后继），新行 version=旧最大 version+1；断言/策略只写新行，旧行的
     # 断言/策略保留作历史（原"先删断言再删 skill"孤儿治理随之整体移除）。
-    old_skills = db.query(Skill).filter(Skill.alignment_id == alignment_id).all()
-    max_version = max((s.version or 1) for s in old_skills) if old_skills else 0
     skill = Skill(
         alignment_id=alignment_id, name=name, description=desc, status=status,
         skeleton=alignment.skeleton, param_variables=alignment.param_variables,
@@ -137,10 +145,7 @@ async def induce_skill(db: Session, alignment_id: int) -> Skill:
     )
     db.add(skill)
     db.flush()
-    for old in old_skills:
-        if old.status != "superseded":  # 已 superseded 的行保持原链指向不变
-            old.status = "superseded"
-            old.superseded_by = skill.id
+    _supersede(old_skills, skill.id)
     # 多路径分桶落地：每桶一条策略（主桶亦记录），签名=桶内骨架序列
     for bucket in alignment.buckets or [{"sessions": alignment.session_ids,
                                          "skeleton": alignment.skeleton}]:

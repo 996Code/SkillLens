@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.models import ReplayRun, Skill
 from app.replay.runner import run_replay, run_replay_batch
+from app.api.auth import WRITE_GUARD
 
 router = APIRouter()
 
@@ -26,7 +27,7 @@ class ReplayRequest(BaseModel):
     confirm_side_effect: bool = False
 
 
-@router.post("/skills/{skill_id}/replay")
+@router.post("/skills/{skill_id}/replay", dependencies=WRITE_GUARD)
 async def replay(skill_id: int, body: ReplayRequest, db: Session = Depends(get_db)) -> dict:
     skill = db.get(Skill, skill_id)
     if not skill:
@@ -48,7 +49,7 @@ class ReplayBatchRequest(BaseModel):
     confirm_side_effect: bool = False           # C1：批级门控参数
 
 
-@router.post("/skills/replay-batch")
+@router.post("/skills/replay-batch", dependencies=WRITE_GUARD)
 async def replay_batch(body: ReplayBatchRequest,
                        db: Session = Depends(get_db)) -> dict:
     """S13 F3 批回放：browser 实例复用（一次 launch 多 context 串行），

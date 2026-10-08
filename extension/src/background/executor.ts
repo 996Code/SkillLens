@@ -84,11 +84,14 @@ export async function runSkill(
   // tabs.create 可能静默 pending——AG0 实证 tabs.query 稳定可用；
   // 宿主页被外部 CDP 持有，attach 会冲突，绝不复用非空白页签）
   let tabId: number | undefined;
+  // 复用的页签是用户自己开的——收尾只能导航回 about:blank，不能 remove
+  let tabReused = false;
   try {
     const all = await chrome.tabs.query({});
     const blank = all.find((t) => !t.url || t.url === "about:blank");
     if (blank?.id) {
       tabId = blank.id;
+      tabReused = true;
       onProgress("复用空白页签执行");
     } else {
       const created = await Promise.race([
@@ -116,7 +119,7 @@ export async function runSkill(
       method: "POST",
       body: JSON.stringify({ status: "fail", summary: { error: `attach 失败：${e.message}（关闭 DevTools 后重试）` } }),
     });
-    await chrome.tabs.remove(tabId).catch(() => {});
+    await releaseExecTab(debuggee, tabId, tabReused);
     return { status: "fail" };
   }
   onProgress("已 attach（顶部横幅=执行中，全程可见）");
@@ -257,9 +260,19 @@ export async function runSkill(
     return { status: "aborted" };
   } finally {
     chrome.debugger.onEvent.removeListener(onEvt);
-    await chrome.debugger.detach(debuggee).catch(() => {});
-    await chrome.tabs.remove(tabId).catch(() => {});
+    await releaseExecTab(debuggee, tabId, tabReused);
   }
+}
+
+// 收尾释放执行页签：自建页签直接关；复用的是用户自己开的空白页签，
+// 只能导航回 about:blank（关掉会销毁用户的页签——评审三轮 🟡）。
+async function releaseExecTab(debuggee: any, tabId: number, reused: boolean): Promise<void> {
+  await chrome.debugger.detach(debuggee).catch(() => {});
+  if (!reused) {
+    await chrome.tabs.remove(tabId).catch(() => {});
+    return;
+  }
+  await chrome.tabs.update(tabId, { url: "about:blank" }).catch(() => {});
 }
 
 async function pageTitle(debuggee: any): Promise<string> {
@@ -319,7 +332,7 @@ async function execute(
               .filter(b => b.getBoundingClientRect().width > 0);
             if (!boxes.length) return i;
             const btn = [...boxes[0].querySelectorAll('button')]
-              .find(b => /确\s*定|Cancel|取消/.test((b.textContent||'').trim()));
+              .find(b => /确\\s*定|Cancel|取消/.test((b.textContent||'').trim()));
             if (!btn) return i;
             btn.click();
             await new Promise(r => setTimeout(r, 600));
@@ -393,7 +406,9 @@ async function execute(
         expression: `JSON.stringify((function(){
           // 安全红线：与录制侧 snapshot.ts 同源三重防线——password 跳过 /
           // autocomplete=password 旁路跳过 / label 敏感词脱敏
-          const SENS = /password|passwd|secret|token|authorization|cookie|api_key|apikey|private_key|credential/i;
+          // 词表与 shared/redact.ts BASE_SENSITIVE_PATTERNS 逐字一致
+          // （页内脚本无法 import，一致性由 shared/redact-parity.test.ts 断言）
+          const SENS = /password|passwd|secret|token|authorization|cookie|api_key|apikey|private_key|credential|密码|口令|密钥|令牌|凭证|验证码/i;
           const forms = [...document.querySelectorAll('input, select, textarea')]
             .filter(e => e.getBoundingClientRect().width > 0)
             .filter(e => {
@@ -417,12 +432,20 @@ async function execute(
             .filter(t => t && !SENS.test(t));
           return {url: location.href, title: document.title, forms, toasts};
         })())`, returnByValue: true });
-      try { evidence.page = JSON.parse(r?.result?.value || "{}"); } catch { /* noop */ }
+      try {
+        // 文档 URL 也是证据：?token= 明文会随快照上行入库并进 LLM 归因
+        const page = JSON.parse(r?.result?.value || "{}");
+        if (page && typeof page.url === "string") page.url = redactNetworkUrl(page.url);
+        evidence.page = page;
+      } catch { /* noop */ }
     } catch { /* fail-open */ }
     try {
       const shot = await chrome.debugger.sendCommand(debuggee, "Page.captureScreenshot",
         { format: "png" });
-      evidence.screenshot = String(shot?.data || "").slice(0, 300000);
+      // 超限整张丢弃而非截断：服务端按 .png 落盘，截断的 base64 解出的是
+      // 非法 PNG（工作台碎图）。宁缺毋坏——快照文本证据才是断言原料。
+      const b64 = String(shot?.data || "");
+      if (b64 && b64.length <= 300000) evidence.screenshot = b64;
     } catch { /* fail-open */ }
     onProgress(`快照（${ins.phase}）`);
     return { seq: ins.seq, result: "ok", evidence };
@@ -752,7 +775,7 @@ async function execute(
           try {
             const world = await chrome.debugger.sendCommand(debuggee,
               "Page.createIsolatedWorld",
-              { frameId: f.id, grantUniveralAccess: true });
+              { frameId: f.id, grantUniversalAccess: true });
             const cid = world?.executionContextId;
             if (!cid) continue;
             const fv = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
@@ -1315,13 +1338,13 @@ async function execute(
             // 命中时 modal/抽屉内优先（真机铁证：modal 开着时列表页查询
             // 栏同 label form-item 文档序在前——value 写进搜索框假 ok，
             // 保存必 miss）
-            const bare = label.replace(/[*\s]/g, '');
+            const bare = label.replace(/[*\\s]/g, '');
             const groups = [...document.querySelectorAll(
               '.ant-form-item, .cgf-item, .form-group')];
             const hits = [];
             for (const g of groups) {
               const lbl = (g.querySelector('label')?.textContent || '')
-                .replace(/[*\s]/g, '');
+                .replace(/[*\\s]/g, '');
               if (lbl === bare) {
                 const inp = g.querySelector('input');
                 if (inp && inp.getBoundingClientRect().width > 0) hits.push(inp);

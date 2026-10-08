@@ -27,8 +27,11 @@ def _gen_email() -> str:
 
 
 def _gen_id_card() -> str:
-    # 合法格式（校验位按 GB11643 算法生成）
-    body = f"110101199001{random.randint(10000, 99999)}"
+    # 合法格式（校验位按 GB11643 算法生成）。评审#4a：生日段必须是真实
+    # 日期——旧实现日段取 randint(10000,99999) 前两位（10-99），多数月份
+    # 非法，严格校验器必拒。月 1-12、日 1-28（避开大小月/闰年边界）。
+    body = (f"1101011990{random.randint(1, 12):02d}"
+            f"{random.randint(1, 28):02d}{random.randint(0, 999):03d}")
     weights = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2]
     codes = "10X98765432"
     s = sum(int(c) * w for c, w in zip(body, weights))
@@ -116,12 +119,17 @@ def _match_rule(label: str) -> dict | None:
 
 def resolve_type(db: Session, label: str) -> dict | None:
     """字段 → 类型规则。DB 知识库（含 learned/manual，按 success_count
-    优先）先于内置关键词规则——自愈沉淀的领域知识可覆盖内置。"""
+    优先）先于内置关键词规则——自愈沉淀的领域知识可覆盖内置。
+    评审#4b：排序+有界扫描下推 SQL（success_count 降序、id 升序，
+    limit 500）——库行规模=字段词表量级，上界防病态增长；自愈期
+    逐字段调用不再全表重扫，且同数据同答案（确定性）。"""
     rows = db.execute(
         select(FieldTypeHint).where(FieldTypeHint.label_pattern.isnot(None))
+        .order_by(FieldTypeHint.success_count.desc(), FieldTypeHint.id)
+        .limit(500)
     ).scalars().all()
     low = str(label or "").lower()
-    for row in sorted(rows, key=lambda r: -(r.success_count or 0)):
+    for row in rows:
         if row.label_pattern and row.label_pattern.lower() in low:
             base = _RULES_BY_TYPE.get(row.field_type)
             if base is not None:
@@ -153,10 +161,16 @@ def record_success(db: Session, label: str, value: str,
     rule = resolve_type(db, label)
     if rule is None:
         return None
-    # 精确 label 已有 learned 条目 → 计数 + 更新实例值
+    # 精确 label 已有 learned 条目 → 计数 + 更新实例值。
+    # 评审#4：同 pattern 多行（manual/learned/llm 并存）时
+    # scalar_one_or_none 会抛 MultipleResultsFound，被 run_replay 兜底
+    # 捕获后把成功回放打成 error——取 success_count 最高、id 最小
+    # （计数最高=最被验证的行继续累积；打平取最小 id，确定性可复现）
     row = db.execute(
         select(FieldTypeHint).where(FieldTypeHint.label_pattern == label)
-    ).scalar_one_or_none()
+        .order_by(FieldTypeHint.success_count.desc(), FieldTypeHint.id)
+        .limit(1)
+    ).scalars().first()
     if row is None:
         row = FieldTypeHint(label_pattern=label, field_type=rule["field_type"],
                             example_value=str(value)[:200], source="learned",

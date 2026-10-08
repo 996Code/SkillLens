@@ -13,7 +13,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.auth import create_user, issue_token, logout, resolve_token, verify_password
+from app.auth import (create_user, hash_password, issue_token, logout,
+                      resolve_token, verify_password)
 from app.db import SessionLocal
 from app.models import User
 
@@ -45,12 +46,24 @@ def require_role(*roles: str):
         if user.role not in roles:
             raise HTTPException(status_code=403, detail=f"requires role: {roles}")
         return user
+    dep.roles = roles
     return dep
+
+
+# viewer=只读契约的唯一来源：所有变更端点（写库/写盘/触发浏览器执行/烧 LLM
+# 配额）挂这一份依赖，逐端点声明 dependencies=WRITE_GUARD
+WRITE_GUARD = [Depends(require_role("admin", "reviewer"))]
 
 
 class LoginIn(BaseModel):
     username: str
     password: str
+
+
+# 用户名枚举侧信道：未知用户若直接 401，就省掉一次 100k 轮 pbkdf2（数十毫秒），
+# 与"已知用户+错口令"的响应时差足以枚举有效账号。未知用户也对 dummy hash 走
+# 一次等强度校验（结果丢弃）——启动期算一次，登录路径恒定开销。
+_DUMMY_HASH = hash_password("skilllens-timing-equalizer")
 
 
 class UserIn(BaseModel):
@@ -66,7 +79,8 @@ def _user_out(user: User) -> dict:
 @router.post("/auth/login")
 async def login(body: LoginIn, db: Session = Depends(get_db)):
     user = db.query(User).filter_by(username=body.username).first()
-    if user is None or not verify_password(body.password, user.password_hash):
+    ok = verify_password(body.password, user.password_hash if user else _DUMMY_HASH)
+    if user is None or not ok:
         raise HTTPException(status_code=401, detail="wrong username or password")
     token = issue_token(db, user.id)
     return {"token": token, "user": _user_out(user)}

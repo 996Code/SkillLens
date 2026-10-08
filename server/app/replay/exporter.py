@@ -1,16 +1,33 @@
 """S25 块 W1：skill → 自包含 Playwright 脚本导出（确定性可审计）。
 
 导出脚本特点：
-- 自包含：内联语义定位函数（与 locate.py 同策略链）与模板匹配（static 段规则）；
+- 自包含：内联简化语义定位（locate.py 全策略链的 5 策略子集，见脚本内
+  注释）；判定逻辑（动态 id 段规则/api_status/state_signal）从
+  app/replay/export_shared.py **源码逐字内嵌**——服务端与导出脚本单一
+  事实源，不手抄副本（评审#1：手抄副本曾四处漂移）；
 - 断言：api_status/state_signal 在脚本内判定；ui_text/field_change/visual 以注释
   标注"工作台侧判定"（导出不伪造能力边界）；
 - 变量：OVERRIDES 字典顶部可改（换参回放）；
 - 退出码：全过 0（PASS），否则 1（FAIL + 明细）。
 """
+import inspect
+
 from sqlalchemy.orm import Session
 
 from app.models import Alignment, OutcomeAssertion, RawEvent, Skill
+from app.replay import export_shared
 from app.replay.plan import compile_skeleton_plan
+
+_SHARED_SOURCE = inspect.getsource(export_shared)
+
+
+def _safe_doc_text(s) -> str:
+    """评审#2：嵌入生成脚本 docstring 的文本消毒——skill.name/flow.goal 是
+    LLM 产物或用户输入，原样内插时 ''' / \"\"\" / 换行可截断 docstring 把
+    任意语句注入用户将要执行的脚本（模板注入）。换行折叠为单空格，
+    反斜杠与双引号转义后任何三引号序列都无法成形。"""
+    return " ".join(str(s or "").split()).replace("\\", "\\\\").replace('"', '\\"')
+
 
 _SCRIPT_TEMPLATE = '''"""SkillLens 导出脚本：{skill_name}（skill #{skill_id}）
 
@@ -19,12 +36,14 @@ _SCRIPT_TEMPLATE = '''"""SkillLens 导出脚本：{skill_name}（skill #{skill_i
 用法：python {fname}   # 修改 OVERRIDES 可换参回放
 """
 import asyncio
-import json
-import re
 import sys
-from datetime import datetime, timezone
 
 from playwright.async_api import async_playwright
+
+# ===== SkillLens 共享判定逻辑（app/replay/export_shared.py 源码逐字内嵌，
+# ===== 与工作台判定同源；请勿本地修改，改动须回上游模块） =====
+{shared}
+# ===== 共享判定逻辑结束 =====
 
 URL = {url!r}
 OVERRIDES = {overrides!r}    # 换参回放：改这里的值
@@ -35,22 +54,11 @@ API_ASSERTIONS = {assertions!r}
 MAX_BODY = 8192
 
 
-_ID_SEGMENT = re.compile(r"^(?:\\d+|[0-9a-fA-F-]{{36}})$")
-
-
-def static_segments(path: str) -> list[str]:
-    """与 SkillLens assert_eval 同规则：剔除 {{id}} 模板段/纯数字段/UUID 段。"""
-    return [s for s in path.split("/")
-            if s and s != "{{id}}" and not _ID_SEGMENT.match(s)]
-
-
-def path_matches(url: str, template: str) -> bool:
-    from urllib.parse import urlsplit
-    return static_segments(urlsplit(url).path) == static_segments(template)
-
-
 async def locate(page, label: str):
-    """语义定位——与 SkillLens locate.py 同策略链（role→text→placeholder→label→id）。"""
+    """语义定位——简化策略链（SkillLens locate.py 全策略链的 5 策略子集：
+    role→text→placeholder→label→id）。完整链还含 title/表单组控件/select2/
+    menuitem/iframe 遍历/评分兜底等，仅工作台侧回放具备；导出脚本定位
+    失败不代表工作台回放失败。"""
     candidates = [
         (page.get_by_role("button", name=label), "role-button"),
         (page.get_by_text(label, exact=True), "text"),
@@ -82,6 +90,7 @@ async def main() -> int:
             except Exception:
                 body = ""
             observed.append({{"url": response.url, "status": response.status,
+                             "method": response.request.method,
                              "body": body[:MAX_BODY]}})
         asyncio.get_running_loop().create_task(collect())
 
@@ -94,6 +103,11 @@ async def main() -> int:
         await page.wait_for_timeout(2000)
 
         for step in STEPS:
+            if step["kind"] == "goto":
+                await page.goto(step["url"])
+                await page.wait_for_load_state("domcontentloaded", timeout=15000)
+                await page.wait_for_timeout(1000)
+                continue
             label = step.get("label") or step.get("name")
             value = OVERRIDES.get(label, step.get("value", ""))
             locator, _ = await locate(page, label)
@@ -112,21 +126,13 @@ async def main() -> int:
             failures.append(f"{{a['template']}}: 未命中任何请求")
             continue
         if a.get("expect_status") is not None and \\
-                all(h["status"] != a["expect_status"] for h in hits):
+                not judge_api_status(hits, a["expect_status"]):
             failures.append(f"{{a['template']}}: 期望 {{a['expect_status']}}，"
                             f"实际 {{[h['status'] for h in hits]}}")
-        if a.get("field") is not None:
-            ok = False
-            for h in hits:
-                try:
-                    if json.loads(h["body"]).get(a["field"]) == a["expect_value"]:
-                        ok = True
-                        break
-                except Exception:
-                    continue
-            if not ok:
-                failures.append(f"{{a['template']}}: 字段 {{a['field']}} 期望 "
-                                f"{{a['expect_value']}} 未观测到")
+        if a.get("field") is not None and \\
+                not judge_state_signal(hits, a["field"], a.get("expect_value")):
+            failures.append(f"{{a['template']}}: 字段 {{a['field']}} 期望 "
+                            f"{{a.get('expect_value')}} 未观测到")
     if failures:
         print("FAIL")
         for f in failures:
@@ -155,7 +161,8 @@ def export_playwright(db: Session, skill_id: int) -> str:
     steps = [{"kind": s["kind"],
               **({"label": s["label"]} if s.get("label") else {}),
               **({"name": s["name"]} if s.get("name") else {}),
-              **({"value": s["value"]} if s.get("value") is not None else {})}
+              **({"value": s["value"]} if s.get("value") is not None else {}),
+              **({"url": s["url"]} if s.get("url") else {})}
              for s in plan.get("steps", [])]
     assertions = []
     for a in db.query(OutcomeAssertion).filter(
@@ -166,16 +173,17 @@ def export_playwright(db: Session, skill_id: int) -> str:
                 "template": p["api_template"],
                 **({"expect_status": p["expect_status"]}
                    if p.get("expect_status") is not None else {}),
-                **({"field": p["field"], "expect_value": p["expect_value"]}
+                **({"field": p["field"], "expect_value": p.get("expect_value")}
                    if p.get("field") is not None else {}),
             })
     overrides = {v["name"]: next(iter(v["values"].values()), "")
                  for v in skill.input_variables or []}
     from datetime import datetime, timezone
     return _SCRIPT_TEMPLATE.format(
-        skill_name=skill.name, skill_id=skill.id,
+        skill_name=_safe_doc_text(skill.name), skill_id=skill.id,
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         fname=f"skill_{skill.id}_replay.py",
+        shared=_SHARED_SOURCE,
         url=plan["url"], overrides=overrides, steps=steps, assertions=assertions)
 
 
@@ -193,7 +201,8 @@ STEPS = {steps!r}
 
 
 async def locate(page, label: str):
-    """语义定位——与 SkillLens locate.py 同策略链。"""
+    """语义定位——简化策略链（SkillLens locate.py 全策略链的 5 策略子集，
+    完整链仅工作台侧回放具备）。"""
     candidates = [
         (page.get_by_role("button", name=label), "role-button"),
         (page.get_by_text(label, exact=True), "text"),
@@ -251,6 +260,6 @@ def export_flow_playwright(db, flow_id: int) -> str:
     flow = db.get(SynthFlow, flow_id)
     steps = [dict(s) for s in (flow.steps or []) if isinstance(s, dict)]
     return _FLOW_SCRIPT_TEMPLATE.format(
-        flow_id=flow.id, goal=flow.goal,
+        flow_id=flow.id, goal=_safe_doc_text(flow.goal),
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         steps=steps)

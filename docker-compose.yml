@@ -2,7 +2,7 @@ services:
   server:
     build: ./server
     ports:
-      - "8710:8710"
+      - "127.0.0.1:8710:8710"
     env_file:
       - server/.env
     environment:

@@ -65,3 +65,22 @@ async def test_ingest_guard_blocks_foreign_origin(client):
         r2 = await bare.post("/api/v1/sessions", json={},
                              headers={"X-SkillLens-Agent": "1"})
         assert r2.status_code == 200
+
+
+async def test_oversized_batch_rejected(client):
+    """三轮评审：批量无上限。逐条 commit 的实现下，一个超大请求能把 worker
+    钉死几分钟并写入任意多行（本端点豁免鉴权，任何本机网页都能打）。
+    上限 413 拒绝，插件侧 BATCH=50 有 40x 余量。"""
+    from app.api.events import MAX_EVENTS_PER_BATCH
+    sid = (await client.post("/api/v1/sessions", json={})).json()["session_id"]
+    ev = [{"seq": i, "ts": i, "kind": "action", "payload": {}}
+          for i in range(1, MAX_EVENTS_PER_BATCH + 2)]
+    resp = await client.post(f"/api/v1/sessions/{sid}/events", json=ev)
+    assert resp.status_code == 413
+    assert str(MAX_EVENTS_PER_BATCH) in resp.json()["detail"]
+
+
+def test_batch_limit_has_headroom_over_client_batch():
+    """上限不得低于插件批量的 10x——否则正常录制会被自己的服务端拒收。"""
+    from app.api.events import MAX_EVENTS_PER_BATCH
+    assert MAX_EVENTS_PER_BATCH >= 500

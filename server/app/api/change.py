@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 
 from app.change.expected import generate_expected_delta, link_discoveries, verify_delta
 from app.db import SessionLocal
-from app.models import ExpectedDelta, ReplayRun
+from app.models import ExpectedDelta, ReplayRun, User
+from app.api.auth import WRITE_GUARD, require_role
 
 router = APIRouter()
 
@@ -24,11 +25,10 @@ class CreateDeltaRequest(BaseModel):
 
 
 class ConfirmRequest(BaseModel):
-    reviewed_by: str
     changes: list[dict] | None = None
 
 
-@router.post("/expected-deltas", status_code=201)
+@router.post("/expected-deltas", status_code=201, dependencies=WRITE_GUARD)
 async def create_expected(body: CreateDeltaRequest, db: Session = Depends(get_db)) -> dict:
     row = await generate_expected_delta(db, body.requirement_text, body.requirement_id)
     if body.external_ref:
@@ -41,7 +41,10 @@ async def create_expected(body: CreateDeltaRequest, db: Session = Depends(get_db
 
 @router.post("/expected-deltas/{delta_id}/confirm")
 async def confirm_expected(delta_id: int, body: ConfirmRequest,
-                           db: Session = Depends(get_db)) -> dict:
+                           db: Session = Depends(get_db),
+                           user: User = Depends(require_role("admin", "reviewer"))) -> dict:
+    """C1 人工门：确认人取登录态——reviewed_by 若来自请求体则可被任意
+    viewer 冒充 admin 完成确认，审计不可抵赖性失效。"""
     row = db.get(ExpectedDelta, delta_id)
     if not row:
         raise HTTPException(404, "expected delta not found")
@@ -57,7 +60,7 @@ async def confirm_expected(delta_id: int, body: ConfirmRequest,
         if not ok:
             raise HTTPException(422, f"当前 changes 无效（{why}），确认时必须提交修订")
     row.status = "confirmed"
-    row.reviewed_by = body.reviewed_by
+    row.reviewed_by = user.username
     db.commit(); db.refresh(row)
     # S12 N2：确认成功后先验对齐——changes 与 discovered_feature 匹配 → linked
     linked = link_discoveries(db, row)
@@ -71,7 +74,7 @@ class ObserveRequest(BaseModel):
     confirm_side_effect: bool = False
 
 
-@router.post("/expected-deltas/{delta_id}/observe", status_code=201)
+@router.post("/expected-deltas/{delta_id}/observe", status_code=201, dependencies=WRITE_GUARD)
 async def observe(delta_id: int, body: ObserveRequest,
                   db: Session = Depends(get_db)) -> dict:
     from app.models import Skill
@@ -96,7 +99,7 @@ class ReportRequest(BaseModel):
     observed_delta_id: int
 
 
-@router.post("/expected-deltas/{delta_id}/report", status_code=201)
+@router.post("/expected-deltas/{delta_id}/report", status_code=201, dependencies=WRITE_GUARD)
 async def report(delta_id: int, body: ReportRequest,
                  db: Session = Depends(get_db)) -> dict:
     from app.change.classify import classify_delta

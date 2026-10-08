@@ -237,8 +237,9 @@ async def main():
 
         skills_with_vars = []
         for s in all_skills:
-            card = httpx.get(SERVER + '/api/v1/skills/' + str(s['id']) + '/card',
-                headers={'Authorization': 'Bearer ' + token}).json()
+            card = (await asyncio.to_thread(
+                httpx.get, SERVER + '/api/v1/skills/' + str(s['id']) + '/card',
+                headers={'Authorization': 'Bearer ' + token})).json()
             if card.get('input_variables'):
                 skills_with_vars.append({
                     'id': s['id'], 'name': s['name'],

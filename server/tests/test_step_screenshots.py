@@ -204,3 +204,51 @@ async def test_step_screenshots_failopen_without_capability(client, monkeypatch,
     body = resp.json()
     assert body["status"] == "pass"
     assert "step_screenshots" not in body["plan"]
+
+
+# ---------- 评审#6：快照采集须下探 iframe（禅道综合页面等 iframe 架构） ----------
+
+IFRAME_HTML = """<html><body>
+<input placeholder="主字段" value="mv">
+<iframe srcdoc='<input placeholder="iframe字段" value="iv">
+<input type="password" placeholder="iframe密码" value="sec">
+<span class="tag">iframe标签</span>
+<span class="message">iframe提示</span>'></iframe>
+</body></html>"""
+
+
+async def test_snapshot_descends_into_iframes():
+    """iframe 内表单/标签/toast 必须进快照——只查主 frame 时 ui_text 断言
+    静默跳过、toast 通道失效、修复提案池为空。iframe 内密码框同样整体跳过。"""
+    from app.replay.page_snapshot import collect_page_snapshot
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content(IFRAME_HTML)
+        await page.wait_for_timeout(300)   # srcdoc frame 挂载
+        snap = await collect_page_snapshot(page)
+        await browser.close()
+    by_label = {f["label"]: f["value"] for f in snap["forms"]}
+    assert "主字段" in by_label and by_label["主字段"] == "mv"
+    assert "iframe字段" in by_label and by_label["iframe字段"] == "iv"
+    assert "iframe密码" not in by_label          # 密码框跳过是全局红线
+    assert any(l["text"] == "iframe标签" for l in snap["labels"])
+    assert "iframe提示" in (snap.get("toasts") or [])
+
+
+async def test_snapshot_caps_global_across_frames():
+    """限额是全局总量非逐 frame：3 个 frame 各 30 字段 → 总 50 + overflow。"""
+    from app.replay.page_snapshot import collect_page_snapshot
+    fields = "".join(f'<input placeholder="f{i}" value="v">' for i in range(30))
+    html = ("<html><body>" + fields
+            + f"<iframe srcdoc='{fields}'></iframe>"
+            + f"<iframe srcdoc='{fields}'></iframe></body></html>")
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content(html)
+        await page.wait_for_timeout(300)
+        snap = await collect_page_snapshot(page)
+        await browser.close()
+    assert len(snap["forms"]) == 50
+    assert snap["overflow"] is True

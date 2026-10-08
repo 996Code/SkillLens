@@ -27,7 +27,9 @@
         <textarea v-model="yamlText" rows="18" spellcheck="false" />
         <div class="actions">
           <button @click="validate">校验</button>
-          <button class="primary" @click="save">保存</button>
+          <button class="primary" :disabled="saving || yamlFor !== selected.id" @click="save">
+            {{ saving ? "保存中…" : "保存" }}
+          </button>
           <span v-if="feedback" :class="feedback.ok ? 'ok-text' : 'err-text'">
             {{ feedback.msg }}
           </span>
@@ -66,6 +68,10 @@ const adapters = ref<AdapterSummary[]>([]);
 const loading = ref(true);
 const selected = ref<AdapterSummary | null>(null);
 const yamlText = ref("");
+// yamlText 对应的 adapter id——加载失败/未加载时为 null，保存按钮据此门控
+// （防串档：A 的 YAML 被 PUT 到 B 上静默毁掉 B 的配置）
+const yamlFor = ref<string | null>(null);
+const saving = ref(false);
 const feedback = ref<{ ok: boolean; msg: string } | null>(null);
 
 const fpDom = ref("");
@@ -105,10 +111,18 @@ async function load(): Promise<void> {
 async function select(a: AdapterSummary): Promise<void> {
   selected.value = a;
   feedback.value = null;
-  const res = await authedFetch(`/api/v1/adapters/${a.id}/yaml`);
-  if (res.ok) {
+  yamlText.value = "";
+  yamlFor.value = null;
+  try {
+    const res = await authedFetch(`/api/v1/adapters/${a.id}/yaml`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const body = await res.json();
+    if (selected.value?.id !== a.id) return; // 已切到别的清单，丢弃晚到响应
     yamlText.value = body.yaml;
+    yamlFor.value = a.id;
+  } catch (e: any) {
+    if (selected.value?.id !== a.id) return;
+    feedback.value = { ok: false, msg: `清单加载失败：${e.message}` };
   }
 }
 
@@ -130,18 +144,25 @@ async function validate(): Promise<void> {
 }
 
 async function save(): Promise<void> {
-  if (!selected.value) return;
-  const res = await authedFetch(`/api/v1/adapters/${selected.value.id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ yaml: yamlText.value }),
-  });
-  if (res.ok) {
-    feedback.value = { ok: true, msg: "已保存" };
-    await load();
-  } else {
-    const body = await res.json().catch(() => ({ detail: res.statusText }));
-    feedback.value = { ok: false, msg: `保存失败：${body.detail || ""}` };
+  if (!selected.value || yamlFor.value !== selected.value.id || saving.value) return;
+  saving.value = true;
+  try {
+    const res = await authedFetch(`/api/v1/adapters/${selected.value.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ yaml: yamlText.value }),
+    });
+    if (res.ok) {
+      feedback.value = { ok: true, msg: "已保存" };
+      await load();
+    } else {
+      const body = await res.json().catch(() => ({ detail: res.statusText }));
+      feedback.value = { ok: false, msg: `保存失败：${body.detail || ""}` };
+    }
+  } catch (e: any) {
+    feedback.value = { ok: false, msg: `保存请求失败：${e.message}` };
+  } finally {
+    saving.value = false;
   }
 }
 

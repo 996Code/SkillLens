@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.learning.generic import induce_generic, map_generic, promote_generic
 from app.models import GenericSkill, Skill
+from app.api.auth import WRITE_GUARD
 
 router = APIRouter()
 
@@ -64,7 +65,7 @@ def _load_sources(db: Session, skill_ids: list[int]) -> list[Skill]:
     return skills
 
 
-@router.post("/generic-skills/induce")
+@router.post("/generic-skills/induce", dependencies=WRITE_GUARD)
 async def induce(body: InduceRequest, db: Session = Depends(get_db)) -> dict:
     skills = _load_sources(db, body.skill_ids)
     return _item(await induce_generic(db, skills))
@@ -84,7 +85,7 @@ async def get_generic_skill(generic_id: int, db: Session = Depends(get_db)) -> d
     return _item(row)
 
 
-@router.post("/generic-skills/{generic_id}/promote")
+@router.post("/generic-skills/{generic_id}/promote", dependencies=WRITE_GUARD)
 async def promote(generic_id: int, db: Session = Depends(get_db)) -> dict:
     row = db.get(GenericSkill, generic_id)
     if not row:
@@ -98,7 +99,7 @@ async def promote(generic_id: int, db: Session = Depends(get_db)) -> dict:
     return _item(row)
 
 
-@router.post("/generic-skills/{generic_id}/map")
+@router.post("/generic-skills/{generic_id}/map", dependencies=WRITE_GUARD)
 async def map_to_skill(generic_id: int, body: MapRequest,
                        db: Session = Depends(get_db)) -> dict:
     row = db.get(GenericSkill, generic_id)

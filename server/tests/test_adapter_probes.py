@@ -107,3 +107,68 @@ def test_compare_expect():
     assert compare_expect("increased", before, after) is True
     assert compare_expect("increased", before, [("3",)]) is False
     assert compare_expect("equals", [("4",)], [("4",)]) is True
+
+
+def test_compare_expect_equals_empty_observed_false():
+    """评审三轮 #3：空观测（死探针/容器名错/脚本报错 → stdout 空）不得
+    判 equals 通过——[] == [] 曾让断链静默"状态一致"。"""
+    assert compare_expect("equals", [], []) is False
+    assert compare_expect("equals", [("4",)], []) is False
+    assert compare_expect("equals", [], [("4",)]) is False
+    assert compare_expect("equals", None, None) is False
+    assert compare_expect("equals", [("4",)], [("4",)]) is True
+
+
+def test_exec_docker_raises_on_nonzero_returncode(monkeypatch):
+    """评审三轮 #3：returncode != 0 必须抛错（带 rc+脱敏 stderr 摘要），
+    不得吞错返回空行集。"""
+    m = _manifest()
+    import app.adapters.probes as P
+    monkeypatch.setattr(P, "_ensure_helper_scripts", lambda c: None)
+
+    class R:
+        stdout = ""
+        stderr = "Error: connect http://internal.example.invalid/db refused"
+        returncode = 3
+
+    monkeypatch.setattr(P.subprocess, "run", lambda *a, **k: R())
+    with pytest.raises(RuntimeError) as ei:
+        run_probe(m, m.probes[0])
+    msg = str(ei.value)
+    assert "3" in msg
+    # 安全红线：URL/主机名不得原样进异常文本（sanitize_error 收口）
+    assert "http://" not in msg and "internal.example.invalid" not in msg
+
+
+def test_ensure_helper_scripts_raises_on_failure(monkeypatch):
+    """docker cp/mkdir 失败同样不得静默（脚本缺失 → 探针假通过链）。"""
+    import app.adapters.probes as P
+
+    class R:
+        stdout = ""
+        stderr = "permission denied"
+        returncode = 1
+
+    monkeypatch.setattr(P.subprocess, "run", lambda *a, **k: R())
+    with pytest.raises(RuntimeError, match="docker"):
+        P._ensure_helper_scripts("c1")
+
+
+def test_container_guard_rejects_option_like_name(monkeypatch):
+    """评审三轮 #2 防御层：绕过 schema 的程序化构造（model_construct）也
+    必须在 subprocess 之前被拦——`-` 开头即 docker 选项注入面。"""
+    import app.adapters.probes as P
+    from app.adapters.manifest import Manifest, Probe, Target, Credentials
+
+    calls = []
+    monkeypatch.setattr(P.subprocess, "run", lambda *a, **k: calls.append(a))
+    probe = Probe.model_construct(id="x", kind="docker-exec",
+                                  container="--user=0", shell="id")
+    m = Manifest.model_construct(
+        id="t", target=Target(base_url="http://t"),
+        credentials=Credentials(username="u", password_env="P"), probes=[probe])
+    with pytest.raises(ValueError, match="container"):
+        P._exec_docker(m, probe)
+    with pytest.raises(ValueError, match="container"):
+        P._ensure_helper_scripts("-x")
+    assert not calls

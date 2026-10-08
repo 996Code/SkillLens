@@ -28,3 +28,12 @@ artifacts/
 
 # 常驻浏览器 profile（live_browser.py）
 .live-profile/
+
+# 采集浏览器 profile（auto_record.py）
+.ext-profile*/
+
+# njmind 登录态 storage_state（njmind_login.py 默认输出——含内网 cookie）
+.njmind-state*.json
+
+# 运行日志（webhook_receiver.py 等）
+*.log

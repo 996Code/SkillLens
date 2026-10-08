@@ -6,7 +6,9 @@ v1 简化：启动后延迟到下一个 02:00，之后每 24h（本地时区，�
 _scheduler_task = None
 
 import asyncio
+import logging
 import os
+from contextlib import suppress
 from datetime import datetime, timedelta
 
 from app.db import SessionLocal
@@ -31,19 +33,38 @@ async def _nightly_once() -> None:
         db.close()
 
 
+async def _loop() -> None:
+    while True:
+        now = datetime.now()
+        await asyncio.sleep((_next_run_at(now) - now).total_seconds())
+        # run_graph 内部收敛业务异常（status=error 落库），但进它之前的
+        # 建连/import 失败同样会打死 task——夜间图静默停摆且只在 GC 时打印。
+        # 循环体自兜：单次失败留痕后继续等下一个 02:00。
+        try:
+            await _nightly_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logging.exception("夜间图执行失败，调度循环继续")
+
+
 async def start_nightly_scheduler() -> None:
     """按 NIGHTLY_CRON 拉起后台循环；off/未知值一律不启动。返回 None 便于测试断言。"""
     if os.environ.get("NIGHTLY_CRON", "off") != "nightly":
         return None
 
-    async def loop():
-        while True:
-            now = datetime.now()
-            await asyncio.sleep((_next_run_at(now) - now).total_seconds())
-            await _nightly_once()
-            # run_graph 内部已收敛异常（status=error 落库），循环不会因单次失败退出
-
     # 持有 task 引用防 GC（asyncio 官方警告）；模块级，进程生命周期存活
     global _scheduler_task
-    _scheduler_task = asyncio.create_task(loop())
+    _scheduler_task = asyncio.create_task(_loop())
     return _scheduler_task
+
+
+async def stop_nightly_scheduler() -> None:
+    """关停清理：lifespan 退出时取消循环，否则留 pending task
+    （uvicorn --reload / 测试进程退出时 "Task was destroyed but it is pending"）。"""
+    global _scheduler_task
+    task, _scheduler_task = _scheduler_task, None
+    if task is not None and not task.done():
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task

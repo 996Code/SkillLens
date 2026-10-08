@@ -98,9 +98,11 @@ SkillLens/
 └── docs/
     ├── COLLABORATION-CHARTER.md   ← 协作宪章（用户全部要求汇总，传承文档）
     ├── specs/                      ← 产品宪法 + 交付主计划（唯一范围基准）
-    ├── arch/                       ← 架构契约（UI 快照/Agent 运行时/评审门户等）
-    ├── reviews/                    ← 审查记录（主计划审计/SWOT/竞品差距/G2 自验）
-    ├── references/                 ← v3 原始设想（43 节）+ 踩坑经验（17 条）
+    ├── arch/                       ← 架构契约（25 篇；2026-10-08 批：回放引擎/
+    │                                  数据管道/适配器/鉴权矩阵/脱敏纵深/env 契约/
+    │                                  变更智能/迁移纪律——全带 file:line 引证）
+    ├── reviews/                    ← 审查记录（三轮全库评审/主计划审计/SWOT/竞品差距）
+    ├── references/                 ← v3 原始设想（43 节）+ 踩坑经验（46 条）
     └── superpowers/plans/          ← 每 Sprint 派生计划（含测试矩阵）
 ```
 
@@ -153,7 +155,15 @@ cd server && uv run python ../scripts/live_browser.py 9222
 - **全库评审（2026-10-07）**：四域深审+6 处安全红线修复（网关 IP env 化/
   路径穿越/attribution 脱敏/执行器三重脱敏/CDP 网络证据脱敏/插件配对 401）：
   `docs/reviews/2026-10-07-full-codebase-audit.md`。
-- **测试基线**：server 508 / web 54 / extension 83（三套全绿是合并前提）。
+- **三轮全库评审（2026-10-08）**：七域深审"声称的语义是否真的成立"——🔴 9 项全修
+  （viewer 角色收窄 WRITE_GUARD 31 端点/C1 确认取登录态/Skill.system 迁移漂移删列+drift 守卫/
+  写水位 GET 噪声/脱敏词表四处漂移→一致性测试/注入模板转义/AdaptersView 错写系统/IP 兜底回归），
+  🟡 43 修 34，缓修 34 项逐条附触发条件。报告：
+  `docs/reviews/2026-10-08-full-codebase-audit-round3.md`。同期补 8 篇 arch 文档：
+  replay-engine / ingestion-pipeline / adapters-subsystem / auth-and-role-matrix /
+  redaction-defense-in-depth / env-contract / change-intelligence /
+  schema-migration-discipline（全带 file:line 引证）。
+- **测试基线**：server 546 / web 78 / extension 99（三套全绿是合并前提）。
 - **近期工作**（2026-10-03 v2.1 方向变更）：~~JeecG 链式 override~~ ✅（S43-5 完成，
   row-anchor 换参注入+动态 id 断言归一，三链全 PASS 实体级验证）→ **块 AF 适配器
   架构**（基座+声明式系统清单：manifest schema/探针运行时/例程库/链编排器/向导 UI）

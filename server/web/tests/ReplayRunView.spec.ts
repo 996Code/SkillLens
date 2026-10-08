@@ -68,7 +68,8 @@ async function mountView(root: HTMLElement) {
     history: createMemoryHistory(),
     routes: [
       { path: "/", component: { render: () => null } },
-      { path: "/graph/run/:runId", component: { render: () => null } },
+      { path: "/graph/run/:runId", name: "graph-run",
+        component: { render: () => null } },
       { path: "/graph/skill/:id", component: { render: () => null } },
       { path: "/graph/timeline", component: { render: () => null } },
     ],
@@ -77,7 +78,7 @@ async function mountView(root: HTMLElement) {
   const app = createApp({ render: () => h(ReplayRunView) });
   app.use(router);
   app.mount(root);
-  return app;
+  return { app, router };
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -151,5 +152,43 @@ describe("ReplayRunView", () => {
     (lightbox as HTMLElement).click();
     await flush();
     expect(document.querySelector("[data-testid='shot-lightbox']")).toBeNull();
+  });
+
+  it("路由参数变化时重新加载（评审#4：组件复用不刷整页）", async () => {
+    vi.stubGlobal("URL", Object.assign(URL, {
+      createObjectURL: () => "blob:mock",
+    }));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/step-screenshot?file=")) {
+        return new Response(new Blob(["png"], { type: "image/png" }), { status: 200 });
+      }
+      if (url.includes("/flow")) {
+        return new Response("not found", { status: 404 }); // flow 缺失不阻塞
+      }
+      if (url.includes("/api/v1/replay-runs/10")) {
+        return new Response(JSON.stringify({ ...runDetail, id: 10, flaky: false }), {
+          status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url.includes("/api/v1/replay-runs/9")) {
+        return new Response(JSON.stringify(runDetail), {
+          status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    const { router } = await mountView(root);
+    await flush();
+    await flush();
+    expect(root.textContent).toContain("执行 run #9");
+
+    await router.push("/graph/run/10");
+    for (let i = 0; i < 4; i++) await flush();
+
+    expect(root.textContent).toContain("执行 run #10");
+    expect(fetchMock.mock.calls.some(([u]) =>
+      String(u).includes("/replay-runs/10"))).toBe(true);
   });
 });
