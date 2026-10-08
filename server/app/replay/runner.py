@@ -1239,8 +1239,14 @@ async def _execute_skill(db: Session, browser, skill_id: int,
         "status": status,
         "executed": result["executed"],
         "assertions": results}) if status in ("fail", "error") else None
+    # AJ3 证据体验：步骤富化（category/时间/交织网络引用）+ retain-on-failure
+    # （pass 截证据保摘要，fail 全保留——C3 与存储成本平衡）
+    from app.replay.step_enrich import enrich_steps, retain_policy
+    executed_enriched = enrich_steps(result["executed"] or [],
+                                     result.get("observed") or [])
+    plan = retain_policy(plan, status)
     run = ReplayRun(skill_id=skill_id, mode="execute", status=status, plan=plan,
-                    executed=result["executed"], assertion_results=results,
+                    executed=executed_enriched, assertion_results=results,
                     duration_ms=attempt["duration_ms"], flaky=flaky,
                     failure_class=failure_class)
     db.add(run)

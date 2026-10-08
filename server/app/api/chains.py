@@ -36,9 +36,14 @@ class ChainStepIn(BaseModel):
     # v2 前置标记：setup 步骤 fail 不判链失败（登录已有效时登录链自然
     # fail——Playwright storageState 复用的声明式等价）
     setup: bool = False
-    # AI5 teardown 声明：链结束（无论成败）后清理测试数据——docker 通道
-    # 与 probes 同款（container+shell）；执行侧（chain_runner）消费
+    # AI5 teardown 声明：链结束清理测试数据——docker 通道与 probes 同款
+    # （container+shell）；执行侧（chain_runner）消费。
+    # AJ5（Katalon TearDownIfFailed 语义）：on=fail|pass|always——
+    # 失败留现场供排查、成功清数据；默认 always（AI5 原语义）
     cleanup: dict | None = None
+    # AJ5 步骤启停（Katalon checkbox 语义）：false=临时禁用该步
+    # （调试链不必删步骤）；默认 true
+    enabled: bool = True
 
     @model_validator(mode="after")
     def _exclusive_ids(self):
@@ -145,6 +150,7 @@ async def get_chain(chain_id: int, db: Session = Depends(get_db)) -> dict:
         steps.append({"skill_id": st.get("skill_id"),
                       "chain_id": cid,
                       "setup": bool(st.get("setup")),
+                      "enabled": st.get("enabled", True),
                       "overrides": st.get("overrides") or {},
                       "cleanup": st.get("cleanup"),
                       "skill": brief})
@@ -206,3 +212,20 @@ async def run_chain(chain_id: int, wait: int = 0,
     if result.get("status") != "pass":
         raise HTTPException(409, result)
     return result
+
+
+@router.get("/chains/references/{skill_id}")
+async def skill_chain_references(skill_id: int,
+                                 db: Session = Depends(get_db)) -> list[dict]:
+    """AJ5 反向引用表（MeterSphere"查看引用"）：技能被哪些链引用——
+    P2"引用 superseded 技能自动跟新版"的前置件，防连锁破坏。"""
+    if not db.get(Skill, skill_id):
+        raise HTTPException(404, "skill not found")
+    out = []
+    for c in db.query(Chain).all():
+        for st in c.steps or []:
+            if st.get("skill_id") == skill_id:
+                out.append({"chain_id": c.id, "chain_name": c.name,
+                            "step_index": (c.steps or []).index(st) + 1,
+                            "setup": bool(st.get("setup"))})
+    return out

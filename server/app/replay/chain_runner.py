@@ -128,6 +128,9 @@ async def run_chain_server(db: Session, chain_id: int,
         steps = expand_steps(raw_steps, all_chains)
     except ValueError as e:
         return {"status": "error", "error": str(e), "steps": []}
+    # AJ5 步骤启停（Katalon checkbox）：enabled=false 的步骤跳过
+    # （调试链临时禁用——不删步骤保留配置）
+    steps = [s for s in steps if s.get("enabled", True)]
 
     # v2：适配器自动登录（幂等——已登录直过；根治 CI 多系统登录态）
     warnings: list[str] = []
@@ -175,12 +178,19 @@ async def run_chain_server(db: Session, chain_id: int,
     biz_pass = sum(1 for r in biz if r["status"] == "pass")
     overall = "pass" if biz and biz_pass == len(biz) else (
         "shadow" if results and results[-1]["status"] == "shadow" else "fail")
-    # AI5 teardown：无论成败都清理（测试数据不残留——fail 时更需要清）
+    # AI5 teardown + AJ5 on 条件（Katalon TearDownIfFailed 语义）：
+    # on=fail 只在失败时清（留现场供排查的反面——按需清）；
+    # on=pass 只在成功时清（失败留现场）；默认 always
     cleaned = []
     for st in steps:
         cl = st.get("cleanup") or {}
         d = cl.get("docker")
         if not d:
+            continue
+        on = cl.get("on", "always")
+        if on == "fail" and overall == "pass":
+            continue
+        if on == "pass" and overall != "pass":
             continue
         try:
             import subprocess

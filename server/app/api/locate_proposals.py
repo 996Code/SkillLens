@@ -85,3 +85,44 @@ async def promote_proposal(proposal_id: int, db: Session = Depends(get_db),
         db.commit()
     return {"ok": True, "id": row.id, "status": row.status,
             "applied_skill_id": row.applied_skill_id}
+
+
+@router.get("/skills/{skill_id}/diff")
+async def promotion_diff(skill_id: int, db: Session = Depends(get_db)) -> list:
+    """AJ4 晋升 diff 视图（mabl 元素历史版本表对应物）：旧标签→新标签
+    +归因理由（source_run）+verify 计数——supersede 链的呈现层。"""
+    from app.models import Skill
+    skill = db.get(Skill, skill_id)
+    if not skill:
+        raise HTTPException(404, "skill not found")
+    # 当前骨架 label（旧值）
+    current = {}
+    for st in skill.skeleton or []:
+        lbl = st.get("label")
+        if lbl:
+            current[st.get("signature", "")] = lbl
+    rows = db.query(LocateProposal).filter(
+        LocateProposal.skill_id == skill_id,
+        LocateProposal.status.in_(("proposed", "verified", "promoted"))).all()
+    return [{"step_label": r.step_label,
+             "current_label": current.get(f"click:{r.step_label}", ""),
+             "proposed_label": r.proposed_label,
+             "status": r.status, "strategy": r.strategy,
+             "verify_count": r.verify_count or 0,
+             "source_run_id": r.source_run_id} for r in rows]
+
+
+@router.get("/skills/{skill_id}/confidence")
+async def confidence_panel(skill_id: int, db: Session = Depends(get_db)) -> list:
+    """AJ4 置信面板（mabl Find Summary 语义）：verify 计数明细+阈值判定
+    ——低置信（<LOCATE_AUTO_PROMOTE_N）只告警不晋升。"""
+    from app.config import LOCATE_AUTO_PROMOTE_N
+    rows = db.query(LocateProposal).filter(
+        LocateProposal.skill_id == skill_id,
+        LocateProposal.status.in_(("proposed", "verified", "promoted"))).all()
+    return [{"step_label": r.step_label,
+             "proposed_label": r.proposed_label,
+             "verify_count": r.verify_count or 0,
+             "threshold": LOCATE_AUTO_PROMOTE_N,
+             "low_confidence": (r.verify_count or 0) < LOCATE_AUTO_PROMOTE_N,
+             "status": r.status} for r in rows]

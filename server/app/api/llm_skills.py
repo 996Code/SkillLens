@@ -180,3 +180,26 @@ async def skill_trends(db: Session = Depends(get_db)) -> list[dict]:
         a["fail"] = pr["total"] - pr["pass"]
         a["rate"] = pr["rate"]
     return sorted(agg.values(), key=lambda x: -x["total"])
+
+
+@router.post("/skills/{skill_id}/rollback", dependencies=WRITE_GUARD)
+async def rollback_skill(skill_id: int, db: Session = Depends(get_db)) -> dict:
+    """AJ4 一键回滚（mabl 时钟图标回滚的技能级版本链版——业界独有）：
+    指定版本失效（archived），其 superseded 前任复活（learned）。
+    链式指向保持可审计（archived 版本不物理删）。"""
+    skill = db.get(Skill, skill_id)
+    if not skill:
+        raise HTTPException(404, "skill not found")
+    prev_id = None
+    for s in db.query(Skill).filter(Skill.alignment_id == skill.alignment_id).all():
+        if s.superseded_by == skill_id and s.status == "superseded":
+            prev_id = s.id
+            break
+    if prev_id is None:
+        raise HTTPException(422, "无可回滚的前版本（supersede 链上无前任）")
+    prev = db.get(Skill, prev_id)
+    prev.status = "learned"
+    prev.superseded_by = None
+    skill.status = "archived"  # 失效后续版本（不删，审计保留）
+    db.commit()
+    return {"rolled_back_to": prev_id, "archived": skill_id}

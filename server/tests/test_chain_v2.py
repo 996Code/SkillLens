@@ -138,3 +138,64 @@ class TestSetupSemantics:
             db.query(Skill).filter(Skill.name == "setup 语义技能").delete()
             db.commit()
             db.close()
+
+
+class TestAJ5:
+    async def test_step_enabled_toggle(self, client: AsyncClient):
+        """步骤启停：enabled=false 跳过（不删配置）。"""
+        db = SessionLocal()
+        try:
+            sid = await _mk(db, "启停技能")
+            r = await client.post("/api/v1/chains", json={
+                "name": "启停链", "system": "x",
+                "steps": [{"skill_id": sid, "enabled": False},
+                          {"skill_id": sid}]})
+            cid = r.json()["id"]
+            one = await client.get(f"/api/v1/chains/{cid}")
+            assert one.json()["steps"][0]["enabled"] is False
+            # 执行侧：禁用步被跳过（monkeypatch 验证只跑 1 步）
+            import app.replay.chain_runner as cr
+            import app.replay.runner as runner_mod
+            calls = []
+            async def fake(db_, skill_id, ovr, confirm, system=None):
+                calls.append(skill_id)
+                from types import SimpleNamespace
+                return SimpleNamespace(status="pass", id=991, plan={"observed": []})
+            monkeypatch_local = runner_mod.run_replay
+            runner_mod.run_replay = fake
+            async def no_login(a): return True
+            orig_login = cr._adapter_login
+            cr._adapter_login = no_login
+            try:
+                result = await cr.run_chain_server(db, cid, True)
+                assert len(calls) == 1  # 禁用步没跑
+                assert result["status"] == "pass"
+            finally:
+                runner_mod.run_replay = monkeypatch_local
+                cr._adapter_login = orig_login
+        finally:
+            from app.models import Chain
+            db.query(Chain).delete()
+            db.query(Skill).filter(Skill.name == "启停技能").delete()
+            db.commit(); db.close()
+
+    async def test_reverse_references(self, client: AsyncClient):
+        """反向引用表：技能被哪些链引用。"""
+        db = SessionLocal()
+        try:
+            sid = await _mk(db, "引用技能")
+            await client.post("/api/v1/chains", json={
+                "name": "引用链 A", "system": "x",
+                "steps": [{"skill_id": sid}]})
+            await client.post("/api/v1/chains", json={
+                "name": "引用链 B", "system": "x",
+                "steps": [{"skill_id": sid, "setup": True}]})
+            r = await client.get(f"/api/v1/chains/references/{sid}")
+            assert r.status_code == 200
+            names = {x["chain_name"] for x in r.json()}
+            assert names == {"引用链 A", "引用链 B"}
+        finally:
+            from app.models import Chain
+            db.query(Chain).delete()
+            db.query(Skill).filter(Skill.name == "引用技能").delete()
+            db.commit(); db.close()
