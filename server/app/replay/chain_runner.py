@@ -117,5 +117,49 @@ async def run_chain_server(db: Session, chain_id: int,
     npass = sum(1 for r in results if r["status"] == "pass")
     overall = "pass" if npass == len(steps) else (
         "shadow" if results and results[-1]["status"] == "shadow" else "fail")
+    # AI5 teardown：无论成败都清理（测试数据不残留——fail 时更需要清）
+    cleaned = []
+    for st in steps:
+        cl = st.get("cleanup") or {}
+        d = cl.get("docker")
+        if not d:
+            continue
+        try:
+            import subprocess
+            r = subprocess.run(
+                ["docker", "exec", d["container"], "sh", "-c", d["shell"]],
+                capture_output=True, text=True, timeout=30)
+            cleaned.append({"skill_id": st.get("skill_id"),
+                            "ok": r.returncode == 0,
+                            "err": (r.stderr or "")[:100]})
+        except Exception as e:
+            cleaned.append({"skill_id": st.get("skill_id"), "ok": False,
+                            "err": str(e)[:100]})
     return {"status": overall, "steps": results,
-            "pass_count": npass, "total": len(steps)}
+            "pass_count": npass, "total": len(steps),
+            "teardown": cleaned}
+
+
+# ---- AI5 数据卫生 ----
+
+_UNIQUE_VALUE_RE = re.compile(r"^(?:[a-z]+_)?(?:sl_|test_|t\d|SAL-|[0-9]{6,})",
+                              re.IGNORECASE)
+
+
+def recommend_unique_overrides(fills: list[dict]) -> dict[str, str]:
+    """唯一字段推荐：原值疑似唯一键（sl_ 前缀/长数字/单号形态）的字段
+    推荐 ${unique:前缀}——组链 UI 的防撞名建议（用户一键采纳）。"""
+    out: dict[str, str] = {}
+    for f in fills:
+        name = str(f.get("name") or "")
+        value = str(f.get("value") or "")
+        if not name or not value:
+            continue
+        if _UNIQUE_VALUE_RE.search(value):
+            # 前缀=去掉尾部的数字段（sl_form_a26513 → sl_form_a？不——
+            # 语义前缀是 sl_form_：剥到"最后一个字母后紧跟数字"的边界）
+            # sl_form_a26513 → sl_form_（剥尾部"字母段+数字段"——
+            # a26513 是一轮实例后缀；12345678 → ""（纯数字无语义前缀））
+            prefix = re.sub(r"[a-zA-Z]?[0-9]+$", "", value)
+            out[name] = f"${{unique:{prefix}}}"
+    return out

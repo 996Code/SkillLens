@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -68,7 +69,7 @@ async def list_skills(db: Session = Depends(get_db)) -> list:
         return _skill_source(_AlignLookup(), r, sources)
 
     # S15：列表默认排除 superseded（历史版本不进工作台列表）
-    rows = db.query(Skill).filter(Skill.status != "superseded") \
+    rows = db.query(Skill).filter(Skill.status.notin_(["superseded", "archived"])) \
         .order_by(Skill.id.desc()).all()
     # S38：目标系统（参考会话首条 navigation host 派生，批量一次）
     systems = skill_systems(db)
@@ -126,3 +127,43 @@ async def list_assertions(skill_id: int, db: Session = Depends(get_db)) -> list:
     rows = db.query(OutcomeAssertion).filter(OutcomeAssertion.skill_id == skill_id).all()
     return [{"id": r.id, "skill_id": r.skill_id, "layer": r.layer, "kind": r.kind,
              "api_template": r.api_template, "payload": r.payload} for r in rows]
+
+
+class BulkArchiveRequest(BaseModel):
+    ids: list[int] = Field(min_length=1)
+
+
+@router.post("/skills/bulk-archive", dependencies=WRITE_GUARD)
+async def bulk_archive(body: BulkArchiveRequest, db: Session = Depends(get_db)) -> dict:
+    """AI4 库治理：批量归档（status=archived——不物理删，supersede 同族
+    语义；列表/执行端点排除）。Candidate 垃圾与无描述技能的清障通道。"""
+    rows = db.query(Skill).filter(Skill.id.in_(body.ids)).all()
+    n = 0
+    for s in rows:
+        if s.status in ("superseded", "archived"):
+            continue
+        s.status = "archived"
+        n += 1
+    db.commit()
+    return {"archived": n, "requested": len(body.ids)}
+
+
+@router.get("/skills/trends")
+async def skill_trends(db: Session = Depends(get_db)) -> list[dict]:
+    """AI4 趋势卡：按系统聚合最近 30 天回放 pass/fail（无 run 的系统不
+    出现——趋势是执行健康度，不是库存量）。"""
+    from datetime import datetime, timedelta
+    from app.models import ReplayRun
+    from app.system import skill_systems
+    since = datetime.utcnow() - timedelta(days=30)
+    rows = db.query(ReplayRun).filter(
+        ReplayRun.created_at >= since,
+        ReplayRun.status.in_(("pass", "fail"))).all()
+    systems = skill_systems(db, [r.skill_id for r in rows])
+    agg: dict[str, dict] = {}
+    for r in rows:
+        sysname = systems.get(r.skill_id) or "通用"
+        a = agg.setdefault(sysname, {"system": sysname, "total": 0, "pass": 0, "fail": 0})
+        a["total"] += 1
+        a[r.status] += 1
+    return sorted(agg.values(), key=lambda x: -x["total"])

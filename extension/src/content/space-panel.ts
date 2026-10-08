@@ -160,6 +160,13 @@ function mount(): void {
   window.addEventListener("mouseup", () => { drag = null; });
 
   root.getElementById("close")!.addEventListener("click", () => host.remove());
+  // 系统隔离切换：默认仅本系统（隔离）；点系统名查看全部（跨系统对照）
+  sysEl.addEventListener("click", () => {
+    showAllSystems = !showAllSystems;
+    sysEl.textContent = showAllSystems
+      ? `全部系统（当前：${systemName || "未识别"}）` : (systemName || "未识别系统");
+    void loadSkills();
+  });
   root.getElementById("fold")!.addEventListener("click", () => {
     root.getElementById("pn")!.classList.toggle("collapsed");
   });
@@ -191,6 +198,51 @@ function mount(): void {
     return fillsCache.get(skillId)!;
   }
 
+  // AH6b port 通道执行：connect 长连接（sendMessage/storage 在 CDP 环境
+  // 均不可靠的第三替代）；进度双向走 port——面板即控制台，无跳板
+  function execViaPort(req: { skillId?: number; chainId?: number }): void {
+    const pg = root.getElementById("pg")!;
+    const pgt = root.getElementById("pgt")!;
+    const pgl = root.getElementById("pgl")!;
+    const fallbackUrl = () => chrome.runtime.getURL(req.skillId != null
+      ? `executor.html?skill=${req.skillId}&auto=1`
+      : `executor.html?chain=${req.chainId}&auto=1`);
+    try {
+      const port = chrome.runtime.connect({ name: "skilllens-exec" });
+      let alive = false;
+      port.onMessage.addListener((m: any) => {
+        if (m?.type === "SL_PONG") { alive = true; return; }
+        if (m?.type !== "SL_PROGRESS") return;
+        const line = `[${new Date().toTimeString().slice(0, 8)}] ${m.msg}`;
+        pgl.textContent += line + "\n";
+        pgl.scrollTop = pgl.scrollHeight;
+        if (String(m.msg).includes("链执行结束") || String(m.msg).includes("完成：")) {
+          const ok = String(m.msg).includes("pass");
+          pgt.textContent = ok ? "执行完成（通过）" : "执行结束（未通过）";
+          pgt.style.color = ok ? "#16a34a" : "#dc2626";
+        }
+      });
+      // pong 探测：1.5s 无回执=port 断（CDP 托管环境实测全断）——自动回退
+      // 执行页；真 Chrome port 直达：面板即控制台，无跳板
+      setTimeout(() => {
+        if (!alive) {
+          try { port.disconnect(); } catch { /* 已断 */ }
+          note("本页直执行通道不可用——已打开执行页（自动执行）", "err");
+          window.open(fallbackUrl(), "_blank");
+          return;
+        }
+        pg.style.display = "block";
+        pgt.style.color = "#2563eb";
+        pgt.textContent = "执行中…";
+        pgl.textContent = "";
+        port.postMessage({ type: "EXEC_RUN", ...req });
+        note("已发起执行（本页驱动，进度见下方）", "ok");
+      }, 1500);
+    } catch {
+      window.open(fallbackUrl(), "_blank");
+    }
+  }
+
   function renderPicked(): void {
     pkEl.style.display = picked.length ? "block" : "none";
     pksEl.replaceChildren();
@@ -210,9 +262,20 @@ function mount(): void {
       add.textContent = "+参数";
       add.addEventListener("click", async () => {
         const fills = await loadFills(p.id);
-        const key = fills[0]?.name;
-        if (!key) { note("该技能无 fill 字段（无可换参项）", "err"); return; }
-        p.__ovr = { ...(p.__ovr || {}), [key]: "" };
+        if (!fills.length) { note("该技能无 fill 字段（无可换参项）", "err"); return; }
+        // AI5 unique 推荐：疑似唯一字段（sl_*/长数字形态）直接建议规则值
+        // ——一键采纳防撞名（服务端 recommend 同源逻辑的前端轻量版）
+        p.__ovr = { ...(p.__ovr || {}) };
+        let added = 0;
+        for (const f of fills) {
+          if (p.__ovr[f.name] != null) continue;
+          const uniq = /^(?:[a-z]+_)?(?:sl_|test_|t\d|[0-9]{6,})/i.test(f.value || "");
+          p.__ovr[f.name] = uniq
+            ? `${"${unique:"}${(f.value || "").replace(/[a-zA-Z]?[0-9]+$/, "")}}"`
+            : "";
+          added++;
+        }
+        if (!added) { note("参数已全部添加", "err"); return; }
         renderPicked();
       });
       head.append(no, nm, add);
@@ -352,22 +415,22 @@ function mount(): void {
         // 网页上下文 window.open 扩展页被 ERR_BLOCKED_BY_CLIENT 拦）
         void chrome.storage.local.remove("sl_exec_log");
         root.getElementById("pgl")!.textContent = "";
-        // web accessible 后 window.open 扩展页合法（ERR_BLOCKED_BY_CLIENT
-        // 根治）；执行页自带进度 UI（页内执行的兜底形态——SW 消息与
-        // storage 唤醒在此 CDP 环境均不可靠，真 Chrome 下三通道并存）
-        window.open(chrome.runtime.getURL(`executor.html?skill=${s.id}&auto=1`), "_blank");
-        note("已打开执行页（全程可见）", "ok");
+        // AH6b port 通道直达执行（去跳板：不再开执行页再点一次——面板
+        // connect SW 长连接发请求，进度经 port 回流本面板）
+        void execViaPort({ skillId: s.id });
       });
       row.append(one);
       listEl.append(row);
     }
   }
 
+  let showAllSystems = false;  // 系统隔离默认开（仅本系统）；点系统头切换
+
   async function loadSkills(): Promise<void> {
     try {
       const arr = await api("/executor/skills");
       skills = (Array.isArray(arr) ? arr : [])
-        .filter((s) => !systemName || (s.system || "") === systemName);
+        .filter((s) => showAllSystems || !systemName || (s.system || "") === systemName);
       render();
     } catch (e: any) {
       listEl.replaceChildren();
@@ -419,8 +482,7 @@ function mount(): void {
       const r = await api("/chains", { method: "POST", body: JSON.stringify(p) });
       void chrome.storage.local.remove("sl_exec_log");
       root.getElementById("pgl")!.textContent = "";
-      window.open(chrome.runtime.getURL(`executor.html?chain=${r.id}&auto=1`), "_blank");
-      note("已打开执行页（全程可见）", "ok");
+      void execViaPort({ chainId: r.id });
     } catch (e: any) { note(`失败：${e.message}`, "err"); }
   });
 
@@ -445,8 +507,7 @@ function mount(): void {
         run.className = "run"; run.textContent = "执行";
         run.addEventListener("click", () => {
           void chrome.storage.local.remove("sl_exec_log");
-          window.open(chrome.runtime.getURL(`executor.html?chain=${c.id}&auto=1`), "_blank");
-          note("已打开执行页（全程可见）", "ok");
+          void execViaPort({ chainId: c.id });
         });
         const del = document.createElement("button");
         del.className = "del"; del.textContent = "删";

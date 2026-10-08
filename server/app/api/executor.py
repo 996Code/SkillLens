@@ -76,7 +76,7 @@ def _reap_stale_runs(db: Session) -> int:
 async def list_executor_skills(db: Session = Depends(get_db)) -> list:
     from app.system import skill_systems
     _reap_stale_runs(db)
-    rows = db.query(Skill).filter(Skill.status != "superseded").all()
+    rows = db.query(Skill).filter(Skill.status.notin_(["superseded", "archived"])).all()
     systems = skill_systems(db, [s.id for s in rows])
     items = []
     for s in rows:

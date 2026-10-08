@@ -200,7 +200,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 // AH6 页内执行（双入口：面板消息不可靠时走 storage 事件——CDP 托管浏览器
 // content script→SW 的 runtime.sendMessage 实测不通，storage.onChanged 稳定）
+let execRunning = false;  // 执行互斥：同 tab 并发 attach 冲突（port 双发实锤）
+
 function startRunOnTab(tabId: number, req: { skillId?: number; chainId?: number; overrides?: Record<string, string> }): void {
+  if (execRunning) {
+    void chrome.tabs.sendMessage(tabId, { type: "SL_PROGRESS",
+      msg: "已有执行进行中——请等当前执行结束" }).catch(() => {});
+    return;
+  }
+  execRunning = true;
   const onProgress = (m: string) => {
     void chrome.tabs.sendMessage(tabId, { type: "SL_PROGRESS", msg: m }).catch(() => {});
     void chrome.storage.local.get("sl_exec_log").then(({ sl_exec_log: old }) => {
@@ -218,9 +226,29 @@ function startRunOnTab(tabId: number, req: { skillId?: number; chainId?: number;
       }
     } catch (e: any) {
       onProgress(`执行失败：${e?.message ?? e}`);
+    } finally {
+      execRunning = false;
     }
   })();
 }
+
+
+// AH6b port 通道：sendMessage 在 CDP 托管环境断，长连接 port 是另一机制
+// （面板 connect 后 postMessage 执行请求——同连接回传进度）
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== "skilllens-exec") return;
+  // 回执：面板 1.5s 内收到即认为 port 通道活着（CDP 托管环境实测全断——
+  // 面板据此自动回退执行页路径；真 Chrome port 直达=无跳板）
+  try { port.postMessage({ type: "SL_PONG" }); } catch { /* 断连 */ }
+  port.onMessage.addListener((msg: any) => {
+    if (msg?.type !== "EXEC_RUN") return;
+    const sender = port.sender;
+    const tabId = sender?.tab?.id;
+    if (tabId == null) { port.postMessage({ type: "SL_PROGRESS", msg: "无页签上下文" }); return; }
+    startRunOnTab(tabId, { skillId: msg.skillId, chainId: msg.chainId,
+                           overrides: msg.overrides });
+  });
+});
 
 // storage 事件入口：面板写 sl_exec_request={skillId|chainId}（+时间戳防重复
 // 与陈旧过滤）。tabId 由 SW 现取活动业务页（面板发起时其所在页即活动页

@@ -30,6 +30,9 @@ def get_db():
 class ChainStepIn(BaseModel):
     skill_id: int
     overrides: dict[str, str] = Field(default_factory=dict)
+    # AI5 teardown 声明：链结束（无论成败）后清理测试数据——docker 通道
+    # 与 probes 同款（container+shell）；执行侧（chain_runner）消费
+    cleanup: dict | None = None
 
 
 class ChainIn(BaseModel):
@@ -118,6 +121,7 @@ async def get_chain(chain_id: int, db: Session = Depends(get_db)) -> dict:
             if db.get(Skill, st.get("skill_id", 0)) else None
         steps.append({"skill_id": st.get("skill_id"),
                       "overrides": st.get("overrides") or {},
+                      "cleanup": st.get("cleanup"),
                       "skill": brief})
     return {"id": row.id, "name": row.name, "system": row.system,
             "steps": steps, "created_at": str(row.created_at)}
