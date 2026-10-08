@@ -125,5 +125,10 @@ async def adapter_match_by_url(url: str) -> dict:
     from app.adapters.urlmatch import match_adapter
     manifests, _ = load_adapter_dir(ADAPTERS_DIR)
     hit = match_adapter(url, manifests)
+    # AH4 空间小窗消费：技能的 system 值是系统名（"JeecG 表单"），小窗按
+    # 当前 tab 系统过滤技能——这里一并反查（SYSTEM_ADAPTER: 名→id 的逆映射）
+    from app.system import SYSTEM_ADAPTER
+    sys_by_id = {v: k for k, v in SYSTEM_ADAPTER.items()}
     return {"adapter_id": hit.id if hit else None,
-            "label": hit.label if hit else None}
+            "label": hit.label if hit else None,
+            "system": sys_by_id.get(hit.id) if hit else None}

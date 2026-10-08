@@ -86,4 +86,23 @@ function renderSkills(): void {
 
 searchBox?.addEventListener("input", () => renderSkills());
 
+// AH4 空间入口：取当前 tab URL → 右上角独立小窗（400×520）。
+// 系统识别在 space.ts 里做（/adapters/match）；这里只传来源页 URL。
+document.getElementById("open-space")!.addEventListener("click", async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const q = tab?.url ? `?tab=${encodeURIComponent(tab.url)}` : "";
+    chrome.windows.create({
+      url: `space.html${q}`,
+      type: "popup",
+      width: 420, height: 560,
+      top: 0,
+    });
+    window.close();
+  } catch {
+    chrome.windows.create({ url: "space.html", type: "popup", width: 420, height: 560, top: 0 });
+    window.close();
+  }
+});
+
 void loadSkills();

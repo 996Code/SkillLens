@@ -477,3 +477,19 @@ class FieldTypeHint(Base):
     source_skill_id: Mapped[int | None] = mapped_column(nullable=True)
     success_count: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class Chain(Base):
+    """AH1 链（v2.4 空间与链编排）：插件空间组链的纯数据存储。
+
+    - steps: [{skill_id, overrides}]，overrides 值可含 ${unique:前缀} 规则
+      （执行期由插件侧 chain-rules 解释，服务端只存不解释——降耦合原则）
+    - system: 目标系统名（空间小窗按当前 tab 系统过滤）
+    - 执行不走服务端：executor.html?chain=<id> 逐 skill 调微指令协议
+    """
+    __tablename__ = "chain"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100))
+    system: Mapped[str] = mapped_column(String(40), index=True)
+    steps: Mapped[list] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)

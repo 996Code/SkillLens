@@ -331,6 +331,26 @@ AG1 协议 server 侧 ✅（端点组+迁移+4 用例；契约文档 docs/arch/e
 服务端 Playwright 兜底。依据：AF1-AF3 零依赖可立即开工；AG5 前置 AF5（清单技能
 用于双端一致性对比）。
 
+### 块 AH：空间与链编排（v2.4 新增，2026-10-08 用户方向裁定）
+
+用户裁定两条架构原则：**① 交互全在插件弹窗内实现（工作台不参与执行流）；
+② 链=纯数据+通用规则（降耦合，不为任何系统写执行代码）**。
+
+| 片 | 内容 | 验收 |
+|---|---|---|
+| AH1 | 服务端 chain 数据层：`chain` 表（name/system/steps JSON）+ CRUD（WRITE_GUARD） | TDD：建/列/按系统过滤/删/角色门禁；schema drift 守卫联动 |
+| AH2 | 链规则解释器（插件纯函数）：`${unique:前缀}` 唯一值生成 | TDD 直测 |
+| AH3 | executor.html 链模式：`?chain=<id>` 顺序执行、unique 规则、**整链 C1 一次确认**（确认卡列全部步骤）、步进报告、fail 即停 | 真机：JeecG 链 269+118 全 pass |
+| AH4 | 空间小窗：popup「空间」按钮 → 右上角独立小窗（chrome.windows.create）；当前 tab 系统**经 P2.5 /adapters/match 识别** → 只显示该系统回放 → 多选组链 → 保存/立即执行 | 真机：打开 JeecG → 空间 → 仅见 JeecG 链 → 组链保存执行 |
+| AH5 | 真机验收+审查+文档 | 三套测试全绿+评审记录 |
+
+**P2（后续）**：跨步值绑定（`${stepN.变量}`——从上一步写响应证据提取真实值，
+如 addAll 返回的表名）；链执行历史回看；链步骤引用 superseded 技能时自动跟最新版。
+**已知风险**：跨步绑定涉及行锚（263/271 教训），P1 用 unique 规则+人工指定绕开；
+组链原子步优先用新录短链（旧长链对数据环境敏感）。
+
+**v2.4 执行序**：AH1 → AH2 → AH3 → AH4 → AH5（真机矩阵含环境预检：端口/登录态探活）。
+
 ## 6. 执行与变更流程
 
 - **Sprint 执行**：派生计划 → docs/superpowers/plans/ → SDD 子代理执行（TDD 先红后绿）→ 全量测试绿 + 实测验收 → 本地合 main + 删分支。
@@ -360,3 +380,4 @@ AG1 协议 server 侧 ✅（端点组+迁移+4 用例；契约文档 docs/arch/e
 - 2026-10-06 v2.1.1（平台化组件化四阶段终验 PASS）：**P1 交互画像**（InteractionProfile 五维组件随 plan 下发，执行器解释器化，17fc73b）→ **P2 画像指纹**（贴 HTML 识别组件库出画像草稿，3cf691e）→ **P2.5 URL 通配符匹配**（油猴 @match 语义，系统按 URL 自动配对隔离，386a2d8）→ **P3 扩链**（8 系统 52 链矩阵 52/52 全 PASS；录制框架 raw CDP 重写根治 Playwright driver dialog 竞态崩溃，bfb1c31）→ **P4 Firefly III 零代码接入终验**（全新系统纯 YAML 接入闭环，2d9a0db）。架构契约：docs/arch/2026-10-07-platform-interaction-profile.md。八系统 53 技能全绿。
 - 2026-10-07 v2.2（全库代码评审+两轮修复）：四域深审（server/app+scripts/extension/web，docs/reviews/2026-10-07-full-codebase-audit.md）——一轮红线 6 处修复（网关 IP env 化/路径穿越白名单/attribution 脱敏/snapshot 三重脱敏/CDP 网络证据脱敏/插件配对 401）；二轮中危 11/13 清零+卫生 28 项（events 跨域守卫+批量幂等/adapters 写盘限 reviewer/admin/stale-run 心跳判据/执行器全局重置+listener 清理/EXECUTOR_RUN 改执行页/web 竞态守卫+blob revoke+fmtTime/分组共享抽取）。缓修 2 项（execute() 重构、token 一次性换票——需 52 链真机回归支撑，独立排期）。测试基线 server 508 / web 54 / extension 83。
 - 2026-10-08 v2.3（三轮全库评审+修复+文档补全）：七域并行深审（安全鉴权/回放引擎/数据管道与学习/插件/工作台/脚本部署/适配器；报告 docs/reviews/2026-10-08-full-codebase-audit-round3.md）——本轮定位"声称的语义是否真的成立"：🔴 9 项全修（viewer 角色形同虚设→WRITE_GUARD 31 变更端点+C1 确认冒充→取登录态 / Skill.system 有模型无迁移→删列+schema 双向 drift 守卫 / induce 空骨架 NameError / 写水位被 GET 噪声击穿 / 脱敏词表四处漂移→16 词+跨文件一致性测试 / 注入模板转义丢层 / AdaptersView select 失败错写系统 / auto_record IP 兜底回归）；🟡 43 项修 34 缓 9（掩码回填防"保存即毁凭据"、net-hook 失败调用留痕 C3、export_shared 判定同源逐字内嵌、快照穿 iframe、classify 畸形防御+按身份消费、2 支脚本 fail-fast、端口 127.0.0.1 绑定+非 root+uv pin 等）；🟢 34 项清 22。新增四类防漂移装置（一致性测试/非空守卫/迁移 drift 守卫/同源内嵌）。文档 +8 篇 arch（replay-engine/ingestion-pipeline/adapters-subsystem/auth-and-role-matrix/redaction-defense-in-depth/env-contract/change-intelligence/schema-migration-discipline）+ lessons #38-#46。缓修 34 项逐条附理由（插件三处"路径激活型"须与真机矩阵轮同批；C2 学习分轨待产品决策；conftest test.db 并行互撞待 CI 分片）。测试基线 **server 546 / web 78 / extension 99**。
+- 2026-10-08 v2.4（用户方向裁定：空间与链编排）：**新增块 AH**——交互全在插件弹窗（工作台不参与执行流）、链=纯数据+通用规则（降耦合）。AH1 服务端 chain 数据层（表+CRUD+WRITE_GUARD）→ AH2 规则解释器（${unique:}）→ AH3 executor.html 链模式（顺序执行+整链 C1+步进报告）→ AH4 空间小窗（P2.5 match 识别当前系统→过滤→多选组链）→ AH5 真机验收（JeecG 269+118 链）。P2：跨步值绑定/执行历史/superseded 跟版。触发背景：JeecG 矩阵 3 轮验收（06a339e）+ popup 回放列表双根因修复后用户提出组合执行需求。

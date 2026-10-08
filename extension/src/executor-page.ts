@@ -1,9 +1,12 @@
 // AG3 执行页：独立 tab 内跑步循环（popup 生命周期关不住、SW 消息层
 // 不稳——十轮实证后终局架构：执行=专属页面，全程可见）
 // UX 评审整改：确认卡带技能名+目标页；完成结果卡+工作台回看链接
+// AH3 链模式：?chain=<id> 顺序执行多个技能（整链 C1 一次确认、步进报告、
+// fail 即停）——链=服务端纯数据，规则（${unique:}）在本页解释
 export {};
 
-import { listExecutorSkills, runSkill, setExecutorToken } from "./background/executor";
+import { listExecutorSkills, runSkill, setExecutorToken, api } from "./background/executor";
+import { resolveChainSteps } from "./shared/chain-rules";
 
 const logEl = document.getElementById("log")!;
 const go = document.getElementById("go") as HTMLButtonElement;
@@ -55,14 +58,34 @@ function showResultCard(status: string, runId: number | null): void {
 
 if (tokenParam) {
   await setExecutorToken(tokenParam);
-  history.replaceState(null, "", location.pathname + (skillId ? `?skill=${skillId}` : ""));
+  const keep = chainId ? `?chain=${chainId}` : (skillId ? `?skill=${skillId}` : "");
+  history.replaceState(null, "", location.pathname + keep);
 }
 
 let skillName = `#${skillId}`;
 let skillWrites = false;
-if (!skillId) {
+
+// AH3 链模式数据：?chain=<id>（与 ?skill= 互斥，链优先）
+const chainId = Number(params.get("chain") || 0);
+let chainData: any = null;
+
+if (chainId) {
+  // 链模式：拉链数据（含技能概要）——标题/确认卡/步进报告都有据
+  try {
+    chainData = await api(`/chains/${chainId}`);
+    const names = (chainData.steps || [])
+      .map((st: any) => `#${st.skill_id} ${st.skill?.name ?? ""}`).join(" → ");
+    title.textContent = `链执行 ${chainData.name}`;
+    meta.textContent = `${(chainData.steps || []).length} 个步骤：${names}`;
+    skillWrites = (chainData.steps || []).some((st: any) => st.skill?.requires_confirmation);
+    if (skillWrites) meta.textContent += "（含写操作——点击开始后需授权）";
+  } catch (e: any) {
+    log(`链加载失败：${e.message}`);
+    title.textContent = "链执行（加载失败）";
+  }
+} else if (!skillId) {
   title.textContent = "SkillLens 执行器（未指定技能）";
-  log("缺少 ?skill= 参数——从 popup 选择技能进入。");
+  log("缺少 ?skill= 或 ?chain= 参数——从 popup/空间选择进入。");
 } else {
   meta.textContent = "点击【开始执行】开始。写操作技能会先请求授权（C1）。";
   // 技能元数据预取：标题带名字，确认卡有据
@@ -83,7 +106,7 @@ if (!skillId) {
 let running = false;
 let stopRequested = false;
 go.addEventListener("click", async () => {
-  if (running || !skillId) return;
+  if (running || (!skillId && !chainData)) return;
   running = true;
   stopRequested = false;
   go.disabled = true;
@@ -91,24 +114,65 @@ go.addEventListener("click", async () => {
   document.getElementById("result-card")!.style.display = "none";
   log("开始执行…");
   try {
-    if (skillWrites && !autoConfirm) {
-      const ok = confirm(
-        `「${skillName}」含写操作。\n` +
-        "点击确定=授权在本机浏览器执行全部步骤（C1）。");
-      if (!ok) { log("已取消（C1 未授权）"); running = false; go.disabled = false; stop.disabled = true; return; }
-    } else if (skillWrites && autoConfirm) {
-      log("auto 模式：C1 授权由调用方持有，跳过确认卡");
+    if (chainData) {
+      // ---- AH3 链执行：整链 C1 一次确认 → 逐步执行 → fail 即停 ----
+      const steps = chainData.steps || [];
+      if (skillWrites && !autoConfirm) {
+        const names = steps.map((st: any) =>
+          `#${st.skill_id} ${st.skill?.name ?? ""}`).join("\n  ");
+        const ok = confirm(
+          `链「${chainData.name}」含写操作，共 ${steps.length} 步：\n  ${names}\n` +
+          "点击确定=授权在本机浏览器执行全部步骤（C1，整链一次）。");
+        if (!ok) { log("已取消（C1 未授权）"); running = false; go.disabled = false; stop.disabled = true; return; }
+      } else if (skillWrites && autoConfirm) {
+        log("auto 模式：整链 C1 授权由调用方持有，跳过确认卡");
+      }
+      const resolved = resolveChainSteps(steps);
+      const results: Array<{ step: number; status: string; runId?: number }> = [];
+      for (let i = 0; i < resolved.length; i++) {
+        if (stopRequested) { log(`已停止：第 ${i + 1} 步前中断`); break; }
+        const st = resolved[i];
+        const nm = `#${st.skill_id} ${steps[i].skill?.name ?? ""}`;
+        log(`步骤 ${i + 1}/${resolved.length}：${nm} …`);
+        try {
+          const r = await runSkill(st.skill_id, st.overrides, log, () => stopRequested);
+          results.push({ step: i + 1, status: r.status, runId: r.runId });
+          log(`步骤 ${i + 1} 完成：${r.status}`);
+          if (r.status !== "pass") {
+            log(`链在第 ${i + 1} 步未通过——停止后续步骤（已执行 ${i + 1}/${resolved.length}）`);
+            break;
+          }
+        } catch (e: any) {
+          results.push({ step: i + 1, status: "error" });
+          log(`步骤 ${i + 1} 失败：${e.message}——停止后续步骤`);
+          break;
+        }
+      }
+      const npass = results.filter((r) => r.status === "pass").length;
+      const overall = npass === resolved.length && resolved.length > 0 ? "pass" : "fail";
+      log(`链执行结束：${npass}/${resolved.length} 步通过（${overall}）`);
+      showResultCard(overall, results.find((r) => r.runId)?.runId ?? null);
+    } else {
+      // ---- 单技能模式（原有路径） ----
+      if (skillWrites && !autoConfirm) {
+        const ok = confirm(
+          `「${skillName}」含写操作。\n` +
+          "点击确定=授权在本机浏览器执行全部步骤（C1）。");
+        if (!ok) { log("已取消（C1 未授权）"); running = false; go.disabled = false; stop.disabled = true; return; }
+      } else if (skillWrites && autoConfirm) {
+        log("auto 模式：C1 授权由调用方持有，跳过确认卡");
+      }
+      // 换参注入：URL ?fill_<原值>=<新值> 映射进 overrides（回放写场景防
+      // 唯一性冲突——JeecG 269 铁证：旧值已存在致 duplicate/check 拒绝，
+      // addAll 永不发）
+      const overrides: Record<string, string> = {};
+      for (const [k, v] of params.entries()) {
+        if (k.startsWith("fill_") && v) overrides[k.slice(5)] = v;
+      }
+      const r = await runSkill(skillId, overrides, log, () => stopRequested);
+      log(`完成：${r.status}`);
+      showResultCard(r.status, r.runId ?? null);
     }
-    // 换参注入：URL ?fill_<原值>=<新值> 映射进 overrides（回放写场景防
-    // 唯一性冲突——JeecG 269 铁证：旧值已存在致 duplicate/check 拒绝，
-    // addAll 永不发）
-    const overrides: Record<string, string> = {};
-    for (const [k, v] of params.entries()) {
-      if (k.startsWith("fill_") && v) overrides[k.slice(5)] = v;
-    }
-    const r = await runSkill(skillId, overrides, log, () => stopRequested);
-    log(`完成：${r.status}`);
-    showResultCard(r.status, r.runId ?? null);
   } catch (e: any) {
     log(`失败：${e.message}`);
     showResultCard("fail", null);

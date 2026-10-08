@@ -15,6 +15,7 @@ from app.api import (
     canvas,
     cards,
     change,
+    chains,
     discoveries,
     field_types,
     dev_plans,
@@ -124,6 +125,7 @@ app.include_router(adapters.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(dashboard.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(timeline.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(suites.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(chains.router, prefix=API_PREFIX, dependencies=_GUARDED)
 
 # StaticFiles mount 在 "/" 会拦截一切路径——必须放在全部 include_router 之后，
 # FastAPI 按注册顺序匹配路由，/api/v1/* 先命中 API，其余落到静态托管（SPA fallback）。

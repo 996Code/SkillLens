@@ -109,6 +109,8 @@ async def test_match_api(client):
     assert r.status_code == 200
     body = r.json()
     assert body["adapter_id"] == "jeecg"
+    # AH4：小窗按当前 tab 系统过滤技能——match 一并反查系统名
+    assert body["system"] == "JeecG 表单"
 
 
 async def test_match_api_requires_auth(client):

@@ -34,7 +34,7 @@ export async function getToken(): Promise<string> {
   return tokenCache;
 }
 
-async function api(path: string, init?: RequestInit): Promise<any> {
+export async function api(path: string, init?: RequestInit): Promise<any> {
   const t = await getToken();
   // 超时保护用 Promise.race——SW+CDP 托管浏览器组合下 fetch 挂
   // AbortSignal 会整体挂死（AG3 实证：cursor 永不推进）
