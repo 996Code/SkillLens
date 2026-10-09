@@ -80,6 +80,11 @@ def _session_hosts(db: Session, session_ids: set[str] | None = None) -> dict[str
     for sid, payload in rows:
         if sid not in nav:
             url = (payload or {}).get("url", "")
+            # P2-11 实证：首帧补发会把录制开始的停留页记为首 navigation——
+            # 停留页是网关 404（/404 结尾）时污染系统派生（Odoo 技能被标
+            # njmind）。错误页跳过，取首条有效 navigation。
+            if url.rstrip("/").endswith("/404"):
+                continue
             nav[sid] = urlparse(url).netloc if url else ""
     return nav
 

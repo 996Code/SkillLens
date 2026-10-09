@@ -71,7 +71,7 @@
 |---|---|---|
 | 9 | ~~禅道技能归并~~ | 禅道 | ✅ 59 编号拷贝→40 基名（S15 supersede 链；候选 7 个全同名 LLM 命名失败也归并）；活跃 99→40 |
 | 10 | ~~禅道断言升级~~ | 禅道 | ✅ query 感知模板落地：templatize_query（路由语义参数入模板，敏感/动态/分页排序/回跳参数剔除）+path_matches query 同值全含匹配（模板无 query 零破坏，export_shared 同步同源）；实测禅道真实 URL 产出 m=bug&f=resolve/m=testcase&f=create 等高区分度模板；存量断言回归 5/5 pass。新录制会话自动获得 query 模板（93/95 都落 /index.php 的时代结束） |
-| 11 | 三系统录制补课（各 3-5 链×2 轮多日战役，Odoo 优先） | Odoo/Doli/Snipe | 留档（多日战役） |
+| 11 | ~~三系统录制补课（第一轮）~~ | Odoo/Doli/Snipe | ✅ 第一轮完成：Odoo 3 技能（报价创建/确认/发票）+Dolibarr 4 技能（第三方/订单/确认/发票）+Snipe 3 技能（资产创建/借出/归还）录制学习；回放验证 Dolibarr 4/4+Snipe 3/3+Odoo 2/3 pass（298 录到登录步骤污染已归档）；断言反哺 9 技能。**顺带根治**：系统派生跳过 /404 错误页 navigation（首帧补发副作用——录制开始的停留页若是网关 404 会污染系统派生，Odoo 技能曾被标 njmind）。多轮×换参战役可按此模式续跑 |
 | 12 | 学习管道清障（Odoo 部分） | Odoo | ✅ 查询型词表补 Odoo RPC 名（onchange/web_read/mail thread/render_public_asset/get_views）防再生+存量 34 条噪声断言清除（36→2 只剩真实写） |
 | 13 | ~~层4 背书激活~~ | 全部 | ✅ 回放 pass 的断言命中与人工 verify 同权重累加 evidence_count（≥3 标 layer4_verified）——(kind, api_template) 联合定位防同模板双计（TDD 3 用例） |
 | 14 | ~~编排渗透率提升~~ | 全部 | ✅ 6→12 链、2.6%→7.0%（16 技能入链），覆盖六系统（禅道×2/Snipe/Odoo/JeecG/Dolibarr/若依）；全部 wait=1 真机 pass。**实证沉淀**：①链设计第一律=用自足技能（状态依赖技能组合会互相破坏前置——Snipe 查找→更新链因未传资产选择 fail，换成双查找链 pass）；②ERPNext 全技能过时（容器重启后 0 pass，客户保存有必填密码录制缺陷）→归入 P2-11 重录战役 |

@@ -61,3 +61,38 @@ async def test_batch_passes_system_per_skill(client, monkeypatch):
     finally:
         db.query(Skill).filter(Skill.name == "批回放技能").delete()
         db.commit(); db.close()
+
+
+async def test_system_derivation_skips_error_pages(client):
+    """P2-11 实证：首帧补发会把录制开始时的停留页记为首 navigation——
+    若停留页是 njmind 网关 404（/404 结尾）会污染系统派生（Odoo 技能
+    被标成 njmind）。错误页 navigation 跳过，取首条有效 navigation。"""
+    import uuid
+    from app.db import SessionLocal
+    from app.models import RecordingSession, RawEvent, Alignment, Skill
+    from app.system import skill_systems as ss
+    db = SessionLocal()
+    try:
+        sid = str(uuid.uuid4())
+        db.add(RecordingSession(id=sid, note="t-err-nav"))
+        db.flush()
+        for seq, url in ((0, "http://192.168.99.22/404"),
+                         (1, "http://127.0.0.1:8069/web#action=x"),
+                         (2, "http://127.0.0.1:8069/web#id=1")):
+            db.add(RawEvent(session_id=sid, page_id="p", seq=seq, ts=seq,
+                            kind="navigation", payload={"type": "page-load", "url": url}))
+        al = Alignment(session_ids=[sid], skeleton=[], buckets=[],
+                       input_variables=[], param_variables=[], window_params={})
+        db.add(al); db.flush()
+        sk = Skill(alignment_id=al.id, name="错误页派生技能", description="",
+                   status="learned", skeleton=[], param_variables=[],
+                   input_variables=[], confidence=0.9, evidence_count=1)
+        db.add(sk); db.commit()
+        got = ss(db, [sk.id]).get(sk.id)
+        assert got == "Odoo 销售", got  # 404 页跳过，取 8069
+    finally:
+        db.query(Skill).filter(Skill.name == "错误页派生技能").delete()
+        db.query(Alignment).filter(Alignment.session_ids == [sid] if False else True).filter(Alignment.id == al.id).delete()
+        db.query(RawEvent).filter(RawEvent.session_id == sid).delete()
+        db.query(RecordingSession).filter(RecordingSession.id == sid).delete()
+        db.commit(); db.close()
