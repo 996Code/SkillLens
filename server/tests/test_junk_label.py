@@ -33,3 +33,25 @@ class TestJunkLabel:
         for ok in ("Save", "New", "Customer", "查询", "新建", "编辑",
                    "保存数据库", "保存草稿", "登 录", "准客户", "提交表单"):
             assert not is_junk_label(ok), ok
+
+
+class TestQueryLikeWords:
+    """P2-12 Odoo 噪声：onchange/web_read/mail thread 轮询/render 资产
+    是表单联动与聊天轮询 RPC（POST 形态但无业务语义）——查询型词表
+    须覆盖，否则 from-run 反哺与 generate_assertions 都生成噪声断言。"""
+
+    def test_odoo_noise_templates(self):
+        from app.learning.outcome import _QUERY_LIKE_KEYS
+        for t in ("/web/dataset/call_kw/sale.order/onchange",
+                  "/web/dataset/call_kw/sale.order/web_read",
+                  "/mail/thread/data", "/mail/thread/messages",
+                  "/web/dataset/call_kw/ir.ui.view/render_public_asset",
+                  "/web/dataset/call_kw/account.move/get_views"):
+            assert any(k in t for k in _QUERY_LIKE_KEYS), t
+
+    def test_real_write_not_matched(self):
+        from app.learning.outcome import _QUERY_LIKE_KEYS
+        for t in ("/web/dataset/call_kw/sale.order/web_save",
+                  "/web/dataset/call_kw/res.partner/web_save",
+                  "/web/dataset/call_button"):
+            assert not any(k in t for k in _QUERY_LIKE_KEYS), t

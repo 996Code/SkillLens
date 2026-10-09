@@ -11,9 +11,13 @@ from app.replay.assert_eval import _ID_SEGMENT
 logger = logging.getLogger("skilllens")
 
 # 查询型调用排除词表（generate_assertions 与 bootstrap_from_run 共用）：
-# 这些 RPC 虽走 POST 但语义是列表轮询/读取，与流程无因果
+# 这些 RPC 虽走 POST 但语义是列表轮询/读取，与流程无因果。
+# P2-12 Odoo 补强：onchange（表单联动）/web_read（读）/mail thread
+# （聊天轮询）/render_public_asset（资产渲染）/get_views（视图元数据）
 _QUERY_LIKE_KEYS = ("reportview", "search_link", "search_widget",
-                    "get_count", "list_view", "get_list")
+                    "get_count", "list_view", "get_list",
+                    "onchange", "web_read", "/mail/thread",
+                    "render_public_asset", "get_views")
 _WRITE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
 
 

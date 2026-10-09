@@ -1263,6 +1263,31 @@ async def _execute_skill(db: Session, browser, skill_id: int,
     db.commit()
     db.refresh(run)
 
+    # P2-13 层4背书：回放 pass 的断言命中也是历史成功样本——与人工
+    # verify 端点同权重累加 evidence_count（≥3 标 layer4_verified）。
+    # 只认人工 verify 会让层4 永远沉睡（全库 evidence_count≥3 为 0）。
+    # results 与 assertions 逐条对位（visual_baseline 追加在尾部）；
+    # (kind, api_template) 联合定位行——api_status 与 state_signal 可
+    # 共享模板，只按模板匹配会双计。
+    if status == "pass":
+        try:
+            for a, r_ in zip(assertions, (results or [])):
+                tpl = (a.get("payload") or {}).get("api_template")
+                if not tpl or not r_.get("passed"):
+                    continue
+                row = db.query(OutcomeAssertion).filter(
+                    OutcomeAssertion.skill_id == skill_id,
+                    OutcomeAssertion.api_template == tpl,
+                    OutcomeAssertion.kind == a.get("kind")).first()
+                if row is None:
+                    continue
+                row.evidence_count = (row.evidence_count or 0) + 1
+                row.payload = {**row.payload,
+                               "layer4_verified": row.evidence_count >= 3}
+            db.commit()
+        except Exception:
+            db.rollback()  # 背书累加失败不破坏已落库的 run（fail-open）
+
     # S22 块 T：建基线补表行（run 落库后才有 source_run_id）。
     # 截图文件无效（如替身写入非图像内容）→ 放弃建基线，不破坏已判定的 run
     # （与采集阶段同 fail-open 语义）。
