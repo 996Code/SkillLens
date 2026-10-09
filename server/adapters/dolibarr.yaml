@@ -1,6 +1,7 @@
 # AF1：Dolibarr 适配清单（从 scripts/s43_doli_order.py + s43_doli_replay.py 机械提取）
 id: dolibarr
 label: Dolibarr 订单
+system_label: Dolibarr 订单   # 系统名唯一事实源（HOST_SYSTEM/SYSTEM_ADAPTER 生成）
 target:
   base_url: http://127.0.0.1:8080
 credentials:

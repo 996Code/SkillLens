@@ -1,6 +1,7 @@
 # AF1：禅道适配清单（从 scripts/s43_zentao_qa.py + s43_zentao_qa_replay.py 机械提取）
 id: zentao
 label: 禅道 22
+system_label: 禅道项目   # 系统名唯一事实源（HOST_SYSTEM/SYSTEM_ADAPTER 生成）
 target:
   base_url: http://127.0.0.1:8082
 credentials:
@@ -60,7 +61,6 @@ flows:
   - name: bug-chain
     steps:
       - goto: /index.php?m=bug&f=create&productID=1
-      - fill: ["#title", "SL缺陷${data}"]
       - fill: ["#title", "SL缺陷${data}"]
       - click: "#submitbutton"
 url_matches: ["http://127.0.0.1:8082/*"]   # P2.5 油猴式接管声明：URL 命中即配对本系统

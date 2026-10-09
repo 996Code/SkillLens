@@ -1,6 +1,7 @@
 # AF1：JeecgBoot 适配清单（从 scripts/s43_jeecg_form.py + s43_jeecg_replay2.py 机械提取）
 id: jeecg
 label: JeecgBoot 在线表单
+system_label: JeecG 表单   # 系统名唯一事实源（HOST_SYSTEM/SYSTEM_ADAPTER 生成）
 target:
   base_url: http://127.0.0.1:8095
 credentials:

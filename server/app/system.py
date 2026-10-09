@@ -3,7 +3,14 @@
 用户视角：测试产物按目标系统分组（njmind/Odoo/Dolibarr/ERPNext…），
 不再全部平铺。派生是确定性的（host 映射表 + 兜底 host 本身），
 不引入新表——URL 是既有证据（C3）。
+
+防再生③：HOST_SYSTEM/SYSTEM_ADAPTER 从 adapters/*.yaml 的 system_label
++base_url 生成（单一事实源）——新系统零代码接入即有系统名，不再两处
+映射漂移（firefly 8096 曾漏配实证）。njmind host 经 env 注入（内网拓扑
+不入库）。
 """
+import os
+from pathlib import Path
 from urllib.parse import urlparse
 
 from sqlalchemy import select
@@ -11,21 +18,33 @@ from sqlalchemy.orm import Session
 
 from app.models import Alignment, RawEvent, Skill
 
-# 已知部署的 host → 系统名（新系统自动兜底为 host 本身）。
-# njmind 内网 host 经 env 注入（NJMIND_HOST，server/.env）——内网拓扑不入库
-import os
+
+def _maps_from_adapters() -> tuple[dict[str, str], dict[str, str]]:
+    """adapters/*.yaml → (HOST_SYSTEM, SYSTEM_ADAPTER)。yaml 读失败
+    fail-open 返回空映射（系统名兜底 host 本身，不阻塞主流程）。"""
+    host_map: dict[str, str] = {}
+    sys_adapter: dict[str, str] = {}
+    try:
+        from app.adapters.manifest import load_adapter_dir
+        ms, _ = load_adapter_dir(Path("adapters"))
+        for m in ms:
+            if not m.system_label:
+                continue
+            host = urlparse(m.target.base_url).netloc
+            if host:
+                host_map[host] = m.system_label
+                sys_adapter[m.system_label] = m.id
+    except Exception:
+        pass
+    return host_map, sys_adapter
+
+
+_ADAPTER_HOSTS, _ADAPTER_SYSTEMS = _maps_from_adapters()
 
 HOST_SYSTEM = {
-    "127.0.0.1:8096": "Firefly III 记账",
+    **_ADAPTER_HOSTS,
     **({os.environ["NJMIND_HOST"]: "njmind 内网"}
       if os.environ.get("NJMIND_HOST") else {}),
-    "127.0.0.1:8069": "Odoo 销售",
-    "127.0.0.1:8080": "Dolibarr 订单",
-    "127.0.0.1:8090": "ERPNext 客户",
-    "127.0.0.1:8081": "Snipe 资产",
-    "127.0.0.1:8082": "禅道项目",
-    "127.0.0.1:8093": "若依权限",
-    "127.0.0.1:8095": "JeecG 表单",
 }
 
 
@@ -36,17 +55,10 @@ def system_label(host: str) -> str:
 
 
 # 系统名 → 适配器清单 id（server/adapters/*.yaml）。URL 通配符未命中时的
-# 兜底配对通道——与 HOST_SYSTEM 同源维护，避免两处映射漂移
+# 兜底配对通道——与 HOST_SYSTEM 同源（yaml system_label 生成）
 SYSTEM_ADAPTER = {
-    "Firefly III 记账": "firefly",
+    **_ADAPTER_SYSTEMS,
     "njmind 内网": "njmind",
-    "Odoo 销售": "odoo",
-    "Dolibarr 订单": "dolibarr",
-    "ERPNext 客户": "erpnext",
-    "Snipe 资产": "snipe",
-    "禅道项目": "zentao",
-    "若依权限": "ruoyi",
-    "JeecG 表单": "jeecg",
 }
 
 

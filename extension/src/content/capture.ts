@@ -36,6 +36,11 @@ async function refreshState(): Promise<void> {
   if (next !== recording) {
     recording = next;
     console.debug("[skilllens] recording =", recording);
+    // 防再生①：录制开启时页面早已加载（SPA 无整页加载）——补发首帧
+    // navigation，根治会话零 navigation（105 会话实证：系统派生失锚）
+    if (recording && window.top === window) {
+      void emit("navigation", { type: "page-load", url: pageUrl(), title: document.title });
+    }
   }
 }
 void refreshState();
@@ -46,6 +51,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
     if (next !== recording) {
       recording = next;
       console.debug("[skilllens] recording =", recording);
+      if (recording && window.top === window) {
+        void emit("navigation", { type: "page-load", url: pageUrl(), title: document.title });
+      }
     }
   }
 });
@@ -287,15 +295,10 @@ document.addEventListener(
   { capture: true },
 );
 
-// page-load 需等初始状态就绪后再判定，避免"已开录的存量页面"在 GET_STATE
-// 返回前误判为未录制而丢掉首条 navigation 事件。
-// S42 all_frames：仅顶层帧发 navigation——iframe（含 about:blank 综合界面）
-// 的 page-load 是重复/噪声，且会污染目标系统派生（首条 navigation URL）。
-void refreshState().then(() => {
-  if (recording && window.top === window) {
-    void emit("navigation", { type: "page-load", url: pageUrl(), title: document.title });
-  }
-});
+// 首帧 navigation 已由 refreshState 内的 toggle 补发统一处理（脚本加载时
+// 已在录制 = false→true 状态变化，同一路径发一次）——不再单独补发。
+// S42 all_frames：仅顶层帧发 navigation（iframe 的 page-load 是重复/噪声，
+// 且会污染目标系统派生）。
 
 // 注入 MAIN world 脚本
 const s = document.createElement("script");

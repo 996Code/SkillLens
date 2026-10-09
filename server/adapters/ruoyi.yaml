@@ -1,6 +1,7 @@
 # AF1：若依适配清单（从 scripts/s43_ruoyi_perm.py + s43_ruoyi_replay.py 机械提取）
 id: ruoyi
 label: 若依 RuoYi-Vue3
+system_label: 若依权限   # 系统名唯一事实源（HOST_SYSTEM/SYSTEM_ADAPTER 生成）
 target:
   base_url: http://127.0.0.1:8093
 credentials:

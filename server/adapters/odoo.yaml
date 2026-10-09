@@ -1,6 +1,7 @@
 # AF1：Odoo 适配清单（从 scripts/s43_odoo_sales.py + s43_odoo_replay.py 机械提取）
 id: odoo
 label: Odoo 18 销售
+system_label: Odoo 销售   # 系统名唯一事实源（HOST_SYSTEM/SYSTEM_ADAPTER 生成）
 target:
   base_url: http://127.0.0.1:8069
 credentials:

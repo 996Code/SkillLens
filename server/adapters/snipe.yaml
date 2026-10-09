@@ -1,6 +1,7 @@
 # AF1：Snipe-IT 适配清单（从 scripts/s43_snipe_flow.py + s43_snipe_replay.py 机械提取）
 id: snipe
 label: Snipe-IT 资产管理
+system_label: Snipe 资产   # 系统名唯一事实源（HOST_SYSTEM/SYSTEM_ADAPTER 生成）
 target:
   base_url: http://127.0.0.1:8081
 credentials:

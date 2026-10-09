@@ -81,12 +81,14 @@
 - 禅道 CaseRun iframe 二级行操作（采集层豁免→正式支持或归档边界）
 - zentao.yaml bug-chain 重复行机械残留
 
-## 四、防再生（已识别待做）
+## 四、防再生（全部落地 ✅）
 
-1. 录制侧补首帧：capture.ts 在 recording false→true 时让已加载页面补发 navigation（105 会话零 navigation 的根治）
-2. 空断言 pass 显式标记（Dolibarr 型假 pass 防线）
-3. HOST_SYSTEM 从 adapters/*.yaml 清单生成（映射同源，新系统零代码接入即有系统名）
-4. 会话落库后 navigation=0 时健康端点告警
+1. ✅ 录制侧补首帧：capture.ts 在 recording false→true 时补发首帧 navigation（两个 toggle 点：GET_STATE/storage.onChanged；顶层帧限定防 iframe 噪声；旧初始 emit 段收敛为同一路径防双发）
+2. ✅ 空断言 pass 显式标记：trends unverified_pass 口径（P0-3 已落）
+3. ✅ HOST_SYSTEM/SYSTEM_ADAPTER 从 adapters/*.yaml 生成（yaml 新增 system_label 字段=系统名唯一事实源；八清单全配；系统名与历史完全一致零迁移；NJMIND_HOST env 项保留）
+4. ✅ 会话 navigation=0 比率进 /health 端点（count/total/ratio——采集退化可见）
+
+附：P3 zentao.yaml bug-chain 重复 fill 行清理。
 
 ## 五、测试矩阵调整（结论）
 

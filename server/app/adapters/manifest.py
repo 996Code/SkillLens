@@ -189,6 +189,9 @@ class InteractionProfile(BaseModel):
 class Manifest(BaseModel):
     id: str
     label: str = ""
+    # 系统名（HOST_SYSTEM/SYSTEM_ADAPTER 的生成源——防再生③：映射单一
+    # 事实源；label 是展示名（含版本号），system_label 是稳定系统名）
+    system_label: str = ""
     target: Target
     credentials: Credentials
     login: Login | None = None

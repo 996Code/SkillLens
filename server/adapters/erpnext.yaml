@@ -1,6 +1,7 @@
 # AF1：ERPNext 适配清单（从 scripts/s43_erpnext_crm.py + s43_erpnext_replay.py 机械提取）
 id: erpnext
 label: ERPNext CRM
+system_label: ERPNext 客户   # 系统名唯一事实源（HOST_SYSTEM/SYSTEM_ADAPTER 生成）
 target:
   base_url: http://127.0.0.1:8090
 credentials:

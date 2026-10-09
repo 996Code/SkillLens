@@ -289,3 +289,25 @@ class TestRedactManifestText:
         out = redact_manifest_text(doc)
         assert "zentao" in out and "ZENTAO_PW" in out
         assert "story_count" in out and "http://127.0.0.1:8082" in out
+
+
+class TestSystemLabelField:
+    """防再生 ③：HOST_SYSTEM/SYSTEM_ADAPTER 从 adapters/*.yaml 生成
+    （system_label 字段=系统名唯一事实源）——新系统零代码接入即有系统名，
+    不再两处映射漂移（firefly 8096 曾漏配实证）。"""
+
+    def test_system_maps_from_yaml(self):
+        from app.system import HOST_SYSTEM, SYSTEM_ADAPTER
+        # 七系统 + firefly 全部来自 yaml system_label（非手工字典）
+        assert HOST_SYSTEM.get("127.0.0.1:8069") == "Odoo 销售"
+        assert HOST_SYSTEM.get("127.0.0.1:8082") == "禅道项目"
+        assert HOST_SYSTEM.get("127.0.0.1:8096") == "Firefly III 记账"
+        assert SYSTEM_ADAPTER.get("Odoo 销售") == "odoo"
+        assert SYSTEM_ADAPTER.get("Firefly III 记账") == "firefly"
+
+    def test_yaml_system_label_declared(self):
+        from app.adapters.manifest import load_adapter_dir
+        from pathlib import Path
+        ms, _ = load_adapter_dir(Path("adapters"))
+        for m in ms:
+            assert m.system_label, f"{m.id} 缺 system_label——系统名映射会缺失"
