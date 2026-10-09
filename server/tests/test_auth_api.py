@@ -122,3 +122,36 @@ async def test_unknown_user_runs_equal_strength_verify(bare_client, client, monk
     assert resp.status_code == 401
     assert len(seen) == 1, "未知用户跳过了口令校验（时差可枚举用户名）"
     assert seen[0].startswith("pbkdf2$")
+
+
+class TestPluginSession:
+    """内部部署免登录：PLUGIN_TRUST=1 时插件凭共享头换 token（无凭据
+    传输）；开关默认关（公网部署零暴露）。"""
+
+    async def test_plugin_session_issues_token(self, client, monkeypatch):
+        monkeypatch.setenv("PLUGIN_TRUST", "1")
+        r = await client.post("/api/v1/auth/plugin-session",
+                              headers={"X-SkillLens-Agent": "1"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body.get("token")
+        me = await client.get("/api/v1/auth/me",
+                              headers={"Authorization": f"Bearer {body['token']}"})
+        assert me.status_code == 200
+        assert me.json()["role"] == "admin"
+
+    async def test_plugin_session_off_by_default(self, client, monkeypatch):
+        monkeypatch.delenv("PLUGIN_TRUST", raising=False)
+        r = await client.post("/api/v1/auth/plugin-session",
+                              headers={"X-SkillLens-Agent": "1"})
+        assert r.status_code == 403
+
+    async def test_plugin_session_requires_agent_header(self, client, monkeypatch):
+        """无共享头的普通网页调用拒绝（CORS * 下防网页侧伪造）。"""
+        from httpx import ASGITransport, AsyncClient
+        from app.main import app
+        monkeypatch.setenv("PLUGIN_TRUST", "1")
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as bare:
+            r = await bare.post("/api/v1/auth/plugin-session")
+        assert r.status_code == 403

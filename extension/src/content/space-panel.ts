@@ -364,21 +364,32 @@ function mount(): void {
 
   async function detectSystem(): Promise<void> {
     sysEl.textContent = "读 token…";
-    const t = await token();
-    sysEl.textContent = t ? "识别系统…" : "无 token";
-    try {
-      const r = await Promise.race([
-        fetch(`${AGENT}/adapters/match?url=${encodeURIComponent(location.href)}`,
-          { headers: { Authorization: `Bearer ${t}` } }),
-        new Promise<never>((_, rej) =>
-          setTimeout(() => rej(new Error("match 超时")), 5000)),
-      ]);
-      if (r.status === 401) {
-        sysEl.textContent = "未登录";
-        showLogin();
+    let t = await token();
+    let r: Response | null = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      sysEl.textContent = "识别系统…";
+      try {
+        r = await Promise.race([
+          fetch(`${AGENT}/adapters/match?url=${encodeURIComponent(location.href)}`,
+            { headers: { Authorization: `Bearer ${t}` } }) as Promise<Response>,
+          new Promise<never>((_, rej) =>
+            setTimeout(() => rej(new Error("match 超时")), 5000)),
+        ]);
+      } catch (e: any) {
+        sysEl.textContent = `Agent 未连（${String(e?.message || e).slice(0, 30)}）`;
         return;
       }
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if (r.status !== 401) break;
+      // 401→自动换 token 重试一次（内部部署免登录）；换不到则提示
+      const tk = await autoSession();
+      if (!tk) {
+        sysEl.textContent = "未授权（server 开 PLUGIN_TRUST=1 免登录）";
+        return;
+      }
+      t = tk;
+    }
+    try {
+      if (!r || !r.ok) throw new Error(`HTTP ${r && r.status}`);
       const m = await r.json();
       systemName = m.system || "";
       sysEl.textContent = systemName || "未识别系统";
@@ -387,52 +398,20 @@ function mount(): void {
     }
   }
 
-  // P0 根治：面板内置登录（token 断链——工作台登录不会配 token 给插件，
-  // 装完插件第一次用必须在面板里登录一次；写 sl_executor_token 与
-  // executor.html?token= 同一存储位）
-  function showLogin(): void {
-    const body = root.querySelector(".body")!;
-    body.replaceChildren();
-    const wrap = document.createElement("div");
-    wrap.style.cssText = "padding:8px 2px";
-    const h = document.createElement("div");
-    h.style.cssText = "font-weight:600;margin-bottom:6px";
-    h.textContent = "登录 SkillLens";
-    const sub = document.createElement("div");
-    sub.className = "lbl";
-    sub.textContent = "输入工作台账号（admin/reviewer）连接管理平台";
-    const uIn = document.createElement("input");
-    uIn.placeholder = "用户名";
-    uIn.style.cssText = "width:100%;padding:7px 10px;font:inherit;font-size:12px;border:1px solid #e5e7eb;border-radius:8px;outline:none;margin:6px 0";
-    const pIn = document.createElement("input");
-    pIn.placeholder = "密码";
-    pIn.type = "password";
-    pIn.style.cssText = uIn.style.cssText;
-    const btn = document.createElement("button");
-    btn.textContent = "登录";
-    btn.style.cssText = "width:100%;padding:8px 0;font:inherit;font-size:13px;font-weight:500;border:none;border-radius:8px;background:#2563eb;color:#fff;cursor:pointer;margin-top:4px";
-    const err = document.createElement("div");
-    err.style.cssText = "color:#dc2626;font-size:11px;margin-top:4px;min-height:14px";
-    btn.addEventListener("click", async () => {
-      err.textContent = "登录中…";
-      try {
-        const r = await fetch(`${AGENT}/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username: uIn.value.trim(), password: pIn.value }),
-        });
-        if (!r.ok) { err.textContent = `登录失败（${r.status}）`; return; }
-        const { token: tk } = await r.json();
-        await chrome.storage.local.set({ sl_executor_token: tk });
-        err.style.color = "#16a34a";
-        err.textContent = "登录成功——加载中…";
-        setTimeout(() => location.reload(), 600);
-      } catch (e: any) {
-        err.textContent = `无法连接（${String(e?.message || e).slice(0, 40)}）`;
-      }
-    });
-    wrap.append(h, sub, uIn, pIn, btn, err);
-    body.append(wrap);
+  // 内部部署免登录：401 时自动经 plugin-session 换 token（无凭据传输，
+  // server 侧 PLUGIN_TRUST=1 开关控制）；换不到才提示。登录表单已删
+  // （内部使用不设登录门槛）。
+  async function autoSession(): Promise<string> {
+    try {
+      const r = await fetch(`${AGENT}/auth/plugin-session`, {
+        method: "POST",
+        headers: { "X-SkillLens-Agent": "1" },
+      });
+      if (!r.ok) return "";
+      const { token: tk } = await r.json();
+      if (tk) await chrome.storage.local.set({ sl_executor_token: tk });
+      return tk || "";
+    } catch { return ""; }
   }
 
   function render(): void {
@@ -521,8 +500,8 @@ function mount(): void {
   }
 
   async function api(path: string, init?: RequestInit): Promise<any> {
-    const t = await token();
-    const r = await Promise.race([
+    let t = await token();
+    let r = await Promise.race([
       fetch(`${AGENT}${path}`, {
         ...init,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
@@ -530,6 +509,20 @@ function mount(): void {
       new Promise<never>((_, rej) =>
         setTimeout(() => rej(new Error("请求超时")), 15000)),
     ]);
+    if (r.status === 401) {
+      // 内部部署免登录：401 自动换 token 重试一次
+      const tk = await autoSession();
+      if (tk) {
+        r = await Promise.race([
+          fetch(`${AGENT}${path}`, {
+            ...init,
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
+          }),
+          new Promise<never>((_, rej) =>
+            setTimeout(() => rej(new Error("请求超时")), 15000)),
+        ]);
+      }
+    }
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json();
   }

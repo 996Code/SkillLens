@@ -99,6 +99,21 @@ async def me(user: User = Depends(require_user)):
     return _user_out(user)
 
 
+@router.post("/auth/plugin-session")
+async def plugin_session(x_skilllens_agent: str | None = Header(default=None),
+                          db: Session = Depends(get_db)) -> dict:
+    """内部部署免登录：PLUGIN_TRUST=1 时插件凭共享头换 admin token
+    （无凭据传输——内部使用不设登录门槛；默认关，公网部署零暴露）。"""
+    import os
+    if os.environ.get("PLUGIN_TRUST") != "1" or x_skilllens_agent != "1":
+        raise HTTPException(status_code=403, detail="plugin trust disabled")
+    user = db.query(User).filter_by(role="admin").order_by(User.id).first()
+    if user is None:
+        raise HTTPException(status_code=500, detail="no admin user")
+    token = issue_token(db, user.id)
+    return {"token": token, "user": _user_out(user)}
+
+
 @router.post("/auth/users", status_code=201)
 async def create_user_ep(body: UserIn, db: Session = Depends(get_db),
                         admin: User = Depends(require_role("admin"))):
