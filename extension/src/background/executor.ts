@@ -69,7 +69,8 @@ export async function runSkill(
   onProgress: (msg: string) => void,
   shouldStop?: () => boolean,
   hostTab?: number,
-): Promise<{ status: string; runId?: number; observed?: any[] }> {
+  rowAnchor?: string,
+): Promise<{ status: string; runId?: number; observed?: any[]; pickedRows?: string[] }> {
   const plan = await api(`/executor/skills/${skillId}/plan`, {
     method: "POST",
     body: JSON.stringify({ overrides, confirm_side_effect: true }),
@@ -197,6 +198,8 @@ export async function runSkill(
   let steps = 0;
   let stepsSinceGoto = 0;
   let recentWriteMark = 0;  // AM1 预拉放行水位（上步末写响应计数）
+  const stepPickedRows: string[] = [];  // AN 行键聚合（链模式跨步传递）
+  let anchorInjected = false;  // AN row_anchor_from 单次注入标记
   try {
     while (instruction && instruction.op !== "detach") {
       // 用户停止（当前步完成后中断——UX 评审 P2：真停）
@@ -227,6 +230,20 @@ export async function runSkill(
       // thread 实证晚 1-2s——web_save 已过而 messages 晚到漏采）
       if (instruction.op === "snapshot" && instruction.phase === "after") {
         await sleep(2500);
+      }
+      // AN row_anchor_from 注入：链模式传入的行键直接替换本步 row-trigger
+      // 候选的 anchor（选择类输出→输入——无需知道旧锚文本，141 铁证：
+      // 「请选择列表项」=前序选择未传递）。注入只做一次（首个带行锚的 click）。
+      if (rowAnchor && instruction.op === "click" && !anchorInjected) {
+        for (const cand of instruction.resolve_candidates || []) {
+          if (cand?.kind === "row-trigger" || cand?.anchor) {
+            cand.anchor = rowAnchor;
+            anchorInjected = true;
+          }
+        }
+        if (anchorInjected) {
+          onProgress(`行锚注入：${rowAnchor.slice(0, 40)}（来自前序步选择）`);
+        }
       }
       const ev = await execute(debuggee, tabId, instruction, networkLog,
         onProgress, stepsSinceGoto);
@@ -302,8 +319,11 @@ export async function runSkill(
     onProgress(`完成：${finish.status}（${steps} 步）`);
     // AI2 跨步传值：把写请求证据带回调用方（链模式的下一步绑定原料）。
     // 与 finish.summary.observed 同源（判定用同一份；凭据已脱敏）
+    // AN：pickedRows（行触发命中的行键）随返回——${stepN.row}/row_anchor_from 原料
+    const pickedRows = stepPickedRows;
     return { status: finish.status, runId,
-             observed: networkLog.filter((n) => n.url && n.url.startsWith("http")) };
+             observed: networkLog.filter((n) => n.url && n.url.startsWith("http")),
+             pickedRows: pickedRows.length ? pickedRows : undefined };
   } catch (e: any) {
     onProgress(`中断：${e.message}`);
     // AK2 超时/预算耗尽 → CDP 强杀页面内挂死例程（zcode L749-775 同款：
@@ -988,6 +1008,12 @@ async function execute(
       return { seq: ins.seq, result: "miss",
                evidence: { ...evidence, miss: label, page_texts: texts } };
     }
+    // AN 跨步状态传递：行触发命中时把 pickedRow（行键）落进证据——
+    // runSkill 聚合返回，链模式 ${stepN.row}/row_anchor_from 的原料
+    if (resolved.pickedRow) {
+      evidence.pickedRow = resolved.pickedRow;
+      stepPickedRows.push(resolved.pickedRow);
+    }
     // 通用滚入：行操作触发器常在视口右缘外（AG5 铁证 rect.x=1409>视口
     // 1280——坐标点击落空）。不限 row-trigger——role 命中的行内「更多」
     // 同病（270 铁证：rect 未滚 x=1438 落空，滚后 dropdown 才开）。
@@ -1502,6 +1528,7 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
   // 主 frame label 命中会点错对象；label 只在子 frame 兜底）
   const js = `JSON.stringify((function() {
     let rowAnchor = "";
+    let pickedRow = "";
     const skipLabel = /*SKIP_LABEL*/${isMainFrame ? "true" : "false"}/**/;
     const candidates = ${JSON.stringify(cands)}
       .filter(c => !skipLabel || c.strategy !== 'label');
@@ -1546,12 +1573,20 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
             .filter(el => visible(el) && (el.textContent || "").trim() === label);
         } else if (c.kind === "row-trigger") {
           // AG5 行锚：含 anchor 词的行内找 label 文本触发器
+          // AN 跨步状态传递：命中时捕获行首格文本（pickedRow——跨重渲
+          // 稳定的行键，下一步 row_anchor_from 注入的原料）
           const rows = [...document.querySelectorAll(c.selector)]
             .filter(r => (r.textContent || "").toLowerCase().includes((c.anchor || "").toLowerCase()));
           for (const row of rows) {
             const trig = [...row.querySelectorAll("a, span, button, [role=button]")]
               .filter(el => visible(el) && (el.textContent || "").trim() === label);
-            if (trig.length) { els = [trig[0]]; rowAnchor = c.anchor || ""; break; }
+            if (trig.length) {
+              els = [trig[0]]; rowAnchor = c.anchor || "";
+              const cell = row.querySelector("td, th");
+              const txt = ((cell || row).textContent || "").trim();
+              if (txt) pickedRow = txt.slice(0, 80);
+              break;
+            }
           }
         } else if (c.strategy === "text" && (c.selector || "").startsWith("//")) {
           // text 类候选是 XPath（normalize-space 精确匹配）——
@@ -1590,6 +1625,7 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
         return {hit: true, strategy: c.strategy, tagCls: (pick.className || ""),
           tagName: (pick.tagName || "").toLowerCase(),
           anchorTxt: rowAnchor || "",
+          pickedRow: pickedRow || "",
           rect: {x: r.x, y: r.y, width: r.width, height: r.height}};
       }
     }

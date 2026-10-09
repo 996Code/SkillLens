@@ -11,6 +11,9 @@ export interface ChainStep {
 export interface StepEvidence {
   url?: string;
   reqBody?: string;
+  // AN 跨步状态传递：行点击选中的行标识（executor row-trigger 命中时
+  // 捕获行首格文本——跨重渲稳定的行键）。选择类输出→输入的句柄。
+  pickedRow?: string;
 }
 
 // 从单条写请求体提取字段值：支持 JSON（"key":"value"）与
@@ -33,6 +36,7 @@ export function extractField(reqBody: string | undefined, key: string): string |
 
 // 跨步取值：${stepN.字段} → 在第 N 步（1 起）的写请求证据里找该字段。
 // 写请求=POST/PUT/PATCH 优先；多条命中取最后一条（终态语义）。
+// AN：${stepN.row} 特殊键 → 第 N 步的 pickedRow（行选择句柄，多条取末条）。
 export function extractStepValue(
   stepEvidences: StepEvidence[], ref: string,
 ): string | null {
@@ -43,9 +47,30 @@ export function extractStepValue(
   if (n < 1 || n > stepEvidences.length) return null;
   const writes = (stepEvidences[n - 1] instanceof Array
     ? stepEvidences[n - 1] : [stepEvidences[n - 1]]) as StepEvidence[];
+  if (key === "row") {
+    for (let i = writes.length - 1; i >= 0; i--) {
+      if (writes[i]?.pickedRow) return writes[i].pickedRow!;
+    }
+    return null;
+  }
   for (let i = writes.length - 1; i >= 0; i--) {
     const v = extractField(writes[i]?.reqBody, key);
     if (v != null) return v;
+  }
+  return null;
+}
+
+// AN row_anchor_from 注入原料：第 fromStep 步（1 起）的 pickedRow。
+// 越界/无句柄返回 null（调用方保留原锚——防静默错值同 resolveValue
+// 纪律）。自引用天然防：执行到第 K 步时 stepCtx 只有 K-1 条。
+export function resolveRowAnchor(
+  fromStep: number, stepCtx?: StepEvidence[],
+): string | null {
+  if (!stepCtx || fromStep < 1 || fromStep > stepCtx.length) return null;
+  const writes = (stepCtx[fromStep - 1] instanceof Array
+    ? stepCtx[fromStep - 1] : [stepCtx[fromStep - 1]]) as StepEvidence[];
+  for (let i = writes.length - 1; i >= 0; i--) {
+    if (writes[i]?.pickedRow) return writes[i].pickedRow!;
   }
   return null;
 }

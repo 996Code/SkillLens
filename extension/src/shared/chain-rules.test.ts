@@ -2,8 +2,8 @@
 // AI2：${stepN.字段} 跨步绑定（写请求体 JSON/urlencoded 提取）。
 import { describe, expect, it } from "vitest";
 import {
-  extractField, extractStepValue, resolveChainSteps, resolveRule,
-  resolveStepOverrides, resolveValue,
+  extractField, extractStepValue, resolveChainSteps, resolveRowAnchor,
+  resolveRule, resolveStepOverrides, resolveValue,
 } from "./chain-rules";
 
 describe("chain-rules 规则解释器", () => {
@@ -77,5 +77,36 @@ describe("chain-rules 规则解释器", () => {
     const r = resolveStepOverrides(
       { skill_id: 271, overrides: { 表名: "${step1.name}" } }, ctx);
     expect(r["表名"]).toBe("sl_form_q");
+  });
+});
+
+describe("AN 跨步状态传递：${stepN.row}（pickedRow 句柄）", () => {
+  // AN 块（docs/specs/2026-10-10-an-*.md）：选择类输出→输入——
+  // 行点击选中的行标识（pickedRow）作为步骤产物，下一步行锚注入
+  it("${step1.row} 提取第1步 pickedRow（多条取末条——终态语义）", () => {
+    const ctx = [
+      [{ url: "http://x/search", reqBody: "" }, { pickedRow: "asset-1001" },
+       { pickedRow: "asset-2002" }],
+    ] as any[];
+    expect(extractStepValue(ctx, "${step1.row}")).toBe("asset-2002");
+  });
+
+  it("${step2.row} 越界/无 pickedRow 返回 null", () => {
+    const ctx = [[{ reqBody: '{"k":"v"}' }], []] as any[];
+    expect(extractStepValue(ctx, "${step2.row}")).toBeNull();
+    expect(extractStepValue(ctx, "${step3.row}")).toBeNull();
+  });
+
+  it("resolveValue：${stepN.row} 命中替换、未命中保留原文", () => {
+    const ctx = [[{ pickedRow: "LP-9988" }]] as any[];
+    expect(resolveValue("${step1.row}", ctx)).toBe("LP-9988");
+    expect(resolveValue("${step1.row}", [[]])).toBe("${step1.row}");
+  });
+
+  it("row_anchor_from 解析：取来源步 pickedRow（链注入原料）", () => {
+    const ctx = [[{ pickedRow: "tag-777" }], []] as any[];
+    expect(resolveRowAnchor(1, ctx)).toBe("tag-777");  // 来源=第1步
+    expect(resolveRowAnchor(2, ctx)).toBeNull();       // 第2步无句柄
+    expect(resolveRowAnchor(9, ctx)).toBeNull();       // 越界
   });
 });

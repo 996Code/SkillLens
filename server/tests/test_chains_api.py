@@ -154,3 +154,31 @@ async def test_chain_role_gates(chain_client):
         db.query(User).filter(User.username == "chain_viewer").delete()
         db.commit()
         db.close()
+
+
+async def test_chain_step_row_anchor_from(chain_client):
+    """AN 跨步状态传递：步骤声明 row_anchor_from（前序步 pickedRow 注入
+    本步行锚——选择类输出→输入）。schema 校验 ge=1；存储往返保真。"""
+    db = SessionLocal()
+    try:
+        sid = await _mk_skill(db)
+        r = await chain_client.post("/api/v1/chains", json={
+            "name": "Snipe 查找→更新（行锚注入）",
+            "system": "Snipe 资产",
+            "steps": [
+                {"skill_id": sid, "overrides": {}},
+                {"skill_id": sid, "overrides": {}, "row_anchor_from": 1},
+            ],
+        })
+        assert r.status_code == 201, r.text
+        steps = r.json()["steps"]
+        assert steps[1]["row_anchor_from"] == 1
+        # 非法值（0）拒绝
+        r2 = await chain_client.post("/api/v1/chains", json={
+            "name": "x", "system": "s",
+            "steps": [{"skill_id": sid, "overrides": {}},
+                      {"skill_id": sid, "overrides": {}, "row_anchor_from": 0}],
+        })
+        assert r2.status_code == 422
+    finally:
+        db.close()

@@ -44,6 +44,12 @@ class ChainStepIn(BaseModel):
     # AJ5 步骤启停（Katalon checkbox 语义）：false=临时禁用该步
     # （调试链不必删步骤）；默认 true
     enabled: bool = True
+    # AN 跨步状态传递（docs/specs/2026-10-10-an-*.md）：本步行锚注入
+    # 来源步号（1 起）——前序步的 pickedRow（行点击选中的行标识）直接
+    # 替换本步 row-trigger 候选的 anchor（选择类输出→输入，141 铁证：
+    # 「请选择列表项」=选择未传递）。与 overrides 的字符串替换互补：
+    # 无需知道旧锚文本。
+    row_anchor_from: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def _exclusive_ids(self):

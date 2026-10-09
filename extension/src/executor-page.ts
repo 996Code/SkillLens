@@ -6,7 +6,7 @@
 export {};
 
 import { listExecutorSkills, runSkill, setExecutorToken, api } from "./background/executor";
-import { resolveStepOverrides } from "./shared/chain-rules";
+import { resolveRowAnchor, resolveStepOverrides } from "./shared/chain-rules";
 
 const logEl = document.getElementById("log")!;
 const go = document.getElementById("go") as HTMLButtonElement;
@@ -136,11 +136,22 @@ go.addEventListener("click", async () => {
         if (stopRequested) { log(`已停止：第 ${i + 1} 步前中断`); break; }
         // resolveStepOverrides 返回 overrides 字典本身（AI2 签名：step+ctx）
         const ovr = resolveStepOverrides(steps[i], stepCtx, runTs);
+        // AN 跨步状态传递：row_anchor_from → 前序步 pickedRow 注入本步行锚
+        // （选择类输出→输入；未命中保留原锚——resolveRowAnchor 纪律）
+        const rowAnchor = steps[i].row_anchor_from
+          ? (resolveRowAnchor(steps[i].row_anchor_from, stepCtx) ?? undefined)
+          : undefined;
+        if (steps[i].row_anchor_from && !rowAnchor) {
+          log(`第 ${i + 1} 步行锚来源（步骤 ${steps[i].row_anchor_from}）无选择句柄——保留原锚`);
+        }
         const nm = `#${steps[i].skill_id} ${steps[i].skill?.name ?? ""}`;
         log(`步骤 ${i + 1}/${steps.length}：${nm} …`);
         try {
-          const r = await runSkill(steps[i].skill_id, ovr, log, () => stopRequested);
-          stepCtx.push(r.observed || []);   // 本步产出供后续步骤绑定
+          const r = await runSkill(steps[i].skill_id, ovr, log, () => stopRequested,
+            undefined, rowAnchor);
+          // 本步产出供后续步骤绑定（observed 写证据 + pickedRow 行键句柄）
+          stepCtx.push([...(r.observed || []),
+            ...(r.pickedRows || []).map((p: string) => ({ pickedRow: p }))]);
           results.push({ step: i + 1, status: r.status, runId: r.runId });
           log(`步骤 ${i + 1} 完成：${r.status}`);
           if (r.status !== "pass") {
