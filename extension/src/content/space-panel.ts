@@ -475,8 +475,20 @@ function mount(): void {
     try {
       sysEl.textContent = sysEl.textContent + "·拉技能";
       const arr = await api("/executor/skills");
+      // 系统隔离（用户裁定：打开 A 系统只应看到 A 的技能）——识别失败
+      // （systemName 空）不得放行全部：显示空列表+明确提示，点系统头
+      // 才显式看全部
+      if (!showAllSystems && !systemName) {
+        skills = [];
+        listEl.replaceChildren();
+        const d = document.createElement("div");
+        d.className = "empty";
+        d.textContent = "系统未识别（非业务页或未适配）——点上方系统名可查看全部";
+        listEl.append(d);
+        return;
+      }
       skills = (Array.isArray(arr) ? arr : [])
-        .filter((s) => showAllSystems || !systemName || (s.system || "") === systemName);
+        .filter((s) => showAllSystems || (s.system || "") === systemName);
       render();
     } catch (e: any) {
       listEl.replaceChildren();

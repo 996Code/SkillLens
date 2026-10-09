@@ -228,6 +228,8 @@ function startRunOnTab(tabId: number, req: { skillId?: number; chainId?: number;
       onProgress(`执行失败：${e?.message ?? e}`);
     } finally {
       execRunning = false;
+      // SW 重启丢内存互斥的兜底：storage 持久锁（10 分钟过期防死锁）
+      void chrome.storage.local.set({ sl_exec_lock: 0 }).catch(() => {});
     }
   })();
 }
@@ -259,15 +261,21 @@ chrome.storage.onChanged.addListener((changes, area) => {
     at: number; skillId?: number; chainId?: number;
     overrides?: Record<string, string> };
   if (Date.now() - (req.at || 0) > 10000) return;  // 陈旧请求忽略
-  void (async () => {
-    try {
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      const biz = tabs.find((t) => (t.url || "").startsWith("http")
-        && !(t.url || "").startsWith("chrome-extension://"));
-      if (!biz?.id) return;
-      startRunOnTab(biz.id, req);
-    } catch { /* 取页失败静默 */ }
-  })();
+  // SW 重启丢内存互斥的兜底：storage 持久锁（10 分钟过期防死锁）——
+  // storage.onChanged 在 SW 重启后可能重复消费近 10s 内的旧请求
+  void chrome.storage.local.get("sl_exec_lock").then(({ sl_exec_lock: lock }) => {
+    if (lock && Date.now() - Number(lock) < 600000) return;
+    void chrome.storage.local.set({ sl_exec_lock: Date.now() }).catch(() => {});
+    void (async () => {
+      try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const biz = tabs.find((t) => (t.url || "").startsWith("http")
+          && !(t.url || "").startsWith("chrome-extension://"));
+        if (!biz?.id) return;
+        startRunOnTab(biz.id, req);
+      } catch { /* 取页失败静默 */ }
+    })();
+  }).catch(() => {});
 });
 
   if (msg?.type === "EXECUTOR_RUN") {

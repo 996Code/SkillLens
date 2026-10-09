@@ -323,3 +323,24 @@ async def test_plan_overrides_rewrite_row_anchor(client, monkeypatch):
                        for i in ins2 for c in i.get("resolve_candidates") or [])
     finally:
         db.close()
+
+
+class TestPlanThrottle:
+    """垃圾 run 洪泛防线（131 run/13s 实证）：同 skill 5s 内已有快速失败
+    的 extension run（秒败秒建=重试风暴形态）→ 拒绝再创建。"""
+
+    async def test_duplicate_plan_after_fast_fail_rejected(self, client, monkeypatch):
+        skill_id = await _seed_skill(client, monkeypatch)
+        # 创建 → 立即以 attach 冲突错误 finish → 马上再创建（风暴形态）
+        r1 = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                               json={"overrides": {}, "confirm_side_effect": True})
+        assert r1.status_code == 200
+        rid = r1.json()["run_id"]
+        await client.post(f"/api/v1/executor/runs/{rid}/finish", json={
+            "status": "fail",
+            "summary": {"error": "attach 失败：Another debugger is already attached",
+                        "executed": []}})
+        r2 = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                               json={"overrides": {}, "confirm_side_effect": True})
+        assert r2.status_code == 409
+        assert "节流" in str(r2.json().get("detail", ""))

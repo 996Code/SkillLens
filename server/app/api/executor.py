@@ -151,9 +151,25 @@ def compile_executor_plan(plan: dict) -> list[dict]:
     return out
 
 
+# 垃圾 run 洪泛防线（131 run/13s 实证）：同 skill 上一个 extension run
+# 5s 内创建且以相同错误快速失败（attach 冲突类）→ 拒绝再创建——重试
+# 风暴的形态就是"秒败秒建"，此闸把洪泛压成 1 个；正常串行（前一个
+# 跑完数秒后再跑）不受影响
 @router.post("/executor/skills/{skill_id}/plan", dependencies=WRITE_GUARD)
 async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
                         db: Session = Depends(get_db)) -> dict:
+    from datetime import datetime, timedelta
+    from app.models import ReplayRun
+    last = db.query(ReplayRun).filter(
+        ReplayRun.skill_id == skill_id,
+        ReplayRun.executor == "extension",
+    ).order_by(ReplayRun.id.desc()).first()
+    if last is not None and last.created_at > datetime.utcnow() - timedelta(seconds=5):
+        err = ((last.plan or {}).get("executor_summary") or {}).get("error") or ""
+        if err:
+            raise HTTPException(
+                409, f"节流：该技能 5s 内已有快速失败的执行（{str(err)[:40]}）"
+                     "——客户端重试风暴防线，稍候再试")
     skill = db.get(Skill, skill_id)
     if not skill:
         raise HTTPException(404, "skill not found")
