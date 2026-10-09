@@ -8,6 +8,7 @@ import { redactNetworkBody, redactNetworkUrl } from "../shared/redact";
 import { AGENT_URL as AGENT } from "../shared/types";
 import { resolveStepOverrides } from "../shared/chain-rules";
 import { Budget } from "../shared/budget";
+import { describeFailure } from "../shared/failures";
 
 interface Instruction {
   seq: number;
@@ -123,9 +124,12 @@ export async function runSkill(
   try {
     await chrome.debugger.attach(debuggee, "1.3");
       } catch (e: any) {
+    // AK6 批次1：attach 冲突按四码分类——fatal 不重试，白话直达
+    // （620 run 风暴实证：此形态原样重试只会秒败秒建）
+    const f = describeFailure(e);
     await api(`/executor/runs/${runId}/finish`, {
       method: "POST",
-      body: JSON.stringify({ status: "fail", summary: { error: `attach 失败：${e.message}（关闭 DevTools 后重试）` } }),
+      body: JSON.stringify({ status: "fail", summary: { error: `attach 失败：${e.message}（关闭 DevTools 后重试）`, code: f.code, plain: f.plain } }),
     });
     await releaseExecTab(debuggee, tabId, tabReused, hostTab != null);
     return { status: "fail" };

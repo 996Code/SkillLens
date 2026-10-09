@@ -21,6 +21,10 @@ EXEMPT = {
     ("POST", "/sessions/{session_id}/events"),
     ("POST", "/adapters/validate"),   # 纯分析，不落盘不写库
     ("POST", "/adapters/fingerprint"),
+    # 免登录换票（174bfb4）：PLUGIN_TRUST=1 时插件凭共享头换 admin token
+    # ——匿名入口是设计本身（内部部署；默认关=公网零暴露）。角色门无意义：
+    # 换到的就是 admin，不存在"viewer 越权"面（不开 PLUGIN_TRUST 时 403）。
+    ("POST", "/auth/plugin-session"),
 }
 
 

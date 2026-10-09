@@ -155,11 +155,24 @@ def compile_executor_plan(plan: dict) -> list[dict]:
 # 5s 内创建且以相同错误快速失败（attach 冲突类）→ 拒绝再创建——重试
 # 风暴的形态就是"秒败秒建"，此闸把洪泛压成 1 个；正常串行（前一个
 # 跑完数秒后再跑）不受影响
+# AK6 批次1（attach 风暴复盘缺口②③）：①收割进 plan 入口——僵尸
+# running 不再依赖 /executor/skills 顺带清理；②不变量守卫：同 skill
+# 存在未收敛 running run → 409（5s 窗口与 error 前驱盲区一起堵——
+# 118 条僵尸 running 实证：running 前驱 error 为空，旧节流放行）
 @router.post("/executor/skills/{skill_id}/plan", dependencies=WRITE_GUARD)
 async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
                         db: Session = Depends(get_db)) -> dict:
+    _reap_stale_runs(db)
     from datetime import datetime, timedelta
     from app.models import ReplayRun
+    live = db.query(ReplayRun).filter(
+        ReplayRun.skill_id == skill_id,
+        ReplayRun.executor == "extension",
+        ReplayRun.status == "running").count()
+    if live:
+        raise HTTPException(
+            409, "该技能已有执行进行中（未结束）——请先等它完成或停止，"
+                 "不要重复发起（防重试风暴）")
     last = db.query(ReplayRun).filter(
         ReplayRun.skill_id == skill_id,
         ReplayRun.executor == "extension",
@@ -474,6 +487,11 @@ async def executor_finish(run_id: int, body: ExecutorFinishRequest,
         raise HTTPException(404, "executor run not found")
     if body.status not in ("done", "fail", "aborted", "lost"):
         raise HTTPException(422, "status 须为 done|fail|aborted|lost")
+    # AK6 批次1（复盘缺口④b）：终态不可再写——SW 重启重复消费旧请求
+    # （lessons #53）时二次 finish 会把 fail 翻写成 pass，判定完整性被
+    # 重放篡改。与 step 端点的终态拒收同语义。
+    if run.status != "running":
+        raise HTTPException(409, f"run 已终态（{run.status}）——重放的 finish 拒收")
     plan = run.plan or {}
     state = copy.deepcopy(plan.get("executor_state") or {})
     run.status = body.status

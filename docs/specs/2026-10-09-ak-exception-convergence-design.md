@@ -98,6 +98,32 @@ runSkill/run_replay/链步 → 统一收敛出口 ExecOutcome
 | AK5 | 白话映射表双端同源+面板/执行页呈现 | 双端 | 每类错误中文明示（用户可读懂） |
 | AK6 | 61 处散落 except 分批收敛到出口（重构批） | 双端 | 全量回归绿+grep 验证裸 except 清零（豁免清单除外） |
 
+### AK6 批次1 落地记录（2026-10-09，attach 风暴复盘驱动）
+
+触发：复盘 docs/reviews/2026-10-09-attach-storm-retrospective.md（620 run
+风暴再发，防线存在但未生效）。四缺口修复：
+
+1. **plan 入口僵尸收割**：`_reap_stale_runs` 从 /executor/skills 顺带
+   提为 plan 入口必跑（缺口③被动收割）。
+2. **running 前驱不变量**：同 skill 存在未收敛 running run → 409
+   （缺口②——旧 5s 节流只看最近一条的 error，running 前驱放行，
+   118 条僵尸实证）。
+3. **finish 终态拒收**：已终态 run 二次 finish → 409（缺口④——SW
+   重启重放旧请求可把 fail 翻写 pass，判定完整性防线；step 端点已有
+   同语义，本批补 finish 侧）。
+4. **插件侧四码分类**：extension/src/shared/failures.ts 与 server
+   failures.py 同词表（双端同源纪律）；attach 冲突=fatal 不重试+
+   白话直达；api timeout/瞬态白名单同判。
+
+真机验证（8710+skill 40）：plan2=409（running 守卫）、finish 重放=409
+（终态拒收）、收敛后再 plan=200（不死锁）。测试：server 协议 14/14
+（+4 新用例）+ extension 128/128（+6 新用例 failures.test.ts）。
+
+**举一反三不变量清单**（复盘 §五，L2 层）：同 skill ≤1 活跃 run ✅本批；
+终态不可写 ✅本批；进程代码新鲜度（起环境自检）/ test.db 单进程独占
+（conftest 锁）→ 后续批次。generation 代际校验（zcode 模式，L3 结构层）
+挂 AK6 后续批——动协议需 52 链真机回归支撑。
+
 ## 五、不做（边界）
 
 - 不做跨进程分布式熔断（单机单 worker，进程内状态足够）

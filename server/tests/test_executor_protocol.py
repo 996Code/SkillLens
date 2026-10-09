@@ -305,7 +305,11 @@ async def test_plan_overrides_rewrite_row_anchor(client, monkeypatch):
         db.commit()
     finally:
         db.close()
-    # 带 overrides 的新 plan
+    # 带 overrides 的新 plan（先收敛前一个 run——AK6 批次1 不变量：
+    # 同 skill 存在 running run 时新 plan 被拒。aborted 无 error——
+    # 不触发 5s 秒败秒建节流形态）
+    await client.post(f"/api/v1/executor/runs/{run_id}/finish", json={
+        "status": "aborted", "summary": {"executed": []}})
     r2 = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
                            json={"overrides": {"旧表名A12345": "新表名B99999"},
                                  "confirm_side_effect": True})
@@ -343,4 +347,86 @@ class TestPlanThrottle:
         r2 = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
                                json={"overrides": {}, "confirm_side_effect": True})
         assert r2.status_code == 409
-        assert "节流" in str(r2.json().get("detail", ""))
+
+
+class TestStormGaps:
+    """AK6 批次1：attach 风暴复盘（docs/reviews/2026-10-09-attach-storm-
+    retrospective.md）暴露的四个识别缺口。不变量：同 skill 至多一个
+    非终态 extension run；终态 run 不可再写；僵尸必被收割。"""
+
+    async def test_plan_rejected_while_prior_run_running(self, client, monkeypatch):
+        """缺口②：running 前驱盲区——118 条僵尸 running 实证。前一个 run
+        卡 running（无 error）时 5s 节流放行；不变量守卫必须不看 5s 窗口
+        直接拒绝，两种风暴形态（秒败秒建+running 挂着建新的）一起堵。"""
+        skill_id = await _seed_skill(client, monkeypatch)
+        r1 = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                               json={"overrides": {}, "confirm_side_effect": True})
+        assert r1.status_code == 200
+        # 不 finish——留 running（模拟卡死/挂起）
+        r2 = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                               json={"overrides": {}, "confirm_side_effect": True})
+        assert r2.status_code == 409, "running 前驱必须拒绝新 plan"
+
+    async def test_plan_reaps_stale_running_before_check(self, client, monkeypatch):
+        """缺口③：收割常态化——plan 入口必跑 _reap_stale_runs。10 分钟前
+        创建且无步上报的僵尸 running 应在 plan 时被收割成 lost，随后
+        新 plan 放行（正常使用不被死锁——10 分钟过期防永拒）。"""
+        from datetime import datetime, timedelta
+        from app.db import SessionLocal
+        from app.models import ReplayRun
+        skill_id = await _seed_skill(client, monkeypatch)
+        r1 = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                               json={"overrides": {}, "confirm_side_effect": True})
+        rid = r1.json()["run_id"]
+        # 伪造 11 分钟前创建的僵尸（无 last_step_at）
+        db = SessionLocal()
+        try:
+            run = db.get(ReplayRun, rid)
+            run.created_at = datetime.utcnow() - timedelta(minutes=11)
+            db.commit()
+        finally:
+            db.close()
+        r2 = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                               json={"overrides": {}, "confirm_side_effect": True})
+        assert r2.status_code == 200, "僵尸收割后新 plan 必须放行"
+        db = SessionLocal()
+        try:
+            assert db.get(ReplayRun, rid).status == "lost"
+        finally:
+            db.close()
+
+    async def test_step_rejected_after_terminal_state(self, client, monkeypatch):
+        """缺口④a：终态 run 不可再写——SW 重启重复消费旧请求（lessons #53）
+        的服务端防线。已 finish 的 run 收到 step 上报 → 拒收（409），
+        不复活不二次污染。"""
+        skill_id = await _seed_skill(client, monkeypatch)
+        r1 = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                               json={"overrides": {}, "confirm_side_effect": True})
+        rid = r1.json()["run_id"]
+        await client.post(f"/api/v1/executor/runs/{rid}/finish", json={
+            "status": "fail",
+            "summary": {"error": "attach 失败：Another debugger is already attached",
+                        "executed": []}})
+        # 旧请求复活：向已终态 run 上报 step
+        resp = await client.post(f"/api/v1/executor/runs/{rid}/step",
+                                 json={"seq": 2, "result": "ok", "evidence": {}})
+        assert resp.status_code == 409, "终态 run 的 step 上报必须拒收"
+
+    async def test_finish_rejected_after_terminal_state(self, client, monkeypatch):
+        """缺口④b：已终态 run 二次 finish（SW 重启后旧请求重放）→ 拒收，
+        防止把 fail 翻写成 pass（判定完整性）。"""
+        skill_id = await _seed_skill(client, monkeypatch)
+        r1 = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                               json={"overrides": {}, "confirm_side_effect": True})
+        rid = r1.json()["run_id"]
+        f1 = await client.post(f"/api/v1/executor/runs/{rid}/finish", json={
+            "status": "fail",
+            "summary": {"error": "attach 失败", "executed": []}})
+        assert f1.status_code == 200
+        # 重放的 finish 用 done+全绿证据试图翻案——必须被终态守卫拒收
+        f2 = await client.post(f"/api/v1/executor/runs/{rid}/finish", json={
+            "status": "done",
+            "summary": {"executed": [{"kind": "input", "ok": True}],
+                        "observed": [{"url": "http://t/a/9/save", "status": 200,
+                                      "method": "POST", "body": '{"code":200}'}]}})
+        assert f2.status_code == 409, "终态 run 二次 finish 必须拒收（fail 不得翻 pass）"
