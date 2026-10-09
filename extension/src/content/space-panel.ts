@@ -161,6 +161,9 @@ function mount(): void {
 
   root.getElementById("close")!.addEventListener("click", () => host.remove());
   // 系统隔离切换：默认仅本系统（隔离）；点系统名查看全部（跨系统对照）
+  // 注：sysEl 等 DOM 引用须在事件绑定前定义（TDZ——定义前同步访问会
+  // ReferenceError 中断 mount，面板挂一半永卡"识别系统中…"模板初值）
+  const sysEl = root.getElementById("sys")!;
   sysEl.addEventListener("click", () => {
     showAllSystems = !showAllSystems;
     sysEl.textContent = showAllSystems
@@ -173,7 +176,6 @@ function mount(): void {
 
   // ---- 数据与渲染（逻辑与 space.ts 同源：面板复用同一组 API） ----
   const AGENT = "http://127.0.0.1:8710/api/v1";
-  const sysEl = root.getElementById("sys")!;
   const listEl = root.getElementById("list")!;
   const qEl = root.getElementById("q") as HTMLInputElement;
   const pkEl = root.getElementById("pk")!;
