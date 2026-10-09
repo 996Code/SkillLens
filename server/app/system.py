@@ -71,6 +71,8 @@ def _session_hosts(db: Session, session_ids: set[str] | None = None) -> dict[str
     navigation 缺失时取首条 action 事件的 payload.url（纯确定性）。
     17 个"未知系统"技能由此归位（禅道 6+Odoo 11）。"""
     nav: dict[str, str] = {}
+    nav_counts: dict[str, dict[str, int]] = {}
+    nav_last: dict[str, str] = {}
     q = select(RawEvent.session_id, RawEvent.payload).where(RawEvent.kind == "navigation")
     if session_ids is not None:
         if not session_ids:
@@ -78,14 +80,27 @@ def _session_hosts(db: Session, session_ids: set[str] | None = None) -> dict[str
         q = q.where(RawEvent.session_id.in_(session_ids))
     rows = db.execute(q.order_by(RawEvent.ts, RawEvent.seq)).all()
     for sid, payload in rows:
+        url = (payload or {}).get("url", "")
+        # P2-11 实证：首帧补发会把录制开始的停留页记为首 navigation——
+        # 停留页是网关 404（/404 结尾）时污染系统派生（Odoo 技能被标
+        # njmind）。错误页跳过。
+        if url.rstrip("/").endswith("/404"):
+            continue
+        host = urlparse(url).netloc if url else ""
+        if not host:
+            continue
+        counts = nav_counts.setdefault(sid, {})
+        counts[host] = counts.get(host, 0) + 1
+        nav_last[sid] = host
         if sid not in nav:
-            url = (payload or {}).get("url", "")
-            # P2-11 实证：首帧补发会把录制开始的停留页记为首 navigation——
-            # 停留页是网关 404（/404 结尾）时污染系统派生（Odoo 技能被标
-            # njmind）。错误页跳过，取首条有效 navigation。
-            if url.rstrip("/").endswith("/404"):
-                continue
-            nav[sid] = urlparse(url).netloc if url else ""
+            nav[sid] = host
+    # P2-11 二轮实证：首帧补发把跨系统停留页记为首 navigation（Odoo 页
+    # 开录→goto ERPNext，首条派生串系统）。多数派 host 派生——众数胜出
+    # （平票取最后一条：录制后段更接近真实目标页）。
+    for sid, counts in nav_counts.items():
+        if counts:
+            best = max(counts.items(), key=lambda kv: (kv[1], kv[0] == nav_last.get(sid)))
+            nav[sid] = best[0]
     return nav
 
 

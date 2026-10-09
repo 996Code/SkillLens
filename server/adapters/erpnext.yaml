@@ -10,10 +10,17 @@ credentials:
 login:
   steps:
     - goto: /login
-    - fill: ["input[data-fieldname=email]", "${username}"]
-    - fill: ["input[type=password]", "${password}"]
-    - click: "button:has-text(\"Log in\")"
+    - fill: ["#login_email", "${username}"]
+    - fill: ["#login_password", "${password}"]
+    - click: "button:has-text(\"Continue\")"
   post_login: []
+  # v15 新 desk：登录页 DOM 已变（#login_email/Continue——旧
+  # data-fieldname 选择器 fill 超时且 URL 判定假成功，2026-10-09 实证）。
+  # text_contains 双通道防假成功：登录成功后 desk 首页有 "My Shortcuts"
+  # 预检假成功实证（2026-10-09）：根路径 / 对未登录返回 200 SPA 壳
+  # （JS 异步跳 login，2500ms 内未跳）——URL 探针单通道必假成功。
+  # 双通道：URL 不含 /login 且 desk 首页特征文本（Desktop）可见
+  success: {url_not_contains: "/login", text_contains: "Desktop"}
 probes:
   - id: quotation_count
     kind: docker-exec

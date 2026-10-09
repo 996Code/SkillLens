@@ -30,13 +30,27 @@ def _plan_url(events: list[dict]) -> str:
     """URL 兜底链与 compile_replay_plan 一致：navigation 优先，否则 action.url。
     S43-4：Frappe 新建表单的 /desk/{doctype}/new-{doctype}-{随机串} 是
     一次性会话草稿 URL——回放重定向结果随机（去旧客户页/空页），归一化
-    为 /app/{doctype}/new（Frappe 自动重定向到新草稿）。"""
+    为 /app/{doctype}/new（Frappe 自动重定向到新草稿）。
+    P2-11 二轮实证：首帧补发把录制开始的跨系统停留页记为首 navigation
+    （Odoo 页开录→goto ERPNext，plan url 串成 Odoo）——navigation 取
+    与首条 action 同 host 的最早一条（action 是真实业务操作落点）。"""
+    from urllib.parse import urlparse as _up
+    action_host = ""
+    for e in events:
+        payload = e.get("payload") or {}
+        if e.get("kind") == "action" and payload.get("url"):
+            action_host = _up(str(payload["url"])).netloc
+            break
     url = ""
     url_from_action = ""
     for e in events:
         payload = e.get("payload") or {}
-        if e["kind"] == "navigation" and not url:
-            url = payload.get("url", "")
+        if e["kind"] == "navigation":
+            u = payload.get("url", "")
+            if u and (not action_host or _up(u).netloc == action_host):
+                # 取同 host 的最后一条（最接近业务操作——desk 首页跳转链
+                # 的终点是表单页；首条/中间条是跳转过程页）
+                url = u
         if e["kind"] != "action":
             continue
         if not url_from_action and payload.get("url"):

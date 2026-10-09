@@ -615,12 +615,46 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                         saw_write = True
                     if not saw_write:
                         hint = ""
+                        pw_healed = False
                         try:
                             errs = await collect_validation_errors(page)
                             if errs:
                                 hint = f" 提示: {errs[0][:100]}"
+                                # P2-11 ERPNext 实证：v15 表单 portal 密码必填
+                                # 但采集侧安全红线跳过密码字段（骨架无此步）
+                                # ——检测到 password required 就补填随机密码
+                                # 重试一次（field_types 密码生成器，确定性）
+                                if any("password" in e.lower() and
+                                       "required" in e.lower() for e in errs):
+                                    pw = page.locator(
+                                        "[data-fieldname*='password'] input, "
+                                        "input[type='password']").first
+                                    if await pw.count():
+                                        from app.replay.field_types import _gen_password
+                                        await pw.fill(_gen_password())
+                                        await page.wait_for_timeout(400)
+                                        try:
+                                            loc2, _, _ = await _locate_with_repair(
+                                                page, step["label"], repair_map,
+                                                extra_labels=step.get("labels"),
+                                                tag=step.get("tag"),
+                                                ordinal=step.get("ordinal"),
+                                                path=step.get("path"))
+                                            await loc2.click(timeout=timeout_ms)
+                                            await page.wait_for_timeout(1500)
+                                            pw_healed = write_response_count(
+                                                observed) > recent_write_mark
+                                        except Exception:
+                                            pw_healed = False
                         except Exception:
                             pass
+                        if pw_healed:
+                            entry = {**step, "ok": True,
+                                     "healed": "密码必填补填（骨架无密码步——"
+                                               "采集侧安全红线跳过密码字段）"}
+                            executed.append(entry)
+                            await _shot_step(page, shot_dir, i, entry)
+                            continue
                         entry = {**step, "ok": False,
                                  "error": f"点击后无写请求（提交被拦）{hint}"}
                         executed.append(entry)

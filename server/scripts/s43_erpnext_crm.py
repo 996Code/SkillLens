@@ -94,6 +94,15 @@ async def flow_create_customer(page, mark: str) -> None:
     await name_input.click()
     await name_input.fill(f"SL客户{mark}")
     await page.wait_for_timeout(800)
+    # v15 新 desk：新客户表单带 portal 必填密码字段（2026-10-09 实证
+    # "Password is required" 拦 Save）——检测到就填随机串
+    pwd = page.locator("[data-fieldname*='password'] input").first
+    try:
+        if await pwd.count():
+            await pwd.fill(f"SLpw-{mark}")
+            await page.wait_for_timeout(400)
+    except Exception:
+        pass
     save = page.locator("button.primary-action:has-text('Save')").first
     await save.click()
     await page.wait_for_timeout(3500)

@@ -96,3 +96,42 @@ async def test_system_derivation_skips_error_pages(client):
         db.query(RawEvent).filter(RawEvent.session_id == sid).delete()
         db.query(RecordingSession).filter(RecordingSession.id == sid).delete()
         db.commit(); db.close()
+
+
+async def test_system_derivation_majority_host(client):
+    """P2-11 二轮实证：首帧补发把录制开始的跨系统停留页记为首 navigation
+    （Odoo 页开录→goto ERPNext）——首条派生串系统。多数派 host 派生：
+    navigation host 计数取众数（平票取最后——录制后段更接近真实目标）。"""
+    import uuid
+    from app.db import SessionLocal
+    from app.models import RecordingSession, RawEvent, Alignment, Skill
+    from app.system import skill_systems as ss
+    db = SessionLocal()
+    try:
+        sid = str(uuid.uuid4())
+        db.add(RecordingSession(id=sid, note="t-majority"))
+        db.flush()
+        navs = [(0, "http://127.0.0.1:8069/web"),      # 首帧补发（Odoo 停留页）
+                (1, "http://127.0.0.1:8090/desk"),      # goto ERPNext
+                (2, "http://127.0.0.1:8090/desk/customer/new-x")]
+        for seq, url in navs:
+            db.add(RawEvent(session_id=sid, page_id="p", seq=seq, ts=seq,
+                            kind="navigation", payload={"type": "page-load", "url": url}))
+        db.add(RawEvent(session_id=sid, page_id="p", seq=3, ts=3, kind="action",
+                        payload={"type": "input", "target": {"label": "x"},
+                                 "url": "http://127.0.0.1:8090/desk/customer/new-x"}))
+        al = Alignment(session_ids=[sid], skeleton=[], buckets=[],
+                       input_variables=[], param_variables=[], window_params={})
+        db.add(al); db.flush()
+        sk = Skill(alignment_id=al.id, name="多数派派生技能", description="",
+                   status="learned", skeleton=[], param_variables=[],
+                   input_variables=[], confidence=0.9, evidence_count=1)
+        db.add(sk); db.commit()
+        got = ss(db, [sk.id]).get(sk.id)
+        assert got == "ERPNext 客户", got  # 多数派 8090 胜过首帧 8069
+    finally:
+        db.query(Skill).filter(Skill.name == "多数派派生技能").delete()
+        db.query(Alignment).filter(Alignment.id == al.id).delete()
+        db.query(RawEvent).filter(RawEvent.session_id == sid).delete()
+        db.query(RecordingSession).filter(RecordingSession.id == sid).delete()
+        db.commit(); db.close()

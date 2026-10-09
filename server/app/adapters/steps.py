@@ -73,7 +73,8 @@ async def run_steps(page: Page, manifest: Manifest, steps: list[Step]) -> None:
 
 async def _logged_in(page: Page, manifest: Manifest) -> bool:
     """登录态判定（确定性，双通道）：URL 探针（url_not_contains 在 URL
-    中=未登录）+ 特征文本（text_contains 可见=已登录）。
+    中=未登录）+ 特征文本（text_contains 在页面文本或 title 可见=已登录
+    ——ERPNext 实证：desk 特征 "Desktop" 只在 title）。
 
     经典表单系统（Dolibarr 实证）：登录页在根路径、URL 无 login 字样
     ——URL 探针失效，text_contains 是唯一证据。"""
@@ -82,9 +83,11 @@ async def _logged_in(page: Page, manifest: Manifest) -> bool:
         return False
     if succ.text_contains:
         try:
-            return await page.get_by_text(succ.text_contains).first.is_visible()
+            if await page.get_by_text(succ.text_contains).first.is_visible():
+                return True
         except Exception:
-            return False
+            pass
+        return succ.text_contains in (await page.title())
     return True
 
 

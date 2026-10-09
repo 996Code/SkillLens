@@ -980,3 +980,43 @@ async def test_execute_plan_input_classic_form_enter_submits():
         assert result["executed"][1]["ok"] is True
         assert "提前提交" in result["executed"][1].get("skipped", "")
         await browser.close()
+
+
+async def test_execute_plan_password_required_heal():
+    """P2-11 ERPNext 实证：v15 新客户表单 portal 密码必填，但采集侧安全
+    红线跳过密码字段（骨架无此步）——回放 Save 必被 "Password is
+    required" 拦。自愈补步：校验错误含 password required 时在 Save 前
+    插入密码 input 步（field_types 密码生成器）。"""
+    from app.replay.runner import execute_plan
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content("""
+        <html><body>
+          <form id="f" onsubmit="return false">
+            <input type="text" id="nm" placeholder="customer_name">
+            <input type="password" data-fieldname="password" id="pw">
+            <button type="submit" id="save">Save</button>
+          </form>
+          <script>
+            let saved = false;
+            document.getElementById('save').addEventListener('click', () => {
+              const pw = document.getElementById('pw').value;
+              if (!pw) {
+                const d = document.createElement('div');
+                d.className = 'msgprint';
+                d.textContent = 'Password is required';
+                document.body.appendChild(d);
+              } else { saved = true; }
+            });
+            window.__saved = () => saved;
+          </script>
+        </body></html>""")
+        plan = {"url": "about:blank", "steps": [
+            {"kind": "input", "name": "customer_name", "value": "SL客户X",
+             "labels": ["customer_name"], "tag": "input"},
+            {"kind": "click", "label": "Save", "labels": ["Save"], "tag": "button"}]}
+        result = await execute_plan(page, plan)
+        # 密码补步后 Save 成功（saved=true）
+        assert await page.evaluate("window.__saved()") is True
+        await browser.close()
