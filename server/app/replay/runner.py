@@ -1413,6 +1413,17 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
     shadow_run = await _shadow_run_if_gated(db, skill_id, confirm_side_effect)
     if shadow_run is not None:
         return shadow_run  # C1：shadow 未确认不启浏览器
+    # AK4 通道熔断闸：server 通道 OPEN 期间快败（e2_infra，零浏览器调用）
+    # ——131 run/13s 风暴形态的服务端根治（第 6 个 run 起不再触浏览器）
+    from app.exec.breaker import breaker_for
+    breaker = breaker_for("server")
+    if not breaker.allow():
+        run = ReplayRun(skill_id=skill_id, mode="execute", status="error",
+                        plan={"steps": []}, executed=None, assertion_results=None,
+                        attribution="通道熔断中：连续快速失败，60s 内暂停执行（防重试风暴）",
+                        failure_class="e2_infra")
+        db.add(run); db.commit(); db.refresh(run)
+        return run
     try:
         # 执行必须整体在 _launch() 上下文内——with 块退出即断开 Playwright
         # 连接，浏览器对象随之失效（S13 重构曾把执行移出 with 块导致
@@ -1426,6 +1437,9 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
                 return await _execute_skill(db, browser, skill_id, overrides,
                                             confirm_side_effect, system=sysname)
             finally:
+                # AK4：成功也计入熔断滑窗（reset 连败）
+                from app.exec.breaker import breaker_for
+                breaker_for("server").record(True)
                 # 关闭异常不掩盖已落库结果/原始异常
                 try:
                     await browser.close()
@@ -1433,6 +1447,11 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
                     pass
     except Exception as exc:
         # 启动/执行阶段异常都落 error run（C3：执行审计不可缺）
+        # AK4：error 形态计入通道熔断滑窗（快速失败连发→OPEN）
+        from app.exec.breaker import breaker_for
+        from app.exec.failures import classify_exc, ExecCode
+        breaker_for("server").record(
+            classify_exc(exc) not in (ExecCode.CANCELLED,))
         return _error_run(db, skill_id, exc)
 
 

@@ -7,6 +7,7 @@ export {};
 import { redactNetworkBody, redactNetworkUrl } from "../shared/redact";
 import { AGENT_URL as AGENT } from "../shared/types";
 import { resolveStepOverrides } from "../shared/chain-rules";
+import { Budget } from "../shared/budget";
 
 interface Instruction {
   seq: number;
@@ -131,6 +132,10 @@ export async function runSkill(
   }
   onProgress("已 attach（顶部横幅=执行中，全程可见）");
 
+  // AK2 run 级预算（120s 默认）：整技能硬封顶——治慢页挂死（单步 30s
+  // 定位×N 步无界累计的根治）；步间检查剩余，耗尽走 terminate 强杀
+  const runBudget = new Budget(120_000);
+
   // 网络证据：先订阅后动作（lesson #30）；AG4 补响应体（断言原料）。
   // 评审 #7/#8：listener 具名+finally 移除（多轮执行不再累积泄漏闭包）；
   // pendingBodies 请求结束即删（Map 无界增长根治）
@@ -239,16 +244,20 @@ export async function runSkill(
         onProgress(`中止：${ev.evidence?.error || "导航失败"}`);
         return { status: "fail" };
       }
-      // AG3：步 POST race——卡点浮出为错误而非静默挂死。45s：服务端 miss
-      // 时介入自愈（LLM 提案+heal 重试）可到 30s+，8s 假阳性实锤（1596：
-      // 服务端 200 正常推进而 race 先 abort）
+      // AG3：步 POST race——卡点浮出为错误而非静默挂死。45s 绝对上限
+      // （服务端 miss 介入自愈可到 30s+，8s 假阳性实锤）；
+      // AK2：run 预算先到先触发（整技能硬封顶——预算耗尽快败不挂死）
+      const stepPost = api(`/executor/runs/${runId}/step`, {
+        method: "POST",
+        body: JSON.stringify(ev),
+      });
       const resp = await Promise.race([
-        api(`/executor/runs/${runId}/step`, {
-          method: "POST",
-          body: JSON.stringify(ev),
-        }),
+        stepPost,
         new Promise<never>((_, rej) =>
           setTimeout(() => rej(new Error(`step POST 挂起 seq=${ev.seq}`)), 45000)),
+        new Promise<never>((_, rej) => {
+          if (runBudget.exhausted()) rej(runBudget.timeoutError("run"));
+        }),
       ]);
       instruction = resp.instruction;
     }
@@ -271,6 +280,12 @@ export async function runSkill(
              observed: networkLog.filter((n) => n.url && n.url.startsWith("http")) };
   } catch (e: any) {
     onProgress(`中断：${e.message}`);
+    // AK2 超时/预算耗尽 → CDP 强杀页面内挂死例程（zcode L749-775 同款：
+    // 防页面内 3s 例程外溢成整体挂死——terminate 立即中断 JS 执行）
+    if (/预算耗尽|挂起 seq=|Timeout/i.test(String(e?.message || ""))) {
+      await chrome.debugger.sendCommand(debuggee, "Runtime.terminateExecution")
+        .catch(() => {});
+    }
     // 诊断核心：错误必须落库（race 保护 finish 自身也不挂死）
     await Promise.race([
       api(`/executor/runs/${runId}/finish`, {
