@@ -94,15 +94,17 @@ async def execute_flow(db: Session, flow: SynthFlow,
                     log.append(entry)
                     try:
                         await page.wait_for_timeout(800)
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        from app.exec.failures import swallow
+                        swallow("flow_runner:step_settle", exc)
             finally:
                 if ctx is not None and not shared_ctx:
                     await _close_ctx_quietly(ctx)
                 try:
                     await browser.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    from app.exec.failures import swallow
+                    swallow("flow_runner:browser_close", exc)
     except Exception as exc:
         # 启动阶段异常也必须落库（C3：执行审计不可缺）
         log.append({"step": 0, "kind": None, "target": None, "ok": False,

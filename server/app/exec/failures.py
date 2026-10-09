@@ -8,8 +8,13 @@
 四码决定"怎么处置"（重试/熔断/直达用户），failure_class 决定
 "怎么归因"（是否进通过率分母）。
 """
+import logging
 import re
 from enum import Enum
+
+from app.sanitize import sanitize_error
+
+_logger = logging.getLogger("skilllens")
 
 
 class ExecCode(str, Enum):
@@ -64,3 +69,16 @@ def code_to_failure_class(code: ExecCode) -> str | None:
         ExecCode.TRANSIENT: "e1_env",
         ExecCode.FATAL: "e3_drift",
     }.get(code)
+
+
+def swallow(where: str, exc: BaseException, *, warning: bool = False) -> ExecCode:
+    """AK6 fail-open 站点收敛：分类+留痕（C3 可观测），行为不变。
+
+    散落 `except Exception: pass` 的统一替代——吞错仍吞（fail-open 语义
+    不变），但错误经四码分类+脱敏后进日志：debug 级（探测类，默认不可见
+    不噪声）/ warning 级（决策相关——恢复失败、基线缺失等静默降级）。
+    返回四码供调用方按需分支。"""
+    code = classify_exc(exc)
+    _logger.log(logging.WARNING if warning else logging.DEBUG,
+                "swallow[%s] %s: %s", code.value, where, sanitize_error(exc))
+    return code

@@ -28,3 +28,6 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# scripts/ 是运维脚本（含模块级 asyncio.run 真机流程）——匹配 *_test.py
+# 默认模式会被收集即执行，测试套件不得依赖活环境（lessons #44 同族）
+testpaths = ["tests"]

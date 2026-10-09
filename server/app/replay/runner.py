@@ -64,7 +64,11 @@ async def _session_guard_recover(system: str) -> bool:
                 return ok
             finally:
                 await browser.close()
-    except Exception:
+    except Exception as exc:
+        # AK6 批次2：AJ2 恢复失败原因留痕（warning——决定归因：静默放弃
+        # 会让 e1_env 被误判 e3_drift）
+        from app.exec.failures import swallow
+        swallow("runner:_session_guard_recover", exc, warning=True)
         return False
 
 
@@ -908,8 +912,9 @@ async def _close_ctx_quietly(ctx) -> None:
         return
     try:
         await closer()
-    except Exception:
-        pass
+    except Exception as exc:
+        from app.exec.failures import swallow
+        swallow("runner:close_ctx", exc)
 
 
 def _heal_plan_inputs(db, plan: dict) -> tuple[dict, list[dict]]:
@@ -971,8 +976,11 @@ async def _heal_with_llm_attribution(
             continue
         try:
             await llm_attribute_type(db, name)
-        except Exception:
-            pass
+        except Exception as exc:
+            # AK6 批次2：归因失败留痕（LLM 调用本身已入 llm_call_log——
+            # 这里记的是自愈链路跳过原因）
+            from app.exec.failures import swallow
+            swallow("runner:llm_attribute_type", exc)
     return _heal_plan_inputs(db, plan)
 
 
@@ -1338,8 +1346,10 @@ async def _execute_skill(db: Session, browser, skill_id: int,
                                   image_hash=f"{dhash(bpath):016x}",
                                   width=width, height=height, source_run_id=run.id))
             db.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            # AK6 批次2：基线静默缺失留痕（warning——视觉回归断言将无基线可比）
+            from app.exec.failures import swallow
+            swallow("runner:visual_baseline_create", exc, warning=True)
 
     # S24 块 U：自愈成功计数（≥N 自动晋升）+ 新提案关联源 run（U3 归因链）
     # S43-1：只在 run 整体 pass 时计数——状态依赖失败（前置条件缺失）下
@@ -1443,11 +1453,12 @@ async def run_replay(db: Session, skill_id: int, overrides: dict[str, str],
                 # AK4：成功也计入熔断滑窗（reset 连败）
                 from app.exec.breaker import breaker_for
                 breaker_for("server").record(True)
-                # 关闭异常不掩盖已落库结果/原始异常
+                # 关闭异常不掩盖已落库结果/原始异常（AK6 批次2：留痕 debug）
                 try:
                     await browser.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    from app.exec.failures import swallow
+                    swallow("runner:browser_close", exc)
     except Exception as exc:
         # 启动/执行阶段异常都落 error run（C3：执行审计不可缺）
         # AK4：error 形态计入通道熔断滑窗（快速失败连发→OPEN）
@@ -1500,8 +1511,9 @@ async def run_replay_batch(db: Session, skill_ids: list[int],
             finally:
                 try:
                     await browser.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    from app.exec.failures import swallow
+                    swallow("runner:batch_browser_close", exc)
     except Exception as exc:
         runs.extend(_error_run(db, sid, exc) for sid in pending)
         return runs

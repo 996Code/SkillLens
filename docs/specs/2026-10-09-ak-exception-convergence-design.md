@@ -124,6 +124,34 @@ runSkill/run_replay/链步 → 统一收敛出口 ExecOutcome
 （conftest 锁）→ 后续批次。generation 代际校验（zcode 模式，L3 结构层）
 挂 AK6 后续批——动协议需 52 链真机回归支撑。
 
+### AK6 批次2 落地记录（2026-10-10，swallow 收敛件+高价值 8 站点）
+
+盘点口径：replay/ 共 92 处 except——A 类（静默吞错无设计注释）53 处 /
+B 类（有处理逻辑）39 处。收敛件 `app/exec/failures.py swallow(where,
+exc, warning)`：吞错仍吞（fail-open 行为不变）但经四码分类+sanitize_error
+脱敏后留痕（debug=探测类 / warning=决策相关），返回四码供分支。
+
+**本批迁移（8 站点，行为等价——定向回归 133/133）**：
+
+| 站点 | 级别 | 理由 |
+|---|---|---|
+| runner:_session_guard_recover | warning | AJ2 恢复失败原因——静默放弃会让 e1_env 误判 e3_drift |
+| runner:visual_baseline_create | warning | 基线静默缺失——视觉回归断言无基线可比 |
+| runner:browser_close / batch_browser_close / close_ctx | debug | 清理链 |
+| runner:llm_attribute_type | debug | 自愈链路跳过原因（LLM 调用本身已入 llm_call_log） |
+| field_types:attribute_type | warning | 字段类型 heal 静默跳过 |
+| flow_runner:step_settle / browser_close | debug | flow 执行清理 |
+
+**豁免清单（后续批次逐批收敛，最终批以 grep 清零验收）**：
+- locate.py 候选探测循环（11 处 continue）+ exporter.py 同款（4 处）：
+  选择器试探是正常控制流，逐条留痕=噪声
+- page_snapshot.py frame 探测（5 处）：跨 frame 快照 fail-open
+- runner.py 步循环探测/降级链（_checked/_check_row_checkbox/
+  collect_validation_errors/execute_plan 内 ~20 处）：checkbox 降级
+  梯/校验探测/水合防护等，已有行为语义注释
+- extension 侧（executor.ts 70 处等）：CDP 探测 `.catch(() => null)`
+  形态为主，与 server 侧同批分批收敛
+
 ## 五、不做（边界）
 
 - 不做跨进程分布式熔断（单机单 worker，进程内状态足够）

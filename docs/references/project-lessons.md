@@ -541,3 +541,9 @@ startRunOnTab 的 execRunning 内存 flag 在 SW 被杀重启后复位——stor
 
 ## #56 "防线存在≠防线生效"四缺口（attach 风暴复盘，2026-10-09）
 风暴再发两场（309+620 条 run）时，节流与 AK 防线代码已提交但未生效。四类系统性缺口：①**部署时间线错位**——常驻进程启动早于防线提交，起环境必须核验进程代码新鲜度（8710 server 与 9222 插件 dist 都要查）；②**前驱状态盲区**——节流只看"最近一条 run"，running 前驱（error 空）放行，互斥/节流类逻辑必须覆盖"未收敛状态"形态；③**收割依赖被动触发**——僵尸 running 清理挂在低频端点顺带跑，挂起的执行页永不清（118 条永卡 5 小时），清理逻辑要么常驻循环要么挂高频入口；④**失败无分类裸 throw**——插件侧 catch 后直接 finish(fail)，无 retryable 判定，SW 重启重复消费时每个复活请求都全新建 run。根治模式（zcode 一手源码）：结构化失败分类+generation 代际校验拒旧请求+stale ref 拒绝。复盘全文：docs/reviews/2026-10-09-attach-storm-retrospective.md。
+
+## #57 测试套件静默收集真机脚本（p0_login_test 地雷，2026-10-10）
+scripts/p0_login_test.py 匹配 pytest 默认 `*_test.py` 模式且模块级 `asyncio.run(main())`——每次"全量回归"收集阶段就真连 9222/JeecG 跑面板登录流程，浏览器活着就静默通过、死了就收集错误（URLError）。所有"全绿"声明里都藏着这个活环境依赖（2026-10-08 引入起）。修法：pyproject `testpaths=["tests"]`。预防：运维脚本命名避开 `*_test.py`/`test_*.py`；带模块级执行的脚本永不进收集路径；"测试恒绿生产必错"三形态之外的第四形态——**收集即执行**。
+
+## #58 cwd 漂移让 uv 落到全局 Python（两次实锤，2026-10-10）
+从仓库根跑 `uv run pytest`：根无 pyproject.toml，uv 静默用全局 miniconda Python（pydantic v1 ForwardRef 崩）——错误形态是收集 TypeError 而非"找不到项目"，极易误判为代码 bug。Bash 工具 cwd 会随上一条命令漂移。预防：server 侧命令一律显式 `cd /d/github/SkillLens/server &&` 前缀；见收集 TypeError 先 `pwd` 自查。

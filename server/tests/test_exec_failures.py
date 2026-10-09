@@ -107,3 +107,35 @@ class TestPlainMessages:
         from app.exec.plain_errors import plain_message
         assert plain_message(ExecCode.CANCELLED) == "已停止（用户中断）"
         assert plain_message(ExecCode.TRANSIENT, "zzz") == "页面瞬断（已自动恢复重试）"
+
+
+class TestSwallow:
+    """AK6 批次2：fail-open 站点收敛件——分类+留痕（C3），行为不变。"""
+
+    def test_swallow_classifies_and_logs(self, caplog):
+        import logging
+        from app.exec.failures import ExecCode, swallow
+        with caplog.at_level(logging.DEBUG, logger="skilllens"):
+            code = swallow("runner:_session_guard_recover",
+                           TimeoutError("登录例程超时"))
+        assert code is ExecCode.TIMEOUT
+        rec = caplog.records[0]
+        assert rec.levelno == logging.WARNING or rec.levelno == logging.DEBUG
+        assert "swallow[timeout]" in rec.message
+        assert "_session_guard_recover" in rec.message
+
+    def test_swallow_warning_level_for_decision_sites(self, caplog):
+        import logging
+        from app.exec.failures import swallow
+        with caplog.at_level(logging.WARNING, logger="skilllens"):
+            swallow("runner:baseline", ValueError("bad image"), warning=True)
+        assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+    def test_swallow_redacts_urls(self, caplog):
+        # 安全红线：日志不得内嵌目标系统/网关 URL
+        import logging
+        from app.exec.failures import swallow
+        with caplog.at_level(logging.DEBUG, logger="skilllens"):
+            swallow("runner:x", RuntimeError("connect http://192.168.99.22/api failed"))
+        msg = " ".join(r.getMessage() for r in caplog.records)
+        assert "192.168.99.22" not in msg and "<url>" in msg

@@ -207,7 +207,10 @@ async def llm_attribute_type(db: Session, label: str) -> FieldTypeHint | None:
     )
     try:
         result = await acomplete(db, "field_type_attr", prompt)
-    except Exception:
+    except Exception as exc:
+        # AK6 批次2：类型归因失败留痕（warning——字段类型自 heal 静默跳过）
+        from app.exec.failures import swallow
+        swallow("field_types:attribute_type", exc, warning=True)
         return None
     text = (result.text or "").strip().strip('"').splitlines()[0].strip().lower()
     if text not in _LLM_ENUM:
