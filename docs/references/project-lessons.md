@@ -518,3 +518,23 @@
 2026-10-07 十一版（#36 env fallback 写死内网地址红线 + #37 验收路径≠真实路径——P2.5 插件配对 401 静默失效，全量评审实锤）；
 2026-10-08 十二版（三轮全库评审沉淀 #38-#46：迁移漂移守卫、非空守卫、模板转义、词表一致性、掩码回填、test.db 并行互撞、"测试恒绿生产必错"三形态、路径激活型修复分批、子代理验收法）；
 2026-10-08 十三版（#47 Hyper-V 动态端口保留吞容器口 + #48 popup 回放列表"消失"双根因——JeecG 链路真机矩阵 3 轮 + executor.html 真实路径验收）。*
+
+# 2026-10-09 下半（差距清单+用户报障+AK 块）
+
+## #50 根路径假成功（ERPNext 三连修）
+Frappe 根路径 / 对未登录返回 200 SPA 壳，JS 异步跳 login——预检窗口内 URL 不变，单通道 URL 判定必假成功。登录判定必须双通道（URL+title 特征）；title 兼容加入 _logged_in（desk 特征只在 title）。
+
+## #51 首帧补发污染两形态
+录制开启补发首帧 navigation（防 SPA 零导航）会记下录制开始的停留页：404 停留页污染系统派生（Odoo 被标 njmind）；跨系统停留页污染 plan url（Odoo 页开录→goto ERPNext）。修法：404 跳过+多数派 host 派生+plan url 取同 host 末条 navigation。
+
+## #52 密码字段采集红线 vs 必填矛盾
+录制侧安全红线跳过密码字段（骨架永远无此步），但 ERPNext v15 表单 portal 密码必填——Save 必被拦。runner 密码补步自愈兜底：校验错误含 password required 时定位密码框补填重试（不破红线）。
+
+## #53 MV3 SW 重启丢内存互斥
+startRunOnTab 的 execRunning 内存 flag 在 SW 被杀重启后复位——storage.onChanged 重复消费旧请求=重试风暴放大器（131 run/13s 实证）。storage 持久锁（10 分钟过期）兜底+服务端 plan 节流 409（同 skill 5s 内快速失败→拒绝）根治。
+
+## #54 TDZ 中断挂一半
+面板 mount() 中 sysEl 定义前同步 addEventListener（TDZ ReferenceError）——DOM 已写一半（模板初值"识别系统中…"）但 detectSystem 永不执行。教训：DOM 引用定义必须在事件绑定前；挂死排查先看模板初值文案是否还在（=流程根本没进）。
+
+## #55 系统识别失败不得放行全部
+过滤器 `!systemName || ...` 在识别失败时短路放行全部系统技能——用户在 A 系统页看到全部。识别失败应空列表+明确提示，显式动作（点系统头）才看全部。
