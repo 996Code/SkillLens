@@ -366,6 +366,20 @@ AG1 协议 server 侧 ✅（端点组+迁移+4 用例；契约文档 docs/arch/e
 | AJ4 自愈透明度 | 晋升 diff 视图+置信度面板+supersede 一键回滚+mabl 持久化门控（下游成功证据位） | 工作台 UI |
 | AJ5 编排增强 | on:fail/pass/always 清理钩子；步骤 checkbox；反向引用表；链变量五型；Healenium 权重预筛+LLM 精选 | 按片验收 |
 
+### 块 AK：执行引擎异常收敛层（v2.7 新增，2026-10-09 用户裁定"异常处理能力差"）
+
+> 设计基线：docs/specs/2026-10-09-ak-exception-convergence-design.md
+> （zcode 三码分类/预算竞速/瞬态退避一手源码 + Playwright retries + Polly 熔断模型）
+
+| 切片 | 内容 | 验收 |
+|---|---|---|
+| AK1 | failures.py 四码分类（cancelled/timeout/transient/fatal 纯函数+瞬态白名单） | 单测穷举 |
+| AK2 | 预算传递+CDP terminateExecution 强杀（extension） | 3s 例程挂死 5s 收敛 |
+| AK3 | server runner 接 ExecOutcome+分步预算 | run 120s 硬封顶 |
+| AK4 | 通道级熔断（滑窗→OPEN 快败 e2_infra→HALF_OPEN 探测） | 风暴复现零浏览器调用 |
+| AK5 | 错误白话映射表双端同源直达用户 | 每类错误中文明示 |
+| AK6 | 61 处散落 except 分批收敛到出口 | 裸 except 清零（豁免清单除外） |
+
 **领先点（业界对照确认，对外叙事）**：自愈三层链（比 mabl 证据厚、比 VON 论文多防回归闸）；
 supersede 版本链业界独有；证据驱动确定性判定；声明式零代码接入。
 
@@ -423,3 +437,4 @@ supersede 版本链业界独有；证据驱动确定性判定；声明式零代�
 - 2026-10-09 v2.6.2（P1+P2 差距清单落地）：P1-5 Snipe 断言反哺 10/10 闭环（unverified_pass 14→0；retain_policy 改写优先防 GET 占满截掉业务证据）；P1-6/8 提案垃圾防线 is_junk_label（网关配额错误/占位符/幻觉指令生成时拦截）+存量 36 条清障；P2-13 层4 背书激活（回放 pass 命中与人工 verify 同权重累加，全库 evidence_count 不再沉睡）；P2-9 禅道技能归并 99→40（S15 supersede 首用）；P2-12 Odoo 断言降噪 36→2（查询词表补 Odoo RPC 名防再生）。
 - 2026-10-09 v2.6.3（P2-10 query 感知模板）：templatize_query 路由语义参数入模板（禅道单入口 m/f 区分度根治——敏感/动态/分页排序/回跳参数剔除）+path_matches 模板 query 同值全含（无 query 旧语义零破坏，export_shared 同源同步）；真实 URL 实测产出 m=bug&f=resolve 类高区分度模板，禅道存量断言回归 5/5。
 - 2026-10-09 v2.6.4（P2-14 编排渗透率）：6→12 链、2.6%→7.0%（16 技能），六系统业务链全部 wait=1 真机 pass；实证链设计第一律=自足技能组合；ERPNext 全技能过时归入 P2-11 重录战役。export 一致性测试补 query 匹配断言（内嵌副本与服务端同语义锁定）。
+- 2026-10-09 v2.7（异常处理能力专项）：**新增块 AK「执行引擎异常收敛层」**——当日实证 131 run/13s 重试风暴、ERPNext 登录假成功、30s 无界等待；设计=单一收敛出口（四码分类，取消最优先）+三级预算传递（剩余制，CDP 强杀）+瞬态白名单有界重试（重建后重试）+通道级熔断（OPEN 快败 e2_infra）。与 AJ1 failure_class 正交（机制层 vs 语义层）。设计文档先行获用户拍板。
