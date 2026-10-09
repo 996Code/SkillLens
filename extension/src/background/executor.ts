@@ -9,6 +9,7 @@ import { AGENT_URL as AGENT } from "../shared/types";
 import { resolveStepOverrides } from "../shared/chain-rules";
 import { Budget } from "../shared/budget";
 import { describeFailure } from "../shared/failures";
+import { isLoginUrl, writeEffectFired, writeResponseCount } from "../shared/expectations";
 
 interface Instruction {
   seq: number;
@@ -195,6 +196,7 @@ export async function runSkill(
   let instruction: Instruction | null = plan.instruction;
   let steps = 0;
   let stepsSinceGoto = 0;
+  let recentWriteMark = 0;  // AM1 预拉放行水位（上步末写响应计数）
   try {
     while (instruction && instruction.op !== "detach") {
       // 用户停止（当前步完成后中断——UX 评审 P2：真停）
@@ -230,6 +232,26 @@ export async function runSkill(
         onProgress, stepsSinceGoto);
       stepsSinceGoto = instruction.op === "goto" ? 0 : stepsSinceGoto + 1;
       steps++;
+      // AM1 写效果水位（期望-观测对比，docs/specs/2026-10-10-am-*.md）：
+      // expect_write 指令（服务端编译期声明）执行后必须观测到写响应——
+      // 无写=静默失败（提交被表单校验拦截），快败+白话直达。预拉放行：
+      // 前一交互已触发写（框架去重）不算拦截（服务端 runner 同语义）。
+      if (instruction.expect_write && ev.result === "ok") {
+        const mark = writeResponseCount(networkLog);
+        const prePull = mark > recentWriteMark;
+        let sawWrite = prePull;
+        for (let w = 0; w < 20 && !sawWrite; w++) {
+          await sleep(300);
+          if (writeEffectFired(networkLog, mark)) sawWrite = true;
+        }
+        if (!sawWrite) {
+          onProgress(`click ${instruction.label} 后无写请求——提交被拦截`);
+          ev.result = "error";
+          ev.evidence = { ...ev.evidence, error:
+            "点击后无写请求（提交被拦截）——表单校验未通过或前置状态缺失" };
+        }
+      }
+      recentWriteMark = writeResponseCount(networkLog);
       // 导航失败即中止（错误页上的后续步骤是假执行——UX 评审致命 2）
       if (ev.result === "error") {
         await Promise.race([
@@ -456,6 +478,22 @@ async function execute(
         }
       }
     } catch { /* fail-open */ }
+    // AM2 登录守卫（期望-观测对比，设计 docs/specs/2026-10-10-am-*.md）：
+    // goto 后落登录路径=登录态丢失（e1_env 环境故障非链漂移）——run 2817
+    // 实证：JeecG 登录页上 click 误报 ok、fill 全 miss 烧完 120s 预算，
+    // 归因不可读。快败+白话直达（词表与服务端 failure_class 同源）。
+    try {
+      const u = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate",
+        { expression: "location.href", returnByValue: true });
+      const finalUrl = String(u?.result?.value || "");
+      if (isLoginUrl(finalUrl) && !isLoginUrl(String(ins.url || ""))) {
+        onProgress(`登录态丢失（跳到登录页 ${finalUrl.slice(0, 50)}）——快败`);
+        return { seq: ins.seq, result: "error",
+                 evidence: { ...evidence, error:
+                   `登录态丢失：目标页跳转到登录页（${finalUrl.slice(0, 60)}）`
+                   + "——请先在浏览器登录目标系统后重试" } };
+      }
+    } catch { /* 探测失败 fail-open */ }
     return { seq: ins.seq, result: "ok", evidence };
   }
   if (ins.op === "snapshot") {

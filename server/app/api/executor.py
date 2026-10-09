@@ -93,21 +93,29 @@ class ExecutorPlanRequest(BaseModel):
     confirm_side_effect: bool = False
 
 
-def _load_plan_input(db: Session, skill: Skill):
+def _load_plan_input(db: Session, skill: Skill) -> tuple[dict, list[dict]]:
     alignment = db.get(Alignment, skill.alignment_id)
     ref_sid = alignment.session_ids[0]
     rows = db.execute(select(RawEvent).where(RawEvent.session_id == ref_sid)
                       .order_by(RawEvent.ts, RawEvent.seq)).scalars().all()
     events = [{"seq": r.seq, "ts": r.ts, "kind": r.kind,
                "payload": r.payload or {}} for r in rows]
-    return compile_skeleton_plan(events, skill.skeleton, ref_sid,
+    plan = compile_skeleton_plan(events, skill.skeleton, ref_sid,
                                  {}, skill.input_variables)
+    return plan, events
 
 
-def compile_executor_plan(plan: dict) -> list[dict]:
-    """计划步 → 微指令序列（确定性纯函数：同 plan 同序列）。"""
+def compile_executor_plan(plan: dict, events: list[dict] | None = None) -> list[dict]:
+    """计划步 → 微指令序列（确定性纯函数：同 plan 同序列）。
+
+    AM1：click 的写效果期望 = 证据派生（录制时 click 后有写请求——
+    events 给定时）∪ 词表兜底（save/submit 族，防 net-hook 经典表单
+    盲区）。插件端执行后对比观测（期望-观测对比异常检测）。"""
     seq = 1
     out: list[dict] = []
+    from app.replay.plan import expect_write_for, expect_write_from_events
+    steps = plan.get("steps", [])
+    ev_expects = expect_write_from_events(events or [], steps)
     if plan.get("url"):
         out.append({"seq": seq, "op": "goto", "url": plan["url"],
                     "timeout_ms": 15000})
@@ -116,7 +124,7 @@ def compile_executor_plan(plan: dict) -> list[dict]:
                 "phase": "before", "scopes": ["labels", "forms", "toasts"],
                 "timeout_ms": DEFAULT_TIMEOUT_MS})
     seq += 1
-    for step in plan.get("steps", []):
+    for i, step in enumerate(plan.get("steps", [])):
         if step.get("kind") == "goto":
             out.append({"seq": seq, "op": "goto", "url": step["url"],
                         "timeout_ms": 15000})
@@ -141,6 +149,7 @@ def compile_executor_plan(plan: dict) -> list[dict]:
                         "resolve_candidates": compile_resolve_candidates(
                             step.get("label") or "", step.get("labels"),
                             tag=step.get("tag"), row_anchor=row_anchor),
+                        "expect_write": expect_write_for(steps, i) or i in ev_expects,
                         "timeout_ms": DEFAULT_TIMEOUT_MS})
         seq += 1
     out.append({"seq": seq, "op": "snapshot",
@@ -191,8 +200,8 @@ async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
     if requires_confirmation(skill.skeleton or []) and not body.confirm_side_effect:
         raise HTTPException(409, "含写操作，需 C1 确认（confirm_side_effect=true）")
 
-    plan = _load_plan_input(db, skill)
-    instructions = compile_executor_plan(plan)
+    plan, events = _load_plan_input(db, skill)
+    instructions = compile_executor_plan(plan, events)
     # goto 实例段归一（ERPNext 236 铁证：录制保存的单据 URL
     # /desk/sales-order/new-sales-order-xxxx 带随机后缀——回放到已提交
     # 旧单上 Frappe 弹回旧页，后续步全打到错误页面）

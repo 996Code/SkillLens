@@ -1,5 +1,56 @@
 from app.ingestion.windows import build_windows
 
+# AM1 期望-观测对比（docs/specs/2026-10-10-am-expectation-anomaly-detection.md）：
+# submit 类 click 词表——单一事实源（runner 步循环与 executor 编译共用，
+# 漂移由 test_executor_protocol.py::TestExpectWriteAnnotation 锁定）。
+WRITE_EXACT = {"getitems", "yes", "create"}
+WRITE_SUB = ("save", "submit", "确认", "保存", "提交")
+_CONFIRM_NEXT = ("确定", "ok", "是")
+
+
+def expect_write_for(steps: list[dict], i: int) -> bool:
+    """第 i 步 click 是否声明写效果期望（两步提交流豁免：下一步是
+    确认词则写请求由确认步发出——判定移交下一步）。"""
+    label_norm = "".join(((steps[i].get("label") or "").lower().split()))
+    write_like = (any(w in label_norm for w in WRITE_SUB)
+                  or label_norm in WRITE_EXACT)
+    if not write_like:
+        return False
+    next_lbl = ""
+    if i + 1 < len(steps):
+        next_lbl = "".join((steps[i + 1].get("label") or "").lower().split())
+    if next_lbl in WRITE_EXACT or next_lbl in _CONFIRM_NEXT:
+        return False
+    return True
+
+
+# AM1 证据派生期望（docs/specs/2026-10-10-am-*.md §三升级）：录制时
+# click 后（到下一个 action 事件前）出现写请求 → 该 click 声明写期望。
+# 比词表准：JeecG 模态提交「确定」命中（词表刻意排除防搜索框误报），
+# 搜索「确定」（后随 GET）不命中；两步提交 Submit→Yes 天然自豁免
+# （Submit 后先到的是 Yes 动作非写请求）。词表保留兜底（net-hook
+# 经典表单盲区——录制无写证据但 label 是 save/submit 族）。
+_AM_WRITE_METHODS = ("POST", "PUT", "PATCH")
+
+
+def expect_write_from_events(events: list[dict], steps: list[dict]) -> set:
+    """证据派生：返回声明写期望的 click 步索引集合。click 步与
+    action(click) 事件按序一一对应（compile_skeleton_plan 同序投影）。"""
+    click_idx = [i for i, s in enumerate(steps) if s.get("kind") == "click"]
+    if not click_idx:
+        return set()
+    out: set = set()
+    k = 0  # 已消费的 click 步游标
+    for e in events:
+        payload = e.get("payload") or {}
+        if e.get("kind") == "action" and payload.get("type") == "click":
+            k += 1
+            continue
+        if e.get("kind") == "network" and payload.get("method") in _AM_WRITE_METHODS:
+            if 0 < k <= len(click_idx):
+                out.add(click_idx[k - 1])
+    return out
+
 
 def compile_replay_plan(events: list[dict], overrides: dict[str, str]) -> dict:
     url = ""

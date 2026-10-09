@@ -136,6 +136,102 @@ async def test_executor_instructions_carry_resolve_candidates(client, monkeypatc
         db.close()
 
 
+class TestExpectWriteAnnotation:
+    """AM1（期望-观测对比，docs/specs/2026-10-10-am-*.md）：submit 类
+    click 在编译期声明期望效果（写请求）——插件端执行后对比观测。
+    词表与服务端 runner write_like 同源（plan.py 单一事实源）。
+    两步提交流（Submit→Yes）的 Submit 步豁免（判定移交 Yes 步）。"""
+
+    def _compile(self, steps: list[dict]) -> list[dict]:
+        from app.api.executor import compile_executor_plan
+        return compile_executor_plan({"url": "http://t/f", "steps": steps})
+
+    def test_submit_click_annotated(self):
+        out = self._compile([
+            {"kind": "input", "name": "a", "value": "1"},
+            {"kind": "click", "label": "保存"},
+        ])
+        clicks = [i for i in out if i["op"] == "click"]
+        assert clicks[0].get("expect_write") is True, "保存 click 必须声明写期望"
+
+    def test_two_stage_submit_exempt(self):
+        # Submit 只开确认弹窗（写请求由 Yes 发出）——Submit 步豁免
+        out = self._compile([
+            {"kind": "click", "label": "Submit"},
+            {"kind": "click", "label": "Yes"},
+        ])
+        clicks = [i for i in out if i["op"] == "click"]
+        assert clicks[0].get("expect_write") is not True, "两步提交的 Submit 步应豁免"
+        assert clicks[1].get("expect_write") is True, "Yes 步承载写期望"
+
+    def test_non_submit_click_not_annotated(self):
+        out = self._compile([
+            {"kind": "click", "label": "新增"},
+            {"kind": "click", "label": "确定"},  # 搜索类确定——非写词表
+        ])
+        for c in [i for i in out if i["op"] == "click"]:
+            assert c.get("expect_write") is not True, "非 submit click 不应误标"
+
+    def test_word_list_single_source(self):
+        # 词表漂移守卫：runner 步循环必须消费 plan.py 常量（不再内联字面量）
+        import inspect
+        from app.replay import runner as R
+        from app.replay.plan import WRITE_EXACT, WRITE_SUB
+        src = inspect.getsource(R)
+        assert "from app.replay.plan import WRITE_EXACT, WRITE_SUB" in src, \
+            "runner 未消费 plan.py 词表（漂移）"
+        assert 'write_exact = {"getitems"' not in src, "runner 残留内联词表"
+
+    def test_evidence_derived_expectation(self):
+        """AM1 证据派生（真机 2820 实证驱动）：JeecG 模态提交「确定」
+        不在词表（防搜索框误报），但录制时其后有 POST——证据派生必须
+        命中；搜索「确定」后是 GET——不命中。"""
+        from app.api.executor import compile_executor_plan
+        steps = [
+            {"kind": "click", "label": "新增"},
+            {"kind": "input", "name": "a", "value": "1"},
+            {"kind": "click", "label": "确定"},
+        ]
+        events = [
+            {"seq": 0, "ts": 0, "kind": "navigation", "payload": {"url": "http://t/f"}},
+            {"seq": 1, "ts": 100, "kind": "action", "payload": {"type": "click", "target": {"label": "新增"}}},
+            {"seq": 2, "ts": 200, "kind": "action", "payload": {"type": "input", "name": "a", "value": "1"}},
+            {"seq": 3, "ts": 300, "kind": "action", "payload": {"type": "click", "target": {"label": "确定"}}},
+            {"seq": 4, "ts": 400, "kind": "network", "payload": {"method": "POST", "url": "/u/add", "status": 200}},
+        ]
+        out = compile_executor_plan({"url": "http://t/f", "steps": steps}, events)
+        clicks = [i for i in out if i["op"] == "click"]
+        assert clicks[0].get("expect_write") is not True, "新增（开模态）不应期望写"
+        assert clicks[1].get("expect_write") is True, "确定（后随 POST）证据派生必须命中"
+
+    def test_evidence_derived_search_get_not_annotated(self):
+        from app.api.executor import compile_executor_plan
+        steps = [{"kind": "input", "name": "q", "value": "x"},
+                 {"kind": "click", "label": "确定"}]
+        events = [
+            {"seq": 1, "ts": 100, "kind": "action", "payload": {"type": "input", "name": "q", "value": "x"}},
+            {"seq": 2, "ts": 200, "kind": "action", "payload": {"type": "click", "target": {"label": "确定"}}},
+            {"seq": 3, "ts": 300, "kind": "network", "payload": {"method": "GET", "url": "/u/list?q=x", "status": 200}},
+        ]
+        out = compile_executor_plan({"url": "http://t/f", "steps": steps}, events)
+        clicks = [i for i in out if i["op"] == "click"]
+        assert clicks[0].get("expect_write") is not True, "搜索确定（后随 GET）不得误标"
+
+    def test_evidence_derived_two_stage_self_exempt(self):
+        from app.api.executor import compile_executor_plan
+        steps = [{"kind": "click", "label": "Submit"},
+                 {"kind": "click", "label": "Yes"}]
+        events = [
+            {"seq": 1, "ts": 100, "kind": "action", "payload": {"type": "click", "target": {"label": "Submit"}}},
+            {"seq": 2, "ts": 200, "kind": "action", "payload": {"type": "click", "target": {"label": "Yes"}}},
+            {"seq": 3, "ts": 300, "kind": "network", "payload": {"method": "POST", "url": "/s", "status": 200}},
+        ]
+        out = compile_executor_plan({"url": "http://t/f", "steps": steps}, events)
+        clicks = [i for i in out if i["op"] == "click"]
+        assert clicks[0].get("expect_write") is not True, "Submit（写前先到 Yes 动作）自豁免"
+        assert clicks[1].get("expect_write") is True, "Yes 承载写期望"
+
+
 async def test_executor_finish_lands_run_with_executor_mark(client, monkeypatch):
     skill_id = await _seed_skill(client, monkeypatch)
     r = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",

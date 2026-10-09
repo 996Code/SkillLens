@@ -454,8 +454,11 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                 import re as _re
                 label_norm = "".join(
                     (step.get("label") or "").lower().split())
-                write_exact = {"getitems", "yes", "create"}
-                write_sub = ("save", "submit", "确认", "保存", "提交")
+                # AM1 词表单一源：plan.py（runner 与 executor 编译共用，
+                # 漂移由 TestExpectWriteAnnotation 锁定）
+                from app.replay.plan import WRITE_EXACT, WRITE_SUB
+                write_exact = WRITE_EXACT
+                write_sub = WRITE_SUB
                 write_like = (any(w in label_norm for w in write_sub)
                               or label_norm in write_exact)
                 # S43-4：两步提交流（Submit→Yes 确认）——Submit 只开确认
