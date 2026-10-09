@@ -83,14 +83,22 @@ def retain_policy(plan: dict, status: str) -> dict:
 
     pass：observed 截到摘要上限+evidence_truncated 标记（C3 摘要仍可查）；
     fail/error：全保留（归因原料完整）。
+
+    截断写优先（Snipe/若依实证）：页面加载 GET 会占满前 N 条把写响应
+    （业务证据）全截掉——回放反哺断言（from-run）零产出。写响应全保，
+    GET 补位。
     """
     if status not in ("pass",):
         return plan
     observed = plan.get("observed") or []
     if len(observed) <= _SUMMARY_KEEP:
         return plan
+    writes = [o for o in observed
+              if (o.get("method") or "").upper() in ("POST", "PUT", "PATCH", "DELETE")]
+    gets = [o for o in observed if o not in writes]
+    kept = (writes + gets)[:max(_SUMMARY_KEEP, len(writes))]
     out = dict(plan)
-    out["observed"] = observed[:_SUMMARY_KEEP]
+    out["observed"] = kept
     out["evidence_truncated"] = True
     out["evidence_total"] = len(observed)
     return out

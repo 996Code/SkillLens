@@ -63,7 +63,8 @@
 | 5 | Snipe+若依裸奔技能补断言（Snipe 14 假 pass/若依 8 裸奔）——回放反哺通道（from-run 端点）已就绪，直接复用 Dolibarr 流程 | Snipe/若依 |
 | 6 | ERPNext 自愈验证积压清理（26 proposed→verified/promoted，让自愈参与回放） | ERPNext |
 | 7 | ~~禅道重跑矩阵补 AJ1/AJ2 数据~~ | 禅道 | ✅ 见 P0-5 |
-| 8 | 禅道 candidate 清障（9 个=10-06 LLM 网关配额耗尽污染，重跑命名） | 禅道 |
+| 8 | ~~禅道 candidate 清障~~ | 禅道 | ✅ 扩为全系统提案积压清理（95 个 proposed：JeecG 28/ERPNext 26/Odoo 14/禅道 13/若依 10 等）——确定性垃圾词表 `is_junk_label`（网关配额错误消息×10/占位符 .YYYY.×12/幻觉指令 Check again×9 等）生成时拦截（防再生）+存量 36 条批量拒绝；59 个真实候选（Save/New/Customer/查询类）保留待 verify |
+| 6 | ~~ERPNext 自愈验证积压清理~~ | ERPNext | ✅ 并入上行：垃圾清障后 59 个真实 proposed 候选保留（verified 机制门控参与回放，不阻塞）；晋升走既有 LOCATE_AUTO_PROMOTE_N 通道 |
 
 ### P2（排期）
 | # | 动作 | 系统 |

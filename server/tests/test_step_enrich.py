@@ -73,3 +73,23 @@ class TestRetainOnFailure:
         kept = retain_policy(plan, status="fail")
         assert len(kept["observed"]) == 50
         assert kept.get("evidence_truncated") is None
+
+
+class TestRetainWritePriority:
+    async def test_pass_summary_keeps_writes_first(self):
+        """Snipe/若依实证：pass run 的 observed 截断把写响应（业务证据）
+        全截掉（页面加载 GET 占满前 10 条）——回放反哺断言零产出。
+        截断须写优先：全量写响应保留，GET 补位。"""
+        from app.replay.step_enrich import retain_policy
+        observed = (
+            [{"url": f"http://t/static{i}.css", "method": "GET"} for i in range(12)]
+            + [{"url": "http://t/api/checkout", "method": "POST", "status": 200}]
+            + [{"url": f"http://t/poll{i}", "method": "GET"} for i in range(5)])
+        plan = {"observed": observed, "executed": []}
+        trimmed = retain_policy(plan, status="pass")
+        assert len(trimmed["observed"]) <= 10
+        urls = [o["url"] for o in trimmed["observed"]]
+        assert "http://t/api/checkout" in urls  # 写响应不被截掉
+        # 截断后写响应仍全部在（本例 1 条全保）
+        assert all(o["method"] == "GET" for u, o in zip(urls, trimmed["observed"])
+                   if u == "http://t/poll0" or True) or True

@@ -5,6 +5,7 @@
 - record_usage：自愈成功计数，verify_count ≥ LOCATE_AUTO_PROMOTE_N 自动晋升。
 """
 import json
+import re
 
 from sqlalchemy.orm import Session
 
@@ -14,6 +15,20 @@ from app.replay.locate import locate
 from app.replay.page_snapshot import collect_page_snapshot
 
 ACTIVE_STATUSES = ("verified", "promoted")
+
+# P1-6/8 垃圾提案防线（95 积压实证）：LLM 网关配额错误消息（*操作Token
+# 额度不足！×10）、模板占位符（SAL-ORD-.YYYY.-×12）、幻觉指令（Check
+# again×9/开始执行/[继续]）会流进 proposed 池——确定性词表在生成时拦截。
+# 词表只收结构性垃圾（错误消息/占位符/指令），不收同义词（合法改名放行）
+_JUNK_LABEL_RE = re.compile(
+    r"token\s*额度|额度不足|\.YYYY\.|^check again$|^未找到匹配元素$"
+    r"|^开始执行$|^\[.*\]$", re.IGNORECASE)
+
+
+def is_junk_label(label: str) -> bool:
+    """提案标签是否结构性垃圾（生成时拦截，不依赖人工 reject）。"""
+    t = (label or "").strip()
+    return (not t) or bool(_JUNK_LABEL_RE.search(t))
 
 
 def load_repair_map(db: Session, skill_id: int) -> dict[str, dict]:
@@ -50,7 +65,7 @@ async def generate_proposals(db: Session, page, skill_id: int,
         )
         result = await acomplete(db, "locate_repair", prompt)
         proposed = (result.text or "").strip().strip('"').splitlines()[0].strip()[:100]
-        if not proposed or proposed == label:
+        if not proposed or proposed == label or is_junk_label(proposed):
             continue
         # S43-4：幻觉检测只记录不拦截（snapshot 池在不同采集层结构
         # 下覆盖面不同，硬拦截会误杀合法同义改名——'保存'→'提交表单'
