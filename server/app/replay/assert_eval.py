@@ -1,6 +1,6 @@
 import json
 import re
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qsl
 
 # S43-4：32 位无连字符 hex（JeecG online 表 code）也是跨会话实体 id；
 # 更长连续 hex 串（双 code 拼接路径如 form/{a}{b}）同理视为动态
@@ -20,9 +20,18 @@ def _static_segments(path: str) -> list[str]:
 
 def path_matches(url: str, template: str) -> bool:
     """template 的 {id} 段视为通配（数字/UUID）；url path 中模板未捕获的
-    动态段同样忽略；query 忽略。比对剩余静态段序列。"""
-    url_path = urlsplit(url).path
-    return _static_segments(url_path) == _static_segments(template)
+    动态段同样忽略；query 规则——模板带 query（P2-10 禅道单入口：路由
+    语义在 m/f 参数里）时 URL query 须同值全含；模板无 query 保持旧
+    语义（任何 query 都匹配，存量断言零破坏）。"""
+    t_path, _, t_query = template.partition("?")
+    url_parts = urlsplit(url)
+    if _static_segments(url_parts.path) != _static_segments(t_path):
+        return False
+    if not t_query.strip():
+        return True
+    want = dict(parse_qsl(t_query))
+    have = dict(parse_qsl(url_parts.query))
+    return all(have.get(k) == v for k, v in want.items())
 
 
 def _extract_field(body: str, field: str) -> object:

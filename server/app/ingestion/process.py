@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.ingestion.discovery import sync_discoveries
 from app.ingestion.noise_filter import classify_windows
 from app.ingestion.signals import extract_state_signals
-from app.ingestion.url_template import split_url, templatize_path
+from app.ingestion.url_template import split_url, templatize_path, templatize_query
 from app.ingestion.windows import IDLE_MS, MAX_WINDOW_MS, build_windows
 from app.models import EvidenceEdge, FilteredWindow, NormalizedEvent, RawEvent, SemanticAction, TransactionWindow
 
@@ -16,19 +16,23 @@ def normalize_event(e: dict) -> str:
         label = (payload.get("target") or {}).get("label", "")
         return f"{payload.get('type', kind)}:{label}"
     if kind == "network":
-        path, _ = split_url(payload.get("url", ""))
+        path, query = split_url(payload.get("url", ""))
         template, _ = templatize_path(path)
-        return f"{payload.get('method', 'GET')}:{template}"
+        tq = templatize_query(query)
+        return f"{payload.get('method', 'GET')}:{template}" + (f"?{tq}" if tq else "")
     return kind
 
 
 def summarize_api(event: dict) -> dict:
     payload = event.get("payload") or {}
-    template, params = templatize_path(split_url(payload.get("url", ""))[0])
+    path, query = split_url(payload.get("url", ""))
+    template, params = templatize_path(path)
+    # P2-10：路由语义 query 参数进模板（禅道单入口 m/f 区分度）
+    tq = templatize_query(query)
     return {
         "seq": event["seq"],
         "method": payload.get("method"),
-        "template": template,
+        "template": template + (f"?{tq}" if tq else ""),
         "status": payload.get("status"),
         "duration": payload.get("duration"),
         "params": params,

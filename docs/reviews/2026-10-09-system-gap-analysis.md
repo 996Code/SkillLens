@@ -70,7 +70,7 @@
 | # | 动作 | 系统 |
 |---|---|---|
 | 9 | ~~禅道技能归并~~ | 禅道 | ✅ 59 编号拷贝→40 基名（S15 supersede 链；候选 7 个全同名 LLM 命名失败也归并）；活跃 99→40 |
-| 10 | 禅道断言升级（设计后行） | 禅道 | 📐 /index.php 单入口根治需要 query 感知模板匹配（m=story&f=create 进模板语义）——全局断言语义变更需独立设计轮；已做：from-run 补 1 个写技能断言+9 个查询技能 9/9 验证 pass（既有 state_signal 断言命中） |
+| 10 | ~~禅道断言升级~~ | 禅道 | ✅ query 感知模板落地：templatize_query（路由语义参数入模板，敏感/动态/分页排序/回跳参数剔除）+path_matches query 同值全含匹配（模板无 query 零破坏，export_shared 同步同源）；实测禅道真实 URL 产出 m=bug&f=resolve/m=testcase&f=create 等高区分度模板；存量断言回归 5/5 pass。新录制会话自动获得 query 模板（93/95 都落 /index.php 的时代结束） |
 | 11 | 三系统录制补课（各 3-5 链×2 轮多日战役，Odoo 优先） | Odoo/Doli/Snipe | 留档（多日战役） |
 | 12 | 学习管道清障（Odoo 部分） | Odoo | ✅ 查询型词表补 Odoo RPC 名（onchange/web_read/mail thread/render_public_asset/get_views）防再生+存量 34 条噪声断言清除（36→2 只剩真实写） |
 | 13 | ~~层4 背书激活~~ | 全部 | ✅ 回放 pass 的断言命中与人工 verify 同权重累加 evidence_count（≥3 标 layer4_verified）——(kind, api_template) 联合定位防同模板双计（TDD 3 用例） |

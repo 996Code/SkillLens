@@ -31,8 +31,18 @@ def static_segments(path):
 
 def path_matches(url, template):
     """template 的 {id} 段视为通配（数字/UUID/长 hex）；url path 中模板
-    未捕获的动态段同样忽略；query 忽略。比对剩余静态段序列。"""
-    return static_segments(urlsplit(url).path) == static_segments(template)
+    未捕获的动态段同样忽略；query 规则与 assert_eval.path_matches 同源
+    （P2-10：模板带 query 时 URL query 须同值全含；无 query 旧语义）。"""
+    from urllib.parse import parse_qsl
+    t_path, _, t_query = template.partition("?")
+    parts = urlsplit(url)
+    if static_segments(parts.path) != static_segments(t_path):
+        return False
+    if not t_query.strip():
+        return True
+    want = dict(parse_qsl(t_query))
+    have = dict(parse_qsl(parts.query))
+    return all(have.get(k) == v for k, v in want.items())
 
 
 def extract_field(body, field):

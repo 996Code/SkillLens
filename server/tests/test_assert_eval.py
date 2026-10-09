@@ -280,3 +280,44 @@ def test_api_status_method_filter():
                            "expect_status": 302, "method": "POST"}}]
     r_miss = evaluate_assertions(a_miss, observed[:1])
     assert r_miss[0]["passed"] is False
+
+
+class TestQueryAwareMatch:
+    """P2-10：禅道单入口实证——93/95 断言都在 /index.php（m/f 路由参数
+    在 query 里，模板丢了 query 就无区分度）。模板带 query 时匹配须
+    query 参数同值全含；无 query 模板保持旧语义（零破坏）。"""
+
+    def test_query_template_requires_all_params(self):
+        from app.replay.assert_eval import path_matches
+        tpl = "/index.php?m=story&f=create"
+        assert path_matches("http://h/index.php?m=story&f=create&recTotal=9", tpl)
+        assert not path_matches("http://h/index.php?m=story&f=edit", tpl)
+        assert not path_matches("http://h/index.php?m=bug&f=create", tpl)
+
+    def test_query_template_ignores_extra_url_params(self):
+        from app.replay.assert_eval import path_matches
+        # URL 多出的参数不影响（模板参数是必要条件非充分清单）
+        assert path_matches("http://h/index.php?m=story&f=create&x=1", "/index.php?m=story&f=create")
+
+    def test_path_only_template_ignores_query(self):
+        from app.replay.assert_eval import path_matches
+        # 旧语义：模板无 query → 任何 query 都匹配（存量断言零破坏）
+        assert path_matches("http://h/index.php?m=anything", "/index.php")
+
+    def test_dynamic_param_value_not_in_template(self):
+        from app.replay.assert_eval import path_matches
+        # 动态值参数（id 类）不进模板——值漂移不假失败
+        assert path_matches("http://h/index.php?m=story&f=view&id=12345",
+                            "/index.php?m=story&f=view")
+
+
+def test_templatize_query_routing_params_only():
+    """P2-10：query 模板化——路由语义参数（m=story&f=create）保留；
+    动态值（id/recTotal/order）、敏感（token）、非语义值（base64/中文）剔除。"""
+    from app.ingestion.url_template import templatize_query
+    assert templatize_query("m=story&f=create&recTotal=9&order=id_desc") == "m=story&f=create"
+    assert templatize_query("m=user&f=login&token=abc123&referer=L2luZGV4") == "m=user&f=login"
+    assert templatize_query("id=12345&storyID=8") == ""
+    assert templatize_query("") == ""
+    # 敏感参数名永不入模板
+    assert "token" not in templatize_query("m=api&key=abcd&token=x1")
