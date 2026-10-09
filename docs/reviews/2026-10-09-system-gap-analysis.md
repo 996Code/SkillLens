@@ -74,7 +74,7 @@
 | 11 | 三系统录制补课（各 3-5 链×2 轮多日战役，Odoo 优先） | Odoo/Doli/Snipe | 留档（多日战役） |
 | 12 | 学习管道清障（Odoo 部分） | Odoo | ✅ 查询型词表补 Odoo RPC 名（onchange/web_read/mail thread/render_public_asset/get_views）防再生+存量 34 条噪声断言清除（36→2 只剩真实写） |
 | 13 | ~~层4 背书激活~~ | 全部 | ✅ 回放 pass 的断言命中与人工 verify 同权重累加 evidence_count（≥3 标 layer4_verified）——(kind, api_template) 联合定位防同模板双计（TDD 3 用例） |
-| 14 | 编排渗透率 | 全部 | 留档（依赖链编写战役） |
+| 14 | ~~编排渗透率提升~~ | 全部 | ✅ 6→12 链、2.6%→7.0%（16 技能入链），覆盖六系统（禅道×2/Snipe/Odoo/JeecG/Dolibarr/若依）；全部 wait=1 真机 pass。**实证沉淀**：①链设计第一律=用自足技能（状态依赖技能组合会互相破坏前置——Snipe 查找→更新链因未传资产选择 fail，换成双查找链 pass）；②ERPNext 全技能过时（容器重启后 0 pass，客户保存有必填密码录制缺陷）→归入 P2-11 重录战役 |
 
 ### P3（远期）
 - Odoo lost 49% 先修 CDP 断连稳定性

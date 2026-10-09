@@ -159,6 +159,12 @@ async def test_export_script_judgment_single_source(client, monkeypatch):
     assert ns["static_segments"]("/form/0123456789abcdef/x") == \
         assert_eval._static_segments("/form/0123456789abcdef/x") == ["form", "x"]
     assert ns["path_matches"]("http://h/a/0123456789abcdef/save?x=1", "/a/{id}/save")
+    # P2-10 query 感知匹配：内嵌副本与服务端实现同语义（模板带 query
+    # 须同值全含；无 query 旧语义）
+    assert ns["path_matches"]("http://h/index.php?m=bug&f=close&x=1",
+                               "/index.php?m=bug&f=close") is True
+    assert ns["path_matches"]("http://h/index.php?m=bug&f=browse",
+                               "/index.php?m=bug&f=close") is False
     # api_status：混合结果（200+500）→ FAIL（旧导出 all(h != expect) 会误 PASS）
     mixed = [{"status": 200}, {"status": 500}]
     assert ns["judge_api_status"](mixed, 200) is False
