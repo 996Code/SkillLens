@@ -99,8 +99,14 @@ def _plan_url(events: list[dict]) -> str:
         if e["kind"] == "navigation":
             u = payload.get("url", "")
             if u and (not action_host or _up(u).netloc == action_host):
-                # 取同 host 的最后一条（最接近业务操作——desk 首页跳转链
-                # 的终点是表单页；首条/中间条是跳转过程页）
+                # s44 实证（Dolibarr）：创建流末条 navigation 是提交后
+                # 重定向 id=__ID__（create 表单隐藏 id 占位）——实例占位
+                # 段不可作回放锚（落视图态无表单）。末条含非数字 id= 参数
+                # 时回退前一条同 host 导航；数字 id（编辑流有效锚）不变。
+                import re as _idre
+                m = _idre.search(r"[?&]id=([^&]+)", u)
+                if m and not m.group(1).isdigit():
+                    continue
                 url = u
         if e["kind"] != "action":
             continue
