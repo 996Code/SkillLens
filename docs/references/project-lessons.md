@@ -547,3 +547,6 @@ scripts/p0_login_test.py 匹配 pytest 默认 `*_test.py` 模式且模块级 `as
 
 ## #58 cwd 漂移让 uv 落到全局 Python（两次实锤，2026-10-10）
 从仓库根跑 `uv run pytest`：根无 pyproject.toml，uv 静默用全局 miniconda Python（pydantic v1 ForwardRef 崩）——错误形态是收集 TypeError 而非"找不到项目"，极易误判为代码 bug。Bash 工具 cwd 会随上一条命令漂移。预防：server 侧命令一律显式 `cd /d/github/SkillLens/server &&` 前缀；见收集 TypeError 先 `pwd` 自查。
+
+## #59 纪律要机制化：共享 test.db 三次实锤后根治（2026-10-10）
+同一陷阱踩三次（pytest 并发互撞 test.db：两次全量回归被并行定向测试污染，各损失 37 分钟+假红误导判断）。教训不是「下次记得别并行」——是**自觉靠不住，结构才靠得住**：conftest 的 DATABASE_URL 从共享固定文件 `./test.db` 改为每进程 pid 后缀临时库（atexit 清理）——并发天然隔离、残留自愈，「不并行」的纪律不再需要任何人遵守。通用律：第三次踩同坑时，停止加纪律，改结构（对照成熟项目：任何正经测试套件 test db 都与 dev db 分离且按 worker 隔离）。另一同源教训：全量回归在跑时手别痒——37 分钟窗口拿去看文档/写设计，比并行跑测试的收益大得多（两次实证）。

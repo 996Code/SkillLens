@@ -69,8 +69,26 @@ async def get_run(run_id: int, db: Session = Depends(get_db)) -> dict:
     run = db.get(ReplayRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="replay run not found")
+    executed = run.executed
+    # AM3：插件 run 的 executed 恒空（executor 只发 observed——步结果在
+    # plan.executor_state.received）。合成 executed 形态供详情页步骤表+
+    # 三态标签呈现（服务端 run 不受影响——原值直通）。
+    if (run.executor == "extension" and not executed
+            and isinstance(run.plan, dict)):
+        ins_by_seq = {i.get("seq"): i for i in
+                      run.plan.get("executor_instructions") or []}
+        executed = []
+        for rec in (run.plan.get("executor_state") or {}).get("received") or []:
+            ins = ins_by_seq.get(rec.get("seq")) or {}
+            executed.append({
+                "kind": ins.get("op"),
+                "label": ins.get("label") or ins.get("name"),
+                "ok": rec.get("result") == "ok",
+                "error": (rec.get("evidence") or {}).get("error")
+                         or (None if rec.get("result") == "ok"
+                             else rec.get("result"))})
     return {"id": run.id, "skill_id": run.skill_id, "mode": run.mode, "status": run.status,
-            "plan": run.plan, "executed": run.executed,
+            "plan": run.plan, "executed": executed,
             "assertion_results": run.assertion_results,
             "attribution": run.attribution, "artifact_path": run.artifact_path,
             "duration_ms": run.duration_ms, "flaky": run.flaky,

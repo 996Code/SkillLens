@@ -28,10 +28,38 @@ def test_doli_post_submit_idid_falls_back_to_create():
 
 
 def test_numeric_id_edit_flow_unchanged():
+    # 真实编辑流形态：nav(list)→点行(act)→nav(card)→fill+save(act)
+    # ——card 导航之后还有动作（在编辑页上操作）→ card 是动作时点页
     events = [
         _nav("http://127.0.0.1:8080/societe/list.php"),
         _act("http://127.0.0.1:8080/societe/card.php?id=16&socid=10"),
         _nav("http://127.0.0.1:8080/societe/card.php?id=16&socid=10"),
+        _act("http://127.0.0.1:8080/societe/card.php?id=16&socid=10"),
     ]
-    # 数字 id=16 是编辑流有效锚——仍取末条
+    # 数字 id=16 是编辑流有效锚——仍取末条（动作发生时所在页）
     assert "id=16" in _plan_url(events)
+
+
+def test_snipe_post_submit_nav_not_chosen():
+    """Snipe 形态：create 表单 → [fill+save] → 提交后跳 /hardware/31 →
+    （框架又回列表 /hardware）。回放锚必须是动作发生时的 URL
+    （/hardware/create），非提交后导航——旧行为锚到列表页，
+    回放第一步就落错页全 miss（s44 Snipe 0/6 实证）。"""
+    events = [
+        _nav("http://127.0.0.1:8081/hardware/create"),
+        _act("http://127.0.0.1:8081/hardware/create"),
+        _nav("http://127.0.0.1:8081/hardware/31"),
+        _nav("http://127.0.0.1:8081/hardware"),
+    ]
+    assert _plan_url(events).endswith("/hardware/create")
+
+
+def test_action_time_url_still_supports_nav_chain():
+    """Frappe 形态不变：动作前的导航链（首页→表单页）仍取末条
+    （动作时所在页）——首条动作前的导航才是有效锚。"""
+    events = [
+        _nav("http://h/app/home"),
+        _nav("http://h/app/customer/new"),
+        _act("http://h/app/customer/new"),
+    ]
+    assert _plan_url(events).endswith("/app/customer/new")

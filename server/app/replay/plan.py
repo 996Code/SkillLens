@@ -92,25 +92,23 @@ def _plan_url(events: list[dict]) -> str:
         if e.get("kind") == "action" and payload.get("url"):
             action_host = _up(str(payload["url"])).netloc
             break
+    # 动作时点锚（s44 Snipe/Dolibarr 实证）：提交后的导航（详情/列表/
+    # __ID__ 占位重定向）不是回放起点。锚=**最后一条 action 之后没有
+    # 再出现动作**的那条导航——即动作发生时所在页。两遍扫：先定位最后
+    # 一条 action 的位置，再取其之前最后一条同 host 导航。
+    last_action_idx = -1
+    for idx, e in enumerate(events):
+        if e.get("kind") == "action":
+            last_action_idx = idx
     url = ""
     url_from_action = ""
-    for e in events:
+    for idx, e in enumerate(events):
         payload = e.get("payload") or {}
-        if e["kind"] == "navigation":
+        if e["kind"] == "navigation" and idx < last_action_idx:
             u = payload.get("url", "")
             if u and (not action_host or _up(u).netloc == action_host):
-                # s44 实证（Dolibarr）：创建流末条 navigation 是提交后
-                # 重定向 id=__ID__（create 表单隐藏 id 占位）——实例占位
-                # 段不可作回放锚（落视图态无表单）。末条含非数字 id= 参数
-                # 时回退前一条同 host 导航；数字 id（编辑流有效锚）不变。
-                import re as _idre
-                m = _idre.search(r"[?&]id=([^&]+)", u)
-                if m and not m.group(1).isdigit():
-                    continue
                 url = u
-        if e["kind"] != "action":
-            continue
-        if not url_from_action and payload.get("url"):
+        if e["kind"] == "action" and not url_from_action and payload.get("url"):
             url_from_action = payload["url"]
     result = url or url_from_action
     import re as _re

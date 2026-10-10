@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertExpect } from "../src/run-format";
+import { assertExpect, failureKind } from "../src/run-format";
 
 // 评审#3：SkillGraphView 本地 payloadSummary 与共享 assertExpect 双源漂移
 // （field_change 一支带 api_template 一支不带）——合并后以本 spec 为规格：
@@ -56,5 +56,22 @@ describe("assertExpect（断言期望摘要，双源合并后唯一实现）", (
     expect(assertExpect({ payload: {} })).toBe("{}");
     expect(() => assertExpect({ kind: "field_change", payload: null })).not.toThrow();
     expect(() => assertExpect({})).not.toThrow();
+  });
+});
+
+describe("AM3 failureKind 期望三态", () => {
+  it("定位失败类", () => {
+    expect(failureKind({ ok: false, error: "semantic locate failed: '保存' @ http://h/" })).toBe("locate");
+    expect(failureKind({ ok: false, error: "定位失败：保存" })).toBe("locate");
+  });
+  it("效果未触发类（AM1/AM2 产出形态）", () => {
+    expect(failureKind({ ok: false, error: "点击后无写请求（提交被拦截）——表单校验未通过" })).toBe("effect");
+    expect(failureKind({ ok: false, error: "登录态丢失：目标页跳转到登录页" })).toBe("effect");
+    expect(failureKind({ ok: false, error: "目标站不可达: http://x" })).toBe("effect");
+  });
+  it("其余步骤错误 / pass 步为空", () => {
+    expect(failureKind({ ok: false, error: "Timeout 30000ms" })).toBe("error");
+    expect(failureKind({ ok: true })).toBe("");
+    expect(failureKind(null)).toBe("");
   });
 });

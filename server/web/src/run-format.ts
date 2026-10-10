@@ -70,3 +70,24 @@ export function stepScreenshotFiles(
 export function fmtTime(ts: string | null | undefined): string {
   return ts ? ts.replace("T", " ").replace(/\.\d+.*$/, "") : "—";
 }
+
+/** AM3 期望三态呈现（docs/specs/2026-10-10-am-*.md AM3）：失败步的
+ * 语义分类——定位失败（元素没找到）/ 效果未触发（点了但没生效——
+ * AM1 写水位/登录守卫的形态）/ 步骤错误（其余）。词表与
+ * server plain_errors._DETAIL_PATTERNS 同源锚（点击后无写请求等）。
+ */
+export function failureKind(step: { ok?: boolean; error?: string | null } | null | undefined):
+  "" | "locate" | "effect" | "error" {
+  if (!step || step.ok !== false) return "";
+  const e = String(step.error || "");
+  if (/semantic locate failed|定位失败|triggering|miss/i.test(e)) return "locate";
+  if (/点击后无写请求|提交被拦|登录态丢失|目标站不可达/.test(e)) return "effect";
+  return "error";
+}
+
+/** AM3 三态的人读标签 */
+export const FAILURE_KIND_LABEL: Record<string, string> = {
+  locate: "定位失败——元素未找到（页面改版或前置状态缺失）",
+  effect: "效果未触发——操作成功但预期结果未发生（提交被拦/登录态丢失）",
+  error: "步骤错误——执行中异常",
+};

@@ -1,194 +1,146 @@
 [
  {
-  "system": "Dolibarr",
-  "skill": 185,
-  "run_id": 2846,
+  "run_id": 2878,
   "status": "fail",
   "writes": 0,
-  "override": {
-   "name": "mx94700A0"
-  }
- },
- {
-  "system": "Dolibarr",
-  "skill": 185,
-  "run_id": 2847,
-  "status": "fail",
-  "writes": 0,
-  "override": {
-   "name": "mx94700B0"
-  }
- },
- {
-  "system": "Dolibarr",
-  "skill": 188,
-  "run_id": 2848,
-  "status": "fail",
-  "writes": 0,
-  "override": {
-   "name": "mx94700A1"
-  }
- },
- {
-  "system": "Dolibarr",
-  "skill": 188,
-  "run_id": 2849,
-  "status": "fail",
-  "writes": 0,
-  "override": {
-   "name": "mx94700B1"
-  }
- },
- {
-  "system": "Dolibarr",
-  "skill": 187,
-  "run_id": 2850,
-  "status": "pass",
-  "writes": 0,
-  "override": {}
- },
- {
-  "system": "Dolibarr",
-  "skill": 187,
-  "run_id": 2851,
-  "status": "pass",
-  "writes": 0,
-  "override": {}
- },
- {
+  "steps": 9,
+  "step_results": [
+   [
+    6,
+    "ok"
+   ],
+   [
+    7,
+    "miss"
+   ],
+   [
+    8,
+    "miss"
+   ]
+  ],
   "system": "Snipe",
   "skill": 303,
-  "run_id": 2852,
-  "status": "fail",
-  "writes": 0,
-  "override": {
-   "asset_tags[1]": "mx94979A0"
-  }
+  "key": "asset_tags[1]",
+  "val": "mx2199A0"
  },
  {
+  "run_id": 2879,
+  "status": "fail",
+  "writes": 0,
+  "steps": 9,
+  "step_results": [
+   [
+    6,
+    "ok"
+   ],
+   [
+    7,
+    "miss"
+   ],
+   [
+    8,
+    "miss"
+   ]
+  ],
   "system": "Snipe",
   "skill": 303,
-  "run_id": 2853,
-  "status": "fail",
-  "writes": 0,
-  "override": {
-   "asset_tags[1]": "mx94979B0"
-  }
+  "key": "asset_tags[1]",
+  "val": "mx2199B0"
  },
  {
+  "run_id": 2880,
+  "status": "fail",
+  "writes": 0,
+  "steps": 5,
+  "step_results": [
+   [
+    3,
+    "ok"
+   ],
+   [
+    4,
+    "ok"
+   ],
+   [
+    5,
+    "error"
+   ]
+  ],
   "system": "Snipe",
   "skill": 304,
-  "run_id": 2854,
-  "status": "fail",
-  "writes": 0,
-  "override": {
-   "assigned_user": "mx94979A1"
-  }
+  "key": "assigned_user",
+  "val": "mx2199A1"
  },
  {
+  "run_id": 2881,
+  "status": "fail",
+  "writes": 0,
+  "steps": 5,
+  "step_results": [
+   [
+    3,
+    "ok"
+   ],
+   [
+    4,
+    "ok"
+   ],
+   [
+    5,
+    "error"
+   ]
+  ],
   "system": "Snipe",
   "skill": 304,
-  "run_id": 2855,
-  "status": "fail",
-  "writes": 0,
-  "override": {
-   "assigned_user": "mx94979B1"
-  }
+  "key": "assigned_user",
+  "val": "mx2199B1"
  },
  {
+  "run_id": 2882,
+  "status": "fail",
+  "writes": 0,
+  "steps": 6,
+  "step_results": [
+   [
+    4,
+    "ok"
+   ],
+   [
+    5,
+    "miss"
+   ],
+   [
+    5,
+    "miss"
+   ]
+  ],
   "system": "Snipe",
   "skill": 305,
-  "run_id": 2856,
-  "status": "fail",
-  "writes": 0,
-  "override": {}
+  "key": null,
+  "val": "mx2199A2"
  },
  {
+  "run_id": 2883,
+  "status": "fail",
+  "writes": 0,
+  "steps": 6,
+  "step_results": [
+   [
+    4,
+    "ok"
+   ],
+   [
+    5,
+    "miss"
+   ],
+   [
+    5,
+    "miss"
+   ]
+  ],
   "system": "Snipe",
   "skill": 305,
-  "run_id": 2857,
-  "status": "fail",
-  "writes": 0,
-  "override": {}
- },
- {
-  "system": "ERPNext",
-  "skill": 213,
-  "run_id": 2858,
-  "status": "pass",
-  "writes": 12,
-  "override": {
-   "customer_name": "mx95316A0"
-  }
- },
- {
-  "system": "ERPNext",
-  "skill": 213,
-  "run_id": 2859,
-  "status": "pass",
-  "writes": 13,
-  "override": {
-   "customer_name": "mx95316B0"
-  }
- },
- {
-  "system": "ERPNext",
-  "skill": 216,
-  "run_id": 2860,
-  "status": "pass",
-  "writes": 13,
-  "override": {
-   "customer_name": "mx95316A1"
-  }
- },
- {
-  "system": "ERPNext",
-  "skill": 216,
-  "run_id": 2861,
-  "status": "pass",
-  "writes": 13,
-  "override": {
-   "customer_name": "mx95316B1"
-  }
- },
- {
-  "system": "ERPNext",
-  "skill": 2,
-  "run_id": 2862,
-  "status": "pass",
-  "writes": 11,
-  "override": {
-   "customer_name": "mx95316A2"
-  }
- },
- {
-  "system": "ERPNext",
-  "skill": 2,
-  "run_id": 2863,
-  "status": "pass",
-  "writes": 11,
-  "override": {
-   "customer_name": "mx95316B2"
-  }
- },
- {
-  "system": "Odoo",
-  "skill": 1,
-  "run_id": 2864,
-  "status": "pass",
-  "writes": 15,
-  "override": {
-   "e.g. Lumber Inc": "mx95563A0"
-  }
- },
- {
-  "system": "Odoo",
-  "skill": 1,
-  "run_id": 2865,
-  "status": "pass",
-  "writes": 15,
-  "override": {
-   "e.g. Lumber Inc": "mx95563B0"
-  }
+  "key": null,
+  "val": "mx2199B2"
  }
 ]

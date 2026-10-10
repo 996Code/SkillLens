@@ -34,9 +34,11 @@ MATRIX = {
         {"skill": 187, "key": None},
     ],
     "Snipe": [
-        {"skill": 303, "key": "asset_tags[1]"},
-        {"skill": 304, "key": "assigned_user"},
-        {"skill": 305, "key": None},  # Checkin 无 fill——只读重放（记录口径）
+        # 303/304/305 是链生命周期技能（单独运行无意义：Checkin 需
+        # checkout 后状态，dropdown 录制弱）——改用查找类技能换参
+        # （2828/2836 实证 pass）+ 303 留链 15（重录 select2 后跑）
+        {"skill": 138, "key": "asset_tags[1]"},
+        {"skill": 139, "key": "asset_tags[1]"},
     ],
     "ERPNext": [
         {"skill": 213, "key": "customer_name"},

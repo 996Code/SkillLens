@@ -2,6 +2,7 @@
 // S34 块 1：执行 run 详情页（竞品差距补齐——run 级下钻：步骤+截图墙+
 // 断言明细+归因+前后快照对比，一页全览）。
 // 入口：时间线 replay 项"下钻查看"；数据 GET /replay-runs/{id}。
+import { FAILURE_KIND_LABEL, failureKind } from "../run-format";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { getReplayRun, getRunFlow } from "../api";
@@ -121,7 +122,12 @@ onMounted(() => void load());
               <td class="mono">{{ s.strategy ?? "—" }}</td>
               <td>
                 <span v-if="s.ok" class="ok">ok</span>
-                <span v-else class="ng">{{ s.error ?? "failed" }}</span>
+                <template v-else>
+                  <span class="ng">{{ s.error ?? "failed" }}</span>
+                  <div v-if="failureKind(s)" class="muted fk-hint">
+                    {{ FAILURE_KIND_LABEL[failureKind(s)] }}
+                  </div>
+                </template>
               </td>
             </tr>
           </tbody>

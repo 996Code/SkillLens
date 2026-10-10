@@ -1,0 +1,98 @@
+[
+ {
+  "run_id": 2885,
+  "status": "pass",
+  "writes": 2,
+  "steps": 7,
+  "step_results": [
+   [
+    5,
+    "ok"
+   ],
+   [
+    6,
+    "ok"
+   ],
+   [
+    7,
+    "ok"
+   ]
+  ],
+  "system": "Snipe",
+  "skill": 138,
+  "key": "asset_tags[1]",
+  "val": "eate25514A"
+ },
+ {
+  "run_id": 2886,
+  "status": "pass",
+  "writes": 4,
+  "steps": 7,
+  "step_results": [
+   [
+    5,
+    "ok"
+   ],
+   [
+    6,
+    "ok"
+   ],
+   [
+    7,
+    "ok"
+   ]
+  ],
+  "system": "Snipe",
+  "skill": 138,
+  "key": "asset_tags[1]",
+  "val": "eate25514B"
+ },
+ {
+  "run_id": 2887,
+  "status": "pass",
+  "writes": 4,
+  "steps": 7,
+  "step_results": [
+   [
+    5,
+    "ok"
+   ],
+   [
+    6,
+    "ok"
+   ],
+   [
+    7,
+    "ok"
+   ]
+  ],
+  "system": "Snipe",
+  "skill": 139,
+  "key": "asset_tags[1]",
+  "val": "eate25244A"
+ },
+ {
+  "run_id": 2888,
+  "status": "pass",
+  "writes": 4,
+  "steps": 7,
+  "step_results": [
+   [
+    5,
+    "ok"
+   ],
+   [
+    6,
+    "ok"
+   ],
+   [
+    7,
+    "ok"
+   ]
+  ],
+  "system": "Snipe",
+  "skill": 139,
+  "key": "asset_tags[1]",
+  "val": "eate25244B"
+ }
+]

@@ -1,13 +1,32 @@
 import os
 import tempfile
 
-# 必须在导入 app.main 之前设置环境变量，使 app.db 的 engine 指向测试库
-os.environ["DATABASE_URL"] = "sqlite:///./test.db"
+# 每进程独立测试库（lessons #46/#58 机制化根治）：共享 ./test.db 是
+# 并发互撞（两进程互相 drop/create）与残留自伤的总根源。pid 后缀让
+# 任意两个 pytest 进程天然隔离；退出时清理（残留不再影响下次）。
+# 显式设 KEEP_TEST_DB=1 可保留供排查。
+_TEST_DB = os.path.join(tempfile.gettempdir(), f"sl-test-{os.getpid()}.db")
+os.environ["DATABASE_URL"] = f"sqlite:///{_TEST_DB}"
 # 预置空 LLM_API_KEY：load_dotenv 默认不覆盖已存在键，确保测试进程永不加载真实 key（Fake/MockTransport 铁律）
 os.environ["LLM_API_KEY"] = ""
 # S22 块 T：回放截图（视觉基线）写测试临时目录，不污染真实 artifacts/
 _TEST_ARTIFACT_DIR = tempfile.mkdtemp(prefix="sl-test-artifacts-")
 os.environ["REPLAY_ARTIFACT_DIR"] = _TEST_ARTIFACT_DIR
+
+import atexit
+
+
+def _cleanup_test_db() -> None:
+    if os.environ.get("KEEP_TEST_DB") == "1":
+        return
+    for suffix in ("", "-journal", "-wal", "-shm"):
+        try:
+            os.remove(_TEST_DB + suffix)
+        except OSError:
+            pass
+
+
+atexit.register(_cleanup_test_db)
 
 import pytest
 from httpx import ASGITransport, AsyncClient

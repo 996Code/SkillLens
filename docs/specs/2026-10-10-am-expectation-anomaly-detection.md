@@ -87,7 +87,16 @@
   步 name「*表名」）——错 key 的换参跑出 duplicate，恰好成为 AM1 的
   真实验收场景。
 
-### 测试
+### AM3 落地记录（2026-10-10，期望三态呈现）
 
-server 协议 21/21（+7 AM 用例：词表/两段豁免/证据派生三态/漂移守卫）；
-extension 136/136（+8 expectations 用例）。AM3（期望三态呈现）留后续批。
+- **failureKind 纯函数**（web/src/run-format.ts）：失败步语义三态
+  locate（定位失败）/effect（效果未触发——AM1 写水位/AM2 登录守卫
+  产出形态）/error（其余）。词表与 plain_errors._DETAIL_PATTERNS 同源锚。
+- **插件 run 步骤合成**（replay.py get_run）：插件 run executed 恒空
+  （executor 只发 observed——步结果在 plan.executor_state.received）→
+  详情端点把 received+instructions 合成 executed 形态。run 详情页
+  步骤表从"无步骤记录"变为全步骤呈现（服务端 run 原值直通）。
+- **视图三态标签**（ReplayRunView）：失败步下方白话提示行。
+- 真机验证（run 2822=skill 40 提交被拦格）：19 行步骤呈现+失败步
+  「效果未触发——操作成功但预期结果未发生」标签。
+- 测试：web 81/81（failureKind 3 用例）+replay API 11/11（合成用例）。

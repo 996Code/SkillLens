@@ -389,3 +389,41 @@ async def test_run_flow_graph(client, monkeypatch):
     assert action["status"] == "ok" and action["screenshot"] == "step-01.png"
     # 边连通
     assert len(flow["edges"]) >= len(flow["nodes"]) - 1
+
+
+async def test_run_detail_synthesizes_plugin_steps(client):
+    """AM3 期望三态呈现（docs/specs/2026-10-10-am-*.md）：插件 run 的
+    executed 恒空（executor 只发 observed——步结果在 plan.executor_state.
+    received）。详情端点把 received+instructions 合成 executed 形态
+    （kind/label/ok/error），run 详情页步骤表+三态标签才有数据。"""
+    from app.db import SessionLocal
+    from app.models import ReplayRun as RR
+    plan = {
+        "steps": [{"kind": "input", "name": "a", "value": "1"}],
+        "url": "http://t/f",
+        "executor_instructions": [
+            {"seq": 1, "op": "goto", "url": "http://t/f"},
+            {"seq": 2, "op": "fill", "name": "a", "value": "1"},
+            {"seq": 3, "op": "click", "label": "保存"}],
+        "executor_state": {"cursor": 3, "received": [
+            {"seq": 1, "result": "ok", "evidence": {}},
+            {"seq": 2, "result": "ok", "evidence": {}},
+            {"seq": 3, "result": "error",
+             "evidence": {"error": "点击后无写请求（提交被拦截）"}},
+        ]},
+    }
+    db = SessionLocal()
+    try:
+        run = RR(skill_id=1, mode="execute", status="fail", plan=plan,
+                 executed=None, assertion_results=None, executor="extension",
+                 attribution="测试")
+        db.add(run); db.commit(); db.refresh(run)
+        rid = run.id
+    finally:
+        db.close()
+    detail = (await client.get(f"/api/v1/replay-runs/{rid}")).json()
+    ex = detail["executed"]
+    assert len(ex) == 3, "received 应合成 3 步"
+    assert ex[0]["ok"] is True and ex[0]["kind"] == "goto"
+    assert ex[2]["ok"] is False and "点击后无写请求" in str(ex[2]["error"])
+    assert ex[2]["label"] == "保存"
