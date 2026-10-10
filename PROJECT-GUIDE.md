@@ -163,7 +163,11 @@ cd server && uv run python ../scripts/live_browser.py 9222
   replay-engine / ingestion-pipeline / adapters-subsystem / auth-and-role-matrix /
   redaction-defense-in-depth / env-contract / change-intelligence /
   schema-migration-discipline（全带 file:line 引证）。
-- **测试基线**：server 546 / web 78 / extension 99（三套全绿是合并前提）。
+- **测试基线**：server 722 / web 81 / extension 142（三套全绿是合并前提；
+  conftest 每进程独立测试库——pytest 可并行）。
+- **异常处理四层防线**（2026-10-10）：AK 四码分类+预算+熔断（机制层）/
+  AM 期望-观测对比写水位+登录守卫（语义层）/假 pass 收口（判定层）/
+  failureKind 三态呈现（呈现层）——设计见 specs/ AK+AM+AN 三篇。
 - **近期工作**（2026-10-03 v2.1 方向变更）：~~JeecG 链式 override~~ ✅（S43-5 完成，
   row-anchor 换参注入+动态 id 断言归一，三链全 PASS 实体级验证）→ **块 AF 适配器
   架构**（基座+声明式系统清单：manifest schema/探针运行时/例程库/链编排器/向导 UI）
