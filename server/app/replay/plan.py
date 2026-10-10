@@ -77,7 +77,24 @@ def compile_replay_plan(events: list[dict], overrides: dict[str, str]) -> dict:
             steps.append({"kind": "input", "name": name,
                           "value": str(overrides.get(name, original)),
                           "original_value": original})
-    return {"url": url or url_from_action, "steps": steps}
+    # 303 铁证：首条 navigation 可能是跨系统停留页（192.168.99.22/404）
+    # ——url 与骨架版同源（动作时点+host 判定），不再直通首 nav
+    return {"url": _plan_url(events), "steps": steps}
+
+
+def _nav_host_ok(path: str, events: list[dict]) -> bool:
+    """goto 步插入的 host 判定：与首条 action 的 host 一致才允许
+    （跨系统停留页不编译成步——303 铁证）。"""
+    from urllib.parse import urlparse as _up
+    action_host = ""
+    for e in events:
+        payload = e.get("payload") or {}
+        if e.get("kind") == "action" and payload.get("url"):
+            action_host = _up(str(payload["url"])).netloc
+            break
+    if not action_host:
+        return True
+    return _up(path).netloc == action_host
 
 
 def _plan_url(events: list[dict]) -> str:
@@ -223,12 +240,18 @@ def compile_skeleton_plan(events: list[dict], skeleton: list[dict], ref_session_
                 seen_urls.add(nav_url.split("#")[0].split("?")[0])
                 continue
             path = nav_url.split("#")[0].split("?")[0]
-            import re as _re
-            m = _re.match(
-                r"^(https?://[^/]+)/(desk|app)/([a-z_-]+)/new-[a-z_-]+-[a-z0-9]+$",
-                path, _re.IGNORECASE)
-            if m:
-                path = f"{m.group(1)}/app/{m.group(3)}/new"
+            # 303 铁证：跨系统停留页（异 host）不得编译成 goto 步——回放
+            # 第一动作导航离开目标系统后续全 miss。host 判定与 plan url
+            # 同源（首条 action 的 host——_plan_url 同款派生）
+            if path and _nav_host_ok(path, events):
+                import re as _re
+                m = _re.match(
+                    r"^(https?://[^/]+)/(desk|app)/([a-z_-]+)/new-[a-z_-]+-[a-z0-9]+$",
+                    path, _re.IGNORECASE)
+                if m:
+                    path = f"{m.group(1)}/app/{m.group(3)}/new"
+            else:
+                continue
             if nav_url and path not in seen_urls:
                 seen_urls.add(path)
                 # 评审#3：goto 步携带归一化 URL（草稿尾缀已重写、query/hash
