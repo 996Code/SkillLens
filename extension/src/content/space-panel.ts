@@ -11,6 +11,8 @@ wp.__skilllens_panel = true;
 
 const HOST_ID = "skilllens-space-host";
 
+import { describeFailure } from "../shared/failures";
+
 function mount(): void {
   if (document.getElementById(HOST_ID)) return;
   const host = document.createElement("div");
@@ -196,7 +198,13 @@ function mount(): void {
     try {
       const r = await api(`/chains/fills/${skillId}`);
       fillsCache.set(skillId, Array.isArray(r) ? r : []);
-    } catch { fillsCache.set(skillId, []); }
+    } catch (e) {
+      // AK6 批次3：fill 候选加载失败留痕（决策相关——静默空会让链换参
+      // 编辑降级为不可用且无因可查）；分类走四码（failures.ts）
+      const f = describeFailure(e);
+      console.warn(`[SL] fills 加载失败 skill=${skillId} [${f.code}] ${f.plain}`);
+      fillsCache.set(skillId, []);
+    }
     return fillsCache.get(skillId)!;
   }
 

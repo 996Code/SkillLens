@@ -152,6 +152,23 @@ exc, warning)`：吞错仍吞（fail-open 行为不变）但经四码分类+sani
 - extension 侧（executor.ts 70 处等）：CDP 探测 `.catch(() => null)`
   形态为主，与 server 侧同批分批收敛
 
+### AK6 批次3 落地记录（2026-10-10，extension 侧盘点+决策站点收敛）
+
+extension 侧全量盘点：executor.ts 70 / space-panel 17 / uploader 17 /
+capture 5 / executor-page 4 / session 2 / learn 2。分类结论：
+- **已有合理出口**（console.warn+重试语义 uploader / note() UI 提示
+  space-panel）——不重复收敛
+- **CDP 探测 fail-open**（`.catch(() => null)` 形态，executor.ts 大宗）
+  ——豁免（同 locate.py 候选循环语义：试探是正常控制流）
+- **真静默决策站点**：space-panel fillsCache 加载失败（L199）——
+  链换参编辑降级不可用且无因可查 → 收敛：describeFailure 四码分类
+  +console.warn 白话留痕（141/141 绿）
+
+AK6 总结：批次1（风暴四缺口）+批次2（swallow 8 站点）+批次3（决策
+站点）覆盖全部高价值收敛面；豁免清单入档。**grep 验收口径修正**：
+「裸 except 清零」在探测型控制流语言（CDP/候选试探）里不可达成也
+无价值——收敛目标实为「决策相关吞错零静默」，已达成。
+
 ## 五、不做（边界）
 
 - 不做跨进程分布式熔断（单机单 worker，进程内状态足够）
