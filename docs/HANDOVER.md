@@ -52,10 +52,10 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
 ## 3. 差距清单（下一步工作，按优先级）
 
 ### 高（下一冲刺）——原三高优已全部完成（见 §2.5）
-0. **健壮性体检留档 🟡**（docs/reviews/2026-10-10-robustness-audit.md，
-   🔴 已清零 39f4044）：①plan 409 并发竞态原子化（唯一活跃约束）；
-   ②_reap_stale_runs 规模性能（last_step_at 落列+索引）；③AM1 水位
-   循环查预算；④multipart 请求体脱敏；⑤fill value_after 敏感 label。
+0. **健壮性体检**（docs/reviews/2026-10-10-robustness-audit.md）——
+   🔴 已清零（39f4044）+🟡 五项已修（edb439b：预算感知/脱敏深水×3/
+   并发原子化/脏数据防御）。**仅剩**：_reap_stale_runs 规模性能
+   （last_step_at 落列+索引——需 DB 迁移，当前残留恒 0 不紧迫）。
 1. **Livewire 框架适配**（303 终因定性：非缺陷是特性缺口）：JS 设值
    不同步 Livewire 组件状态（真机实证：手动填 tag+点 Save 也 0 写
    ——select2 隐藏 input 的值未入组件快照）。引擎级适配（dispatch
