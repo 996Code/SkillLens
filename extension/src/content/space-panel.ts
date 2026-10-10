@@ -245,7 +245,7 @@ function mount(): void {
         pgt.style.color = "#2563eb";
         pgt.textContent = "执行中…";
         pgl.textContent = "";
-        port.postMessage({ type: "EXEC_RUN", ...req });
+        port.postMessage({ type: "EXEC_RUN", at: Date.now(), ...req });
         note("已发起执行（本页驱动，进度见下方）", "ok");
       }, 1500);
     } catch {

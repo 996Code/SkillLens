@@ -244,6 +244,12 @@ chrome.runtime.onConnect.addListener((port) => {
   try { port.postMessage({ type: "SL_PONG" }); } catch { /* 断连 */ }
   port.onMessage.addListener((msg: any) => {
     if (msg?.type !== "EXEC_RUN") return;
+    // L3 代际新鲜度（generation 精简形态）：EXEC_RUN 带时间戳，过期
+    // 请求（SW 重启/port 重放）不执行——与 storage 入口同款语义
+    if (msg.at && Date.now() - Number(msg.at) > 10000) {
+      port.postMessage({ type: "SL_PROGRESS", msg: "请求已过期（旧会话重放）——已忽略" });
+      return;
+    }
     const sender = port.sender;
     const tabId = sender?.tab?.id;
     if (tabId == null) { port.postMessage({ type: "SL_PROGRESS", msg: "无页签上下文" }); return; }

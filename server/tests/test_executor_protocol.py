@@ -555,3 +555,50 @@ class TestAtomicPlanGuard:
             assert mine is None or mine.status != "running"
         finally:
             db.close()
+
+
+class TestReapColumn:
+    """体检🟡 收割列化：last_step_at 列判据（步上报落列；列空回退
+    created_at）。"""
+
+    async def test_step_updates_last_step_column(self, client, monkeypatch):
+        from app.db import SessionLocal
+        from app.models import ReplayRun as RR
+        skill_id = await _seed_skill(client, monkeypatch)
+        r = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                              json={"overrides": {}, "confirm_side_effect": True})
+        rid = r.json()["run_id"]
+        await client.post(f"/api/v1/executor/runs/{rid}/step",
+                          json={"seq": 1, "result": "ok", "evidence": {}})
+        db = SessionLocal()
+        try:
+            run = db.get(RR, rid)
+            assert run.last_step_at is not None, "步上报应落 last_step_at 列"
+        finally:
+            db.close()
+
+    async def test_reap_uses_column_not_plan(self, client, monkeypatch):
+        """11 分钟前创建但 last_step_at 刚刷新（活跃步）——不收割。"""
+        from datetime import datetime, timedelta
+        from app.db import SessionLocal
+        from app.models import ReplayRun as RR
+        skill_id = await _seed_skill(client, monkeypatch)
+        r = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                              json={"overrides": {}, "confirm_side_effect": True})
+        rid = r.json()["run_id"]
+        db = SessionLocal()
+        try:
+            run = db.get(RR, rid)
+            run.created_at = datetime.utcnow() - timedelta(minutes=11)
+            run.last_step_at = datetime.utcnow() - timedelta(minutes=1)
+            db.commit()
+        finally:
+            db.close()
+        r2 = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                               json={"overrides": {}, "confirm_side_effect": True})
+        assert r2.status_code in (200, 409)
+        db = SessionLocal()
+        try:
+            assert db.get(RR, rid).status == "running", "活跃步（列新）不应被收割"
+        finally:
+            db.close()

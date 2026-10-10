@@ -53,18 +53,18 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
 ## 3. 差距清单（下一步工作，按优先级）
 
 ### 高（下一冲刺）——原三高优已全部完成（见 §2.5）
-0. **健壮性体检**（docs/reviews/2026-10-10-robustness-audit.md）——
-   🔴 已清零（39f4044）+🟡 五项已修（edb439b：预算感知/脱敏深水×3/
-   并发原子化/脏数据防御）。**仅剩**：_reap_stale_runs 规模性能
-   （last_step_at 落列+索引——需 DB 迁移，当前残留恒 0 不紧迫）。
-1. **Livewire 框架适配**（303 终因定性：非缺陷是特性缺口）：JS 设值
-   不同步 Livewire 组件状态（真机实证：手动填 tag+点 Save 也 0 写
-   ——select2 隐藏 input 的值未入组件快照）。引擎级适配（dispatch
-   Livewire 事件或 trusted 输入流）影响所有 Livewire 系统——独立
-   立项。303 主链路（goto/fill/select2 定位）已全通。
-2. **generation 代际校验**（L3，zcode 模式）：extension 会话代际号——
-   服务端拒旧代际一切写（SW 重启重复消费的结构性根治；现靠持久锁
-   +终态拒收兜底）。动协议面，需 52 链真机回归支撑。
+（本清单 2026-10-10 收官批后仅剩一条，其余已清——见下）
+0. **Livewire 框架适配**（唯一剩余，独立特性立项）：303 终因=JS 设值
+   不同步 Livewire 组件状态（真机实证：原生 select 设值+dispatch
+   change 后 Save 仍 0 业务写——select2 隐藏层与 Livewire v3 的
+   wire:model 同步需专项：dispatch Livewire 事件或 trusted 输入流，
+   或录制面换 trusted 输入）。影响所有 Livewire 系统；303 主链路
+   （goto/fill/select2 定位）已全通。
+   ——已清项：收割 last_step_at 落列+索引（迁移 a7c8d9e0f1a2 已上
+   真实库，收割走列判据+TDD 2 用例）；generation 以「三通道新鲜度
+   闸」精简形态收口（storage 入口原有+port 通道补 at 校验+终态拒收
+   兜底——完整代际号为协议大改，当前防线已覆盖重放面）；健壮性体检
+   🔴🟡 全清（39f4044+edb439b）。
 
 ### 中
 4. ERPNext 技能深录（当前 2/3；SO 转单状态依赖已归档待跨步传递解锁）

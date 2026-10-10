@@ -42,29 +42,22 @@ def get_db():
 
 def _reap_stale_runs(db: Session) -> int:
     """协议 §5 心跳兜底：extension run 卡 running 超 10 分钟（无新步
-    上报——矩阵实证 885/888 卡死）→ lost。在 /executor/skills 访问时
-    顺带收割（无独立进程）。
-    评审 #9 修正：判据=executor_state.last_step_at（每步 step POST 刷新）
-    而非 created_at——慢步骤/用户确认停留 >10min 的 run 不再误标 lost。"""
+    上报——矩阵实证 885/888 卡死）→ lost。在 plan 入口顺带收割。
+    体检🟡 规模化：判据走 last_step_at 列（步上报同步落列；迁移回填
+    旧行）——不再逐行反序列化 MB 级 plan JSON。列空（首步未上报/老
+    数据）回退 created_at 语义。"""
     from datetime import datetime, timedelta, timezone
-    now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(minutes=10)
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10))         .replace(tzinfo=None)
     rows = db.query(ReplayRun).filter(
         ReplayRun.executor == "extension",
         ReplayRun.status == "running",
         ReplayRun.created_at < cutoff).all()
     n = 0
     for r in rows:
-        state = (r.plan or {}).get("executor_state") or {}
-        last = state.get("last_step_at") or r.created_at
-        if isinstance(last, str):
-            try:
-                last = datetime.fromisoformat(last)
-            except ValueError:
-                last = r.created_at
-        if last.tzinfo is not None:
+        last = r.last_step_at or r.created_at
+        if last is not None and last.tzinfo is not None:
             last = last.replace(tzinfo=None)
-        if last < cutoff.replace(tzinfo=None):
+        if last is not None and last < cutoff:
             r.status = "lost"
             n += 1
     if n:
@@ -492,6 +485,8 @@ async def executor_step(run_id: int, body: ExecutorStepReport,
                 "navigation_failed": True}
 
     run.plan = {**plan, "executor_state": state}
+    # 收割判据列化（体检🟡）：last_step_at 同步落列——收割走索引直查
+    run.last_step_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.commit()
     return {"instruction": nxt, "duplicate": False}
 
