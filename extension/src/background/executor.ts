@@ -1271,8 +1271,9 @@ async function execute(
           const el = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
             expression: `(async () => {
               const label = ${JSON.stringify(label)};
-              let els = [...document.querySelectorAll('button, [role=button]')]
-                .filter(e => (e.textContent||'').trim() === label && e.isConnected);
+              let els = [...document.querySelectorAll(
+                'button, [role=button], input[type=submit], input[type=button]')]
+                .filter(e => ((e.textContent || e.value || '') + '').trim() === label && e.isConnected);
               const vis = els.filter(e => e.getBoundingClientRect().width > 0);
               if (vis.length >= 1) els = vis;
               if (els.length !== 1) return '';
