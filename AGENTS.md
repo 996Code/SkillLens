@@ -51,17 +51,81 @@
 
 ## 五、踩坑速查
 
-详见 `docs/references/project-lessons.md`（28 条）。写代码前过一遍。
+详见 `docs/references/project-lessons.md`（**#1-#59**，持续追加）。写代码前过一遍——每条都有实证出处。
 
-## 六、文档地图
+## 六、文档导航（唯一入口——按任务找文档）
 
-> 新成员/AI 接手起点：`docs/HANDOVER.md`（**继任开发任务书**——差距清单+
-> 开发路线图+环境运维+7 枚继任开发提示词）→ `PROJECT-GUIDE.md`（目录地图+
-> AI 学习提示词）；项目所有者全部要求汇总：`docs/COLLABORATION-CHARTER.md`
-> （传承文档）。
+> **本文档是 AI/新成员的起点与目录**：读这一节就能定位任何文档。
+> 起点顺序：本文件 → `docs/HANDOVER.md`（继任任务书）→ `PROJECT-GUIDE.md`（详细导览）。
 
-- 产品宪法：`docs/specs/2026-09-23-skilllens-mvp-design.md`
-- 主计划（唯一范围基准）：`docs/specs/2026-09-24-master-delivery-plan.md`
-- 原始设想：`docs/references/ai_software_learning_change_intelligence_v3.md`（43 节）
-- 架构契约：`docs/arch/`；验收记录：`demo/sprintN/`；审查：`docs/reviews/`
-- 代码导览：`server/README.md`、`extension/README.md`、`server/web/README.md`
+### 6.1 三份根文档
+
+| 文档 | 作用 |
+|---|---|
+| `agents.md`（本文件） | 操作宪法+文档导航——AI 协作必读必守 |
+| `README.md` | 产品门面（能力/快速开始/演示） |
+| `PROJECT-GUIDE.md` | 详细导览（是什么→在哪→怎么跑→怎么继续开发） |
+
+### 6.2 治理与交接
+
+| 文档 | 作用 |
+|---|---|
+| `docs/HANDOVER.md` | **继任开发任务书**：现状一句话→v2.1→v2.8 演进账本→差距清单（下一步工作）→环境速查→已知坑→提示词套件（§8） |
+| `docs/COLLABORATION-CHARTER.md` | 项目所有者全部要求汇总（传承文档） |
+| `docs/specs/2026-09-23-skilllens-mvp-design.md` | 产品宪法（三条：C1 影子/C2 分轨/C3 落库） |
+| `docs/specs/2026-09-24-master-delivery-plan.md` | **主计划（唯一范围基准）**——§7 变更记录=完整演进史（v1.0→v2.8.4） |
+| `docs/RELEASE-CHECKLIST.md` | 发布清单 |
+
+### 6.3 设计规格（specs/，按块）
+
+| 文档 | 块 |
+|---|---|
+| `2026-10-09-ak-exception-convergence-design.md` | AK 执行引擎异常收敛层（四码/预算/熔断/swallow，含批次落地记录） |
+| `2026-10-10-am-expectation-anomaly-detection.md` | AM 期望-观测对比异常检测（写水位/登录守卫/三态呈现） |
+| `2026-10-10-an-cross-step-state.md` | AN 跨步状态传递（pickedRow/${stepN.row}/row_anchor_from，含两轮 E2E 记录） |
+| 其余 specs | 各历史块设计（AA 图基座/AE 多角度闭环/AH 空间面板/AI 日常化/AJ 异常分类学等） |
+
+### 6.4 架构契约（arch/，25 篇——改模块前读对应篇）
+
+| 关键篇 | 覆盖 |
+|---|---|
+| `2026-10-08-replay-engine.md` | 回放引擎（定位/换参/断言/自愈全链） |
+| `2026-10-08-adapters-subsystem.md` | 适配器子系统（YAML 清单/探针/画像） |
+| `2026-10-08-auth-and-role-matrix.md` | 认证与角色矩阵（WRITE_GUARD 31 端点） |
+| `2026-10-08-redaction-defense-in-depth.md` | 脱敏纵深（词表四处副本+parity 测试） |
+| `2026-10-08-ingestion-pipeline.md` / `change-intelligence.md` / `env-contract.md` / `schema-migration-discipline.md` | 采集管道/变更智能/env 契约/迁移纪律 |
+| `extension-executor-protocol.md` | 插件执行协议（四端点/幂等/心跳） |
+| `2026-10-07-platform-interaction-profile.md` | 平台化交互画像 |
+| 其余 | 各历史块架构（图基座/评审门户/时间线/视觉回归等） |
+
+### 6.5 参考与教训（references/）
+
+| 文档 | 作用 |
+|---|---|
+| `project-lessons.md` | **踩坑速查 #1-#59**（写代码前过一遍——每条都是实证） |
+| `ai_software_learning_change_intelligence_v3.md` | 原始设想（43 节） |
+| `harness-study-v2-*.md`（6 篇） | 业界调研（zcode/Playwright/Cypress/TestRail/mabl/selfheal——AJ/AM 块的依据） |
+| `zcode-browser-harness-study.md` | zcode 浏览器层精读（executor 六根因的出处） |
+
+### 6.6 审查与验收
+
+| 位置 | 内容 |
+|---|---|
+| `docs/reviews/2026-10-10-robustness-audit.md` | 最新健壮性体检（🔴🟡全清记录） |
+| `docs/reviews/`（15 篇） | 历次审查（全库三轮/差距分析/竞品对标/风暴复盘 2026-10-09-attach-storm-retrospective.md） |
+| `demo/sprint44/` | 最新验收（换参矩阵+315/303 终验）；`demo/sprintN/` 历史 |
+
+### 6.7 代码导览
+
+`server/README.md`（模块地图+exec 层）、`extension/README.md`（含 shared 新模块：budget/failures/expectations/chain-rules）、`server/web/README.md`
+
+### 6.8 快查：我想做什么 → 读什么
+
+| 任务 | 入口 |
+|---|---|
+| 接手开发 | HANDOVER §3 差距清单+§8 提示词套件 |
+| 改回放/执行 | arch/replay-engine + specs/AK+AM 设计 |
+| 加新系统 | arch/adapters-subsystem + PROJECT-GUIDE 接入章 |
+| 修 bug | lessons（先查同坑）→ 对应 arch 篇 |
+| 查历史决策 | 主计划 §7 变更记录（带 commit 号） |
+| 跑测试/起环境 | 本文件 §一/§四 |
