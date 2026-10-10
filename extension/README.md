@@ -35,12 +35,23 @@ injected/
   net-hook.js        MAIN world 网络 hook（fetch/XHR 包装；redactBody/redactUrl）
 shared/
   types.ts           RawEvent/Snapshot/消息协议（EVENT_MSG 等）
-  describe-element   语义描述（aria-label→placeholder→title→关联label→文本）
+  describe-element   语义描述（aria-label→placeholder→title→关联label→文本；
+                     hostRowText 行文本采集：checkbox/radio、ant-dropdown 触发器、
+                     表格行内 a/button 行操作——row-anchor 编译原料）
   input-key.ts       输入框回退链（name→id→placeholder→aria-label）
   redact.ts          敏感脱敏正典（BASE_SENSITIVE_PATTERNS 16 词=10 英文+6 中文
                      label 形态；redactValue + redactNetworkBody/Url）
   assign-session     事件归属会话
   page-id.ts         页面实例标识（跨页事件不丢）
+  budget.ts          AK2 预算传递（剩余制；slice 子预算<=父；耗尽语义锚点）
+  failures.ts        AK 四码分类（与 server app/exec/failures.py 同词表——
+                     attach 冲突=fatal 不重试+白话直达）
+  expectations.ts    AM1/AM2 期望判定（写响应水位/登录页 URL 词表同源）+
+                     expect_write 证据派生∪词表兜底
+  chain-rules.ts     链规则解释器（${unique:}/${stepN.字段}/${stepN.row}
+                     pickedRow 句柄/resolveRowAnchor——AN 跨步状态传递）
+executor-page.ts     AG3 执行页（单技能/链模式；row_anchor_from 注入；
+                     failedSteps 假 pass 收口——miss 未救回如实判 fail）
 ```
 
 **脱敏词表四处副本**（redact.ts 正典 / injected/net-hook.js / server page_snapshot.py /

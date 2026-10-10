@@ -89,16 +89,27 @@ llm/               ④ LLM Gateway（自研薄封装）
   gateway.py       complete()：成功与失败（脱敏 URL）均落 llm_call_log（C3）
 
 replay/            ⑤ 回放 Runner（内部架构详见 docs/arch/2026-10-08-replay-engine.md）
-  plan.py          骨架→执行计划（goto 步 URL 已归一化：草稿尾缀重写/query 剥离）
+  plan.py          骨架→执行计划（goto 步 URL 已归一化：草稿尾缀重写/query 剥离；
+                   动作时点锚=最后一条 action 前的同 host 导航——提交后导航/异 host
+                   停留页不作锚；goto 步插入同 host 判定 _nav_host_ok）
   locate.py        语义定位（placeholder/role-button；两级全 frame 遍历；12 轮重试）
   runner.py        execute_plan + run_replay（写水位=write_response_count 只数写响应；
-                   预拉放行/在途写等待=集合差；失败收敛 _error_run）
+                   预拉放行/在途写等待=集合差；失败收敛 _error_run；吞错站点经
+                   exec/failures.swallow 四码分类留痕）
   repair.py        自愈提案（幻觉"只记录不拦截"，确定性 locate 复核——与 executor 硬门禁的分歧见 arch 文档§6）
   assert_eval.py   确定性断言评估（_ID_SEGMENT 动态 id 归一）
   export_shared.py 导出判定单一事实源（exporter 逐字内嵌进生成脚本）
   exporter.py      Playwright 导出（_safe_doc_text 防模板注入）
   page_snapshot.py 页面快照（全 frame 聚合；脱敏词表与插件同源——一致性由 redact-parity 测试守护）
   环境开关：REPLAY_HEADLESS=0 前台 / REPLAY_CHANNEL=chrome 真Chrome / REPLAY_CDP_URL 常驻窗口
+
+exec/              AK/AM 异常收敛与期望对比层（设计 docs/specs/2026-10-09-ak-*.md
+                   + 2026-10-10-am-*.md；与 AJ1 failure_class 正交）
+  failures.py      四码分类纯函数（cancelled>timeout>transient>fatal）+
+                   swallow 收敛件（fail-open 吞错分类留痕）+failure_class 映射
+  breaker.py       通道级熔断（滑窗失败率→OPEN 快败 e2_infra→HALF_OPEN 探测）
+  budget.py        预算传递（run 总→步→原语剩余制；asyncio.wait_for 硬封顶）
+  plain_errors.py  四码+关键词→用户可读中文（与插件端 executor-page 同语义）
 
 adapters/          ⑦ 平台化适配架构（v2.1 块 AF + 平台化四阶段）
   manifest.py      声明式清单 schema：登录/探针/业务链 + interaction_profile
