@@ -157,6 +157,19 @@ export async function runSkill(
       pendingBodies.set(params?.requestId, params?.request?.method || "GET");
       pendingReqBodies.set(params?.requestId,
         redactNetworkBody(params?.request?.postData || ""));
+      // 315 第七环（socid=59 铁证）：经典表单整页提交的 POST 是文档请求
+      // ——导航销毁页面时 responseReceived 不再到达，写请求从不上
+      // networkLog（AM1 误拦真提交）。写方法请求**发出即记**（水位判
+      // 定语义=动作发生，非响应落地）。
+      const m = (params?.request?.method || "GET").toUpperCase();
+      if (m === "POST" || m === "PUT" || m === "PATCH") {
+        networkLog.push({
+          url: redactNetworkUrl(params?.request?.url || ""),
+          status: undefined, requestId: params?.requestId, method: m,
+          reqBody: redactNetworkBody(params?.request?.postData || ""),
+          body: "",
+        });
+      }
       return;
     }
     if (method === "Network.loadingFinished" || method === "Network.loadingFailed") {
@@ -166,6 +179,15 @@ export async function runSkill(
       return;
     }
     if (method === "Network.responseReceived") {
+      // 已在 requestWillBeSent 发出即记的写请求不重复入列（只补状态）
+      const preIdx = networkLog.findIndex(
+        (n) => n.requestId === params?.requestId && n.status === undefined);
+      if (preIdx >= 0) {
+        networkLog[preIdx].status = params?.response?.status;
+        pendingBodies.delete(params?.requestId);
+        pendingReqBodies.delete(params?.requestId);
+        return;
+      }
       const url: string = redactNetworkUrl(params?.response?.url || "");
       networkLog.push({
         url, status: params?.response?.status,
@@ -291,8 +313,12 @@ export async function runSkill(
           api(`/executor/runs/${runId}/finish`, {
             method: "POST",
             body: JSON.stringify({ status: "fail",
+              // C3 红线：error 中止同样落全证据（315 实证：AM1 拦截步
+              // 走此路径曾把 networkLog 整体丢弃——observed 归零无法归因）
               summary: { error: ev.evidence?.error || "导航失败",
-                         executed: [], observed: [] } }) }),
+                         failed_steps: failedSteps,
+                         executed: [],
+                         observed: networkLog.filter((n) => n.url && n.url.startsWith("http")) } }) }),
           new Promise((res) => setTimeout(res, 8000)),
         ]).catch(() => {});
         onProgress(`中止：${ev.evidence?.error || "导航失败"}`);
@@ -1203,7 +1229,11 @@ async function execute(
                 const label = ${JSON.stringify(label)};
                 const els = [...document.querySelectorAll('button, [role=button]')]
                   .filter(e => (e.textContent||'').trim() === label
-                    && e.getBoundingClientRect().width > 0);
+                    && e.getBoundingClientRect().width > 0
+                    // 315 第七环：提交按钮（input submit）永远不是 dropdown
+                    // 触发器——Dolibarr 等老式 table 布局表单在 tr 内的保存
+                    // 按钮曾被误判走 trusted 点击（不触发原生 submit）
+                    && e.tagName !== 'INPUT');
                 if (els.length < 1) return false;
                 return els.some(e => !!e.closest('.ant-table-row, .list-item, .grid-row, tr'));
               })()`, returnByValue: true }).catch(() => null);
