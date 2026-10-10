@@ -52,9 +52,11 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
 ## 3. 差距清单（下一步工作，按优先级）
 
 ### 高（下一冲刺）——原三高优已全部完成（见 §2.5）
-1. **Snipe 303 多 Save 歧义**：create 页两个可见 Save（多命中）——点击
-   ok 但未触发业务写（3 写全为 __lazyLoad 框架噪声）。需页级语义消歧
-   （主表单 Save vs 行级 Save）。主链路（goto/fill/select2）已修复。
+1. **Livewire 框架适配**（303 终因定性：非缺陷是特性缺口）：JS 设值
+   不同步 Livewire 组件状态（真机实证：手动填 tag+点 Save 也 0 写
+   ——select2 隐藏 input 的值未入组件快照）。引擎级适配（dispatch
+   Livewire 事件或 trusted 输入流）影响所有 Livewire 系统——独立
+   立项。303 主链路（goto/fill/select2 定位）已全通。
 2. **generation 代际校验**（L3，zcode 模式）：extension 会话代际号——
    服务端拒旧代际一切写（SW 重启重复消费的结构性根治；现靠持久锁
    +终态拒收兜底）。动协议面，需 52 链真机回归支撑。
