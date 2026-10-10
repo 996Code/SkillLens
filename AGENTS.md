@@ -112,7 +112,7 @@
 | 位置 | 内容 |
 |---|---|
 | `docs/reviews/2026-10-10-robustness-audit.md` | 最新健壮性体检（🔴🟡全清记录） |
-| `docs/reviews/`（15 篇） | 历次审查（全库三轮/差距分析/竞品对标/风暴复盘 2026-10-09-attach-storm-retrospective.md） |
+| `docs/reviews/`（10 篇） | 历次审查（全库三轮/差距分析/竞品对标/风暴复盘 2026-10-09-attach-storm-retrospective.md） |
 | `demo/sprint44/` | 最新验收（换参矩阵+315/303 终验）；更早见 `demo/` 下各 sprint 目录 |
 
 ### 6.7 代码导览
