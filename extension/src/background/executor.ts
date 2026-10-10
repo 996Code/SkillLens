@@ -200,6 +200,7 @@ export async function runSkill(
   let recentWriteMark = 0;  // AM1 预拉放行水位（上步末写响应计数）
   const stepPickedRows: string[] = [];  // AN 行键聚合（链模式跨步传递）
   let anchorInjected = false;  // AN row_anchor_from 单次注入标记
+  const failedSteps: any[] = [];  // s44：未救回步记录（防假 pass）
   try {
     while (instruction && instruction.op !== "detach") {
       // 用户停止（当前步完成后中断——UX 评审 P2：真停）
@@ -253,6 +254,12 @@ export async function runSkill(
       steps++;
       // AN：本步行键聚合（evidence.pickedRow 由 execute 落——链模式原料）
       if (ev?.evidence?.pickedRow) stepPickedRows.push(ev.evidence.pickedRow);
+      // s44 假 pass 收口：未救回的 miss/unsupported 步记录（finish 据此
+      // 如实判 fail——干预救回的步以 ok 重报不落此）
+      if (ev.result !== "ok" && ev.result !== "error" && ev.result !== "duplicate") {
+        failedSteps.push({ seq: ev.seq, result: ev.result,
+                           label: instruction.label || instruction.name || instruction.op });
+      }
       // AM1 写效果水位（期望-观测对比，docs/specs/2026-10-10-am-*.md）：
       // expect_write 指令（服务端编译期声明）执行后必须观测到写响应——
       // 无写=静默失败（提交被表单校验拦截），快败+白话直达。预拉放行：
@@ -313,8 +320,11 @@ export async function runSkill(
     const finish = await api(`/executor/runs/${runId}/finish`, {
       method: "POST",
       body: JSON.stringify({
-        status: "done",
-        summary: {
+        // s44 假 pass 实证（run 2890）：步 miss 未救回但恒发 done →
+        // 0 断言空真 pass。未救回的 miss/unsupported 步必须如实判 fail
+        // （干预救回的步会以 ok 重报——不影响）
+        status: failedSteps.length ? "fail" : "done",        summary: {
+          failed_steps: failedSteps,
           executed: [], observed: networkLog.filter((n) => n.url && n.url.startsWith("http")),
           duration_ms: Date.now() - t0, page_title: title, steps,
         },
@@ -1134,8 +1144,8 @@ async function execute(
             // span 类触发器也算（若依 258 铁证：.user-nickname 是 span——
             // hover dropdown 的触发器常非 button）
             let els = [...document.querySelectorAll(
-              'button, [role=button], .user-nickname, .el-dropdown > *, span')]
-              .filter(e => (e.textContent||'').trim() === label
+              'button, [role=button], .user-nickname, .el-dropdown > *, span, input[type=submit], input[type=button]')]
+              .filter(e => ((e.textContent || e.value || '') + '').trim() === label
                 && e.isConnected);
             // 可见过滤后再判唯一（ERPNext 铁证：页面有隐藏模板副本+真按钮
             // =2 命中直接 miss——隐藏者不参与唯一性竞争）
@@ -1329,7 +1339,11 @@ async function execute(
         // 新增/新建类时点击后应有 modal——无则 elClick 双通道重试（真机
         // 实证：trusted 坐标点击在 JeecG 偶发落空[run943]，elClick 同钮
         // 必开——两通道互补；重试仍无 modal 才如实 miss）
-        const expectModal = /新增|新建|添加|创建|New|Create|Add/i.test(label)
+        // s44 实证（Dolibarr「创建合作方」input[submit]）：expect_write 步
+        // 是提交按钮（整页跳转无 modal）——expectModal 必须排除，否则
+        // 点击成功却因无 modal 误判 miss
+        const expectModal = !ins.expect_write
+          && /新增|新建|添加|创建|New|Create|Add/i.test(label)
           && !/取消|关闭/.test(label);
         if (expectModal) {
           const modalOpen = async (): Promise<boolean> => {
@@ -1536,12 +1550,16 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
     const visible = (el) => { if (!el.isConnected) return false;
       const r = el.getBoundingClientRect();
       return r.width > 0 && r.height > 0; };
+    // input[type=submit] 无 textContent——其 value 是人读标签（Dolibarr
+    // 「创建合作方」铁证：按钮全按 textContent 匹配必 miss）
+    const txt = (el) => ((el.textContent || el.value || '') + '').trim();
     for (const c of candidates) {
       let els = [];
       try {
         if (c.kind === "role") {
-          const all = [...document.querySelectorAll('[role="button"], button')]
-            .filter(el => visible(el) && (el.textContent||'').trim() === label);
+          const all = [...document.querySelectorAll(
+            '[role="button"], button, input[type=submit], input[type=button]')]
+            .filter(el => visible(el) && txt(el) === label);
           // 多命中时模态/抽屉内优先（JeecG 保存步实证：列表页工具栏
           // 与模态 footer 同名"保存"——first 取到列表页错按钮）
           const inModal = all.filter(el => el.closest(
@@ -1578,8 +1596,9 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
           const rows = [...document.querySelectorAll(c.selector)]
             .filter(r => (r.textContent || "").toLowerCase().includes((c.anchor || "").toLowerCase()));
           for (const row of rows) {
-            const trig = [...row.querySelectorAll("a, span, button, [role=button]")]
-              .filter(el => visible(el) && (el.textContent || "").trim() === label);
+            const trig = [...row.querySelectorAll(
+              "a, span, button, [role=button], input[type=submit], input[type=button]")]
+              .filter(el => visible(el) && txt(el) === label);
             if (trig.length) {
               els = [trig[0]]; rowAnchor = c.anchor || "";
               break;
@@ -1590,8 +1609,9 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
           // querySelectorAll 不支持会静默空（Odoo 行内 <a>S00001</a> 实证：
           // 唯一命中通道）。等价语义：全可见元素精确文本匹配，优先可
           // 交互元素（a/button）再泛元素
-          const exact = (el) => (el.textContent || "").trim() === label;
-          const interact = [...document.querySelectorAll("a, button, [role=button]")]
+          const exact = (el) => txt(el) === label;
+          const interact = [...document.querySelectorAll(
+            "a, button, [role=button], input[type=submit], input[type=button]")]
             .filter(el => visible(el) && exact(el));
           if (interact.length) { els = [interact[0]]; }
           else {

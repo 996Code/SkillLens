@@ -1,0 +1,50 @@
+[
+ {
+  "run_id": 2889,
+  "status": "pass",
+  "writes": 0,
+  "steps": 5,
+  "step_results": [
+   [
+    3,
+    "ok"
+   ],
+   [
+    4,
+    "miss"
+   ],
+   [
+    5,
+    "ok"
+   ]
+  ],
+  "system": "Dolibarr",
+  "skill": 315,
+  "key": "name",
+  "val": "doli5627A"
+ },
+ {
+  "run_id": 2890,
+  "status": "pass",
+  "writes": 0,
+  "steps": 5,
+  "step_results": [
+   [
+    3,
+    "ok"
+   ],
+   [
+    4,
+    "miss"
+   ],
+   [
+    5,
+    "ok"
+   ]
+  ],
+  "system": "Dolibarr",
+  "skill": 315,
+  "key": "name",
+  "val": "doli5627B"
+ }
+]

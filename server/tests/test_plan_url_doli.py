@@ -63,3 +63,11 @@ def test_action_time_url_still_supports_nav_chain():
         _act("http://h/app/customer/new"),
     ]
     assert _plan_url(events).endswith("/app/customer/new")
+
+
+def test_doli_create_button_annotated():
+    """s44 假 pass 实证（run 2890）：Dolibarr「创建合作方」input[submit]
+    型保存步——经典表单提交无 fetch 证据（证据派生不命中）→ 词表兜底
+    必须覆盖「创建」。"""
+    from app.replay.plan import WRITE_SUB
+    assert "创建" in WRITE_SUB

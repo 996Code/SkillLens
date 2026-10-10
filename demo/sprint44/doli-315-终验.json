@@ -1,0 +1,50 @@
+[
+ {
+  "run_id": 2895,
+  "status": "fail",
+  "writes": 0,
+  "steps": 4,
+  "step_results": [
+   [
+    2,
+    "ok"
+   ],
+   [
+    3,
+    "ok"
+   ],
+   [
+    4,
+    "error"
+   ]
+  ],
+  "system": "Dolibarr",
+  "skill": 315,
+  "key": "name",
+  "val": "doli6470G"
+ },
+ {
+  "run_id": 2896,
+  "status": "fail",
+  "writes": 0,
+  "steps": 4,
+  "step_results": [
+   [
+    2,
+    "ok"
+   ],
+   [
+    3,
+    "ok"
+   ],
+   [
+    4,
+    "error"
+   ]
+  ],
+  "system": "Dolibarr",
+  "skill": 315,
+  "key": "name",
+  "val": "doli6499H"
+ }
+]

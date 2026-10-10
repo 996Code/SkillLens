@@ -4,7 +4,10 @@ from app.ingestion.windows import build_windows
 # submit 类 click 词表——单一事实源（runner 步循环与 executor 编译共用，
 # 漂移由 test_executor_protocol.py::TestExpectWriteAnnotation 锁定）。
 WRITE_EXACT = {"getitems", "yes", "create"}
-WRITE_SUB = ("save", "submit", "确认", "保存", "提交")
+# 「创建」入 WRITE_SUB（s44 实证：Dolibarr「创建合作方」是 input[submit]
+# 型保存按钮——经典表单整页提交无 fetch 证据，证据派生不命中，词表
+# 是唯一兜底）
+WRITE_SUB = ("save", "submit", "确认", "保存", "提交", "创建")
 _CONFIRM_NEXT = ("确定", "ok", "是")
 
 
