@@ -38,17 +38,26 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
 | 用户报障闭环 | 131 run 洪泛三防线（plan 节流 409/SW 持久锁）；面板 TDZ 永卡修复；系统隔离失效修复；免登录（PLUGIN_TRUST+plugin-session） | 2026-10-09 |
 | AK 异常收敛层 | 四码分类（cancelled/timeout/transient/fatal）；双端预算传递（run 120s 硬封顶+CDP terminateExecution 强杀）；通道熔断（OPEN 快败 e2_infra）；白话错误映射 | f0959f3 |
 
+## 2.5 2026-10-10 会话增量（24 提交，交接前必读）
+
+本节由当日会话追加（c945bcf→4160d42 全链在 git log）：
+- **AK6 收官**：批次1（风暴四缺口：running 守卫/收割常态化/终态拒收/插件四码）+批次2（swallow 收敛件）+批次3（extension 盘点）——「决策吞错零静默」。
+- **AM 全片**：期望-观测对比（expect_write=证据派生∪词表→写水位快败）+登录守卫+failureKind 三态+插件 run 步骤合成（详情页从"无步骤"到全呈现）。
+- **AN 闭环**：pickedRow+${stepN.row}+row_anchor_from 注入（链 14 E2E：A 选行→B 行操作转向同列）。
+- **s44 换参矩阵**：换参机制全验证（ERPNext 6/6+Odoo 2/2+Snipe 4/4+Dolibarr 187+315）。
+- **315/303 追踪链**：编译器 3 污染（__ID__ 锚/动作时点锚/步级异 host goto）+执行器 8 缺陷（input[submit] 五通道/expectModal/假 pass 收口/**文档型写证据导航丢失**/error 路径证据丢弃）+判定层假 pass 收口——全部真机实证闭环。
+- **基础设施**：testpaths（收集地雷）/test.db 每进程 pid 隔离（lesson #59 机制化）/lessons #56-59。
+- 基线：**server 720 / web 81 / ext 141**。
+
 ## 3. 差距清单（下一步工作，按优先级）
 
-### 高（下一冲刺）
-1. **AK6 存量迁移**：61 处散落 except/catch 分批收敛到 ExecOutcome 出口
-   （高价值点已收敛：runSkill/startRunOnTab/run_replay 熔断闸）。做法：
-   每批 5-8 处，行为等价回归护航，豁免清单记录在案。
-2. **跨步状态传递**：链内"选择类输出→输入"（Snipe 资产查找→选中→状态
-   更新链因未传选择 fail 的实证）。设计候选：步骤产物句柄（picked row
-   ref）+ 下一步 anchor 注入。这是编排渗透率从 7%→30% 的钥匙。
-3. **多轮×换参战役**：四系统录制补课的第二轮（换参回放验证——unique
-   推荐+fill_ 候选已有，缺矩阵化执行）。
+### 高（下一冲刺）——原三高优已全部完成（见 §2.5）
+1. **Snipe 303 多 Save 歧义**：create 页两个可见 Save（多命中）——点击
+   ok 但未触发业务写（3 写全为 __lazyLoad 框架噪声）。需页级语义消歧
+   （主表单 Save vs 行级 Save）。主链路（goto/fill/select2）已修复。
+2. **generation 代际校验**（L3，zcode 模式）：extension 会话代际号——
+   服务端拒旧代际一切写（SW 重启重复消费的结构性根治；现靠持久锁
+   +终态拒收兜底）。动协议面，需 52 链真机回归支撑。
 
 ### 中
 4. ERPNext 技能深录（当前 2/3；SO 转单状态依赖已归档待跨步传递解锁）
