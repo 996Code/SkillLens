@@ -44,6 +44,12 @@ describe("词表扩充（安全红线评审：常见凭据形态）", () => {
 });
 
 describe("redactNetworkBody（执行器 CDP 网络证据脱敏）", () => {
+  it("multipart 请求体整段掩码（分节含密码不外泄）", () => {
+    const mp = ["--X", 'Content-Disposition: form-data; name="password"', "", "secret123", "--X--"].join(String.fromCharCode(13, 10));
+    const out = redactNetworkBody(mp);
+    expect(out).toContain("[REDACTED multipart");
+    expect(out).not.toContain("secret123");
+  });
   it("JSON 响应体递归脱敏敏感键", () => {
     const body = JSON.stringify({ token: "abc", user: { api_key: "k1", name: "n" } });
     const out = JSON.parse(redactNetworkBody(body));
@@ -73,3 +79,4 @@ describe("redactNetworkUrl", () => {
     expect(redactNetworkUrl("not a url ://")).toBe("not a url ://");
   });
 });
+

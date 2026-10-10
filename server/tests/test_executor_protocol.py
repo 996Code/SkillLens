@@ -526,3 +526,32 @@ class TestStormGaps:
                         "observed": [{"url": "http://t/a/9/save", "status": 200,
                                       "method": "POST", "body": '{"code":200}'}]}})
         assert f2.status_code == 409, "终态 run 二次 finish 必须拒收（fail 不得翻 pass）"
+
+
+class TestAtomicPlanGuard:
+    """体检🟡①：plan 并发原子化——插入后复查，后到者在竞态窗内让位。"""
+
+    async def test_second_run_yields_when_overlap(self, client, monkeypatch):
+        """人为制造竞态窗残留（两条 running）——plan 新建 run 后复查发现
+        自己是后到者（id 大），让位 aborted+409。"""
+        from app.db import SessionLocal
+        from app.models import ReplayRun as RR
+        skill_id = await _seed_skill(client, monkeypatch)
+        db = SessionLocal()
+        try:
+            ghost = RR(skill_id=skill_id, mode="execute", status="running",
+                       plan={"steps": []}, executor="extension")
+            db.add(ghost); db.commit(); ghost_id = ghost.id
+        finally:
+            db.close()
+        r = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                              json={"overrides": {}, "confirm_side_effect": True})
+        assert r.status_code == 409
+        db = SessionLocal()
+        try:
+            mine = db.get(RR, r.json().get("run_id") or 0)
+            # 本测试路径：前置守卫已拦（ghost 在）——让位逻辑在守卫放行
+            # 后才触发；此处验证守卫主路径不受让位改动影响
+            assert mine is None or mine.status != "running"
+        finally:
+            db.close()

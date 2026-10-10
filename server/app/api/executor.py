@@ -274,6 +274,19 @@ async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
     db.add(run)
     db.commit()
     db.refresh(run)
+    # 体检🟡①：并发原子化——前置 count 守卫有毫秒级 check-then-insert
+    # 竞态窗。插入后复查：同 skill 出现 >1 条 running 时，自己（id 较
+    # 大者=后到）立即让位回滚为 aborted——无迁移、真原子（先到者胜）
+    siblings = db.query(ReplayRun).filter(
+        ReplayRun.skill_id == skill_id,
+        ReplayRun.executor == "extension",
+        ReplayRun.status == "running").order_by(ReplayRun.id).all()
+    if len(siblings) > 1 and siblings[-1].id == run.id:
+        run.status = "aborted"
+        db.commit()
+        db.refresh(run)
+        raise HTTPException(
+            409, "该技能已有执行进行中（并发竞争让位）——请先等它完成或停止")
     # P1 交互画像随 plan 下发（执行器解释——系统交互差异声明式适配）；
     # 同时落 run.plan（复现/诊断可查）。
     # P2.5 定位方式：goto URL → url_matches 通配符自动配对（油猴 @match

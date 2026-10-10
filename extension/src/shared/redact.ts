@@ -44,6 +44,14 @@ export function redactValue(key: string, value: unknown): unknown {
   return value;
 }
 
+/** 体检🟡⑤：fill 步 value_after 回传脱敏——label 命中敏感词表
+ * （密码型字段）时置 [REDACTED]，明文不落 received（C3 入库面）。
+ * 与 redactValue 同词表（SENSITIVE_KEY_RE 单一源）。 */
+export function redactValueAfter(label: string, value: unknown): string {
+  const text = String(value ?? "");
+  return SENSITIVE_KEY_RE.test(label || "") ? MASK : text;
+}
+
 // ---- 执行器网络证据脱敏（与 injected/net-hook.js 同源语义——CDP 路径
 // 复用，安全红线：响应体/URL query 中的凭据不得明文出行）----
 
@@ -52,6 +60,11 @@ export function redactNetworkBody(raw: unknown, maxChars = 2000): string {
   try {
     return JSON.stringify(redactValue("body", JSON.parse(text))).slice(0, maxChars);
   } catch {
+    // 体检🟡④：multipart/form-data——分节结构脱敏复杂且常含文件/密码
+    // 字段，宁缺毋漏整段掩码（回放断言不依赖 multipart 明文）
+    if (/^--[^\r\n]+\r?\nContent-Disposition/i.test(text.slice(0, 200))) {
+      return `[REDACTED multipart body ${text.length}b]`.slice(0, maxChars);
+    }
     // 非 JSON 字符串：urlencoded 键值形态脱敏（password=x&…），其余原样截断
     return text
       .replace(/(^|[&;])([^=&;]+)=([^&;]*)/g,

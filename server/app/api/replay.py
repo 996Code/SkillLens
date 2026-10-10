@@ -75,16 +75,23 @@ async def get_run(run_id: int, db: Session = Depends(get_db)) -> dict:
     # 三态标签呈现（服务端 run 不受影响——原值直通）。
     if (run.executor == "extension" and not executed
             and isinstance(run.plan, dict)):
-        ins_by_seq = {i.get("seq"): i for i in
-                      run.plan.get("executor_instructions") or []}
+        instructions = run.plan.get("executor_instructions")
+        ins_by_seq = {i.get("seq"): i for i in instructions}             if isinstance(instructions, list) else {}
+        state = run.plan.get("executor_state")
+        received = state.get("received") if isinstance(state, dict) else None
         executed = []
-        for rec in (run.plan.get("executor_state") or {}).get("received") or []:
+        # 体检🟢：received 脏数据（非 dict 条目）逐条防御——跳过不炸
+        for rec in received if isinstance(received, list) else []:
+            if not isinstance(rec, dict):
+                continue
             ins = ins_by_seq.get(rec.get("seq")) or {}
+            ev = rec.get("evidence")
             executed.append({
-                "kind": ins.get("op"),
-                "label": ins.get("label") or ins.get("name"),
+                "kind": ins.get("op") if isinstance(ins, dict) else None,
+                "label": (ins.get("label") or ins.get("name"))
+                         if isinstance(ins, dict) else None,
                 "ok": rec.get("result") == "ok",
-                "error": (rec.get("evidence") or {}).get("error")
+                "error": (ev.get("error") if isinstance(ev, dict) else None)
                          or (None if rec.get("result") == "ok"
                              else rec.get("result"))})
     return {"id": run.id, "skill_id": run.skill_id, "mode": run.mode, "status": run.status,

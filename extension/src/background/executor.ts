@@ -4,7 +4,7 @@
 // 执行可信输入；先订阅 Network 后动作（lesson #30 时序）。
 export {};
 
-import { redactNetworkBody, redactNetworkUrl } from "../shared/redact";
+import { redactNetworkBody, redactNetworkUrl, redactValueAfter } from "../shared/redact";
 import { AGENT_URL as AGENT } from "../shared/types";
 import { resolveStepOverrides } from "../shared/chain-rules";
 import { Budget } from "../shared/budget";
@@ -163,12 +163,17 @@ export async function runSkill(
       // 定语义=动作发生，非响应落地）。
       const m = (params?.request?.method || "GET").toUpperCase();
       if (m === "POST" || m === "PUT" || m === "PATCH") {
-        networkLog.push({
-          url: redactNetworkUrl(params?.request?.url || ""),
-          status: undefined, requestId: params?.requestId, method: m,
-          reqBody: redactNetworkBody(params?.request?.postData || ""),
-          body: "",
-        });
+        // 体检🟡④：CDP 重定向对同 requestId 重发 requestWillBeSent——
+        // 已入列不重复（否则水位虚高，AM1 可能把真拦截误判已写）
+        if (!networkLog.some((n) => n.requestId === params?.requestId
+                               && n.method === m)) {
+          networkLog.push({
+            url: redactNetworkUrl(params?.request?.url || ""),
+            status: undefined, requestId: params?.requestId, method: m,
+            reqBody: redactNetworkBody(params?.request?.postData || ""),
+            body: "",
+          });
+        }
       }
       return;
     }
@@ -290,7 +295,9 @@ export async function runSkill(
         const mark = writeResponseCount(networkLog);
         const prePull = mark > recentWriteMark;
         let sawWrite = prePull;
-        for (let w = 0; w < 20 && !sawWrite; w++) {
+        // 体检🟡③：水位等待受 runBudget 约束——预算耗尽立即放弃等待
+        // （走无写判定语义），不叠加固定 6s 超支
+        for (let w = 0; w < 20 && !sawWrite && !runBudget.exhausted(); w++) {
           await sleep(300);
           if (writeEffectFired(networkLog, mark)) sawWrite = true;
         }
@@ -867,7 +874,7 @@ async function execute(
           await sleep(800);
           onProgress(`fill ${label}（Get Items API 直调 ${mv}）`);
           return { seq: ins.seq, result: "ok",
-                   evidence: { network: [], toasts: [], value_after: String(ins.value) } };
+                   evidence: { network: [], toasts: [], value_after: redactValueAfter(String(ins.label || ins.name || ""), ins.value) } };
         }
         onProgress(`Get Items API 未成（${mv.slice(0, 40)}）——fill UI 路径`);
       }
@@ -909,14 +916,14 @@ async function execute(
             await sleep(800);
             onProgress(`fill ${label}（Get Items API 直调 ${mv}）`);
             return { seq: ins.seq, result: "ok",
-                     evidence: { network: [], toasts: [], value_after: val } };
+                     evidence: { network: [], toasts: [], value_after: redactValueAfter(String(ins.label || ins.name || ""), val) } };
           }
           onProgress(`Get Items API 未成（${mv.slice(0, 36)}）——UI 路径`);
         }
         (globalThis as any).__lastSearchValue = /search/i.test(label) ? val : "";
         await sleep(2500);
         onProgress(`fill ${label}（JS 设值）`);
-        return { seq: ins.seq, result: "ok", evidence: { network: [], toasts: [], value_after: val } };
+        return { seq: ins.seq, result: "ok", evidence: { network: [], toasts: [], value_after: redactValueAfter(String(ins.label || ins.name || ""), val) } };
       }
       // 主 frame 三级+name 查找全空——iframe 表单兜底（禅道 272 铁证：
       // story/create 表单在外壳页的内嵌 iframe——zcode domSnapshot 同样
@@ -970,7 +977,7 @@ async function execute(
               await sleep(300);
               onProgress(`fill ${label}（iframe 内设值）`);
               return { seq: ins.seq, result: "ok",
-                       evidence: { network: [], toasts: [], value_after: v } };
+                       evidence: { network: [], toasts: [], value_after: redactValueAfter(String(ins.label || ins.name || ""), v) } };
             }
           } catch { /* 此 frame 不可入——继续下一个 */ }
         }
@@ -1549,7 +1556,7 @@ async function execute(
           }
           return target.value;
         })()`, returnByValue: true });
-      evidence.value_after = setVal?.result?.value || "";
+      evidence.value_after = redactValueAfter(label, setVal?.result?.value || "");
       // blur：Odoo 等框架的 onchange/save 触发链需要输入框失焦（官方
       // tour 实证同模式）；下一个动作前统一 blur
       await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
