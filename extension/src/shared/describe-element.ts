@@ -131,7 +131,16 @@ function hostRowText(el: Element): string | undefined {
     if (type !== "checkbox" && type !== "radio") return undefined;
   } else if (!(el.classList?.contains("ant-dropdown-trigger")
       || el.closest(".ant-dropdown-trigger"))) {
-    return undefined;
+    // AN 跨步状态传递：表格行内的链接/按钮（行操作——Update/Checkout
+    // 等同文本多行不可区分，行文本是唯一判别信号；主键链接同获行锚
+    // ——回放 row-trigger 匹配更稳）。Snipe 实证：Update 链接无行文本
+    // → 无 row-trigger 候选 → 行锚注入无处落。
+    const inRow = el.closest(
+      ".list-item, .grid-row, tr, [role=row], .ant-table-row");
+    const isRowAction = inRow !== null
+      && (tag === "A" || tag === "BUTTON"
+          || el.getAttribute("role") === "button");
+    if (!isRowAction) return undefined;
   }
   const row = el.closest(
     ".list-item, .grid-row, tr, [role=row], [role=option], .ant-table-row");

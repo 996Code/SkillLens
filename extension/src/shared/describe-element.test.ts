@@ -261,3 +261,17 @@ test("S43-4 行勾选框 labels 含宿主行文本（checkbox 区分信号）", 
     `labels 应含行文本: ${JSON.stringify(desc.labels)}`);
   row.remove();
 });
+
+test("AN 行操作链接 labels 含宿主行文本（同文本多行判别信号）", () => {
+  // Snipe 行操作（Update/Checkout 链接）：每行同文本不可区分——行文本
+  // 是唯一判别信号（row-anchor 编译原料 → row-trigger 候选 → pickedRow）
+  const row = document.createElement("tr");
+  row.innerHTML = '<a href="#">eate25244乙</a><a href="#">SN-eate25244乙</a>'
+    + '<a href="#" class="row-action">Update</a>';
+  document.body.appendChild(row);
+  const el = row.querySelector(".row-action")!;
+  const desc = describeElement(el);
+  assert.ok(desc.labels.some((l: string) => l.includes("eate25244乙")),
+    `labels 应含行文本: ${JSON.stringify(desc.labels)}`);
+  row.remove();
+});

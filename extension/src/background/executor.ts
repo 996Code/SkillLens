@@ -233,15 +233,17 @@ export async function runSkill(
       }
       // AN row_anchor_from 注入：链模式传入的行键直接替换本步 row-trigger
       // 候选的 anchor（选择类输出→输入——无需知道旧锚文本，141 铁证：
-      // 「请选择列表项」=前序选择未传递）。注入只做一次（首个带行锚的 click）。
+      // 「请选择列表项」=前序选择未传递）。注入时 row-trigger 候选**前置**
+      // ——通用文本候选会命中任意行的同名链接（E2E 实证：Update 文本
+      // 候选先中首行，带锚候选没机会跑）。注入只做一次（首个带行锚的 click）。
       if (rowAnchor && instruction.op === "click" && !anchorInjected) {
-        for (const cand of instruction.resolve_candidates || []) {
-          if (cand?.kind === "row-trigger" || cand?.anchor) {
-            cand.anchor = rowAnchor;
-            anchorInjected = true;
-          }
-        }
-        if (anchorInjected) {
+        const cands: any[] = instruction.resolve_candidates || [];
+        const rt = cands.filter(c => c?.kind === "row-trigger" || c?.anchor);
+        if (rt.length) {
+          instruction.resolve_candidates = [
+            ...rt, ...cands.filter(c => !rt.includes(c))];
+          for (const cand of rt) cand.anchor = rowAnchor;
+          anchorInjected = true;
           onProgress(`行锚注入：${rowAnchor.slice(0, 40)}（来自前序步选择）`);
         }
       }
@@ -249,6 +251,8 @@ export async function runSkill(
         onProgress, stepsSinceGoto);
       stepsSinceGoto = instruction.op === "goto" ? 0 : stepsSinceGoto + 1;
       steps++;
+      // AN：本步行键聚合（evidence.pickedRow 由 execute 落——链模式原料）
+      if (ev?.evidence?.pickedRow) stepPickedRows.push(ev.evidence.pickedRow);
       // AM1 写效果水位（期望-观测对比，docs/specs/2026-10-10-am-*.md）：
       // expect_write 指令（服务端编译期声明）执行后必须观测到写响应——
       // 无写=静默失败（提交被表单校验拦截），快败+白话直达。预拉放行：
@@ -1009,11 +1013,8 @@ async function execute(
                evidence: { ...evidence, miss: label, page_texts: texts } };
     }
     // AN 跨步状态传递：行触发命中时把 pickedRow（行键）落进证据——
-    // runSkill 聚合返回，链模式 ${stepN.row}/row_anchor_from 的原料
-    if (resolved.pickedRow) {
-      evidence.pickedRow = resolved.pickedRow;
-      stepPickedRows.push(resolved.pickedRow);
-    }
+    // runSkill 步循环聚合返回，链模式 ${stepN.row}/row_anchor_from 的原料
+    if (resolved.pickedRow) evidence.pickedRow = resolved.pickedRow;
     // 通用滚入：行操作触发器常在视口右缘外（AG5 铁证 rect.x=1409>视口
     // 1280——坐标点击落空）。不限 row-trigger——role 命中的行内「更多」
     // 同病（270 铁证：rect 未滚 x=1438 落空，滚后 dropdown 才开）。
@@ -1528,7 +1529,6 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
   // 主 frame label 命中会点错对象；label 只在子 frame 兜底）
   const js = `JSON.stringify((function() {
     let rowAnchor = "";
-    let pickedRow = "";
     const skipLabel = /*SKIP_LABEL*/${isMainFrame ? "true" : "false"}/**/;
     const candidates = ${JSON.stringify(cands)}
       .filter(c => !skipLabel || c.strategy !== 'label');
@@ -1582,9 +1582,6 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
               .filter(el => visible(el) && (el.textContent || "").trim() === label);
             if (trig.length) {
               els = [trig[0]]; rowAnchor = c.anchor || "";
-              const cell = row.querySelector("td, th");
-              const txt = ((cell || row).textContent || "").trim();
-              if (txt) pickedRow = txt.slice(0, 80);
               break;
             }
           }
@@ -1622,10 +1619,24 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
           if (inRow.length >= 1) pick = inRow[0];
         }
         const r = pick.getBoundingClientRect();
+        // AN 跨步状态传递：命中元素在表格行内 → 捕获行键（首个非空格，
+        // ≤80 字符）。不限 row-trigger 候选——唯一 label 点击走早期候选
+        // 同样产出句柄（E2E 实证：tag 链接点击走文本候选，row-trigger
+        // 未跑导致 pickedRow 落空）
+        let prTxt = "";
+        const prow = pick.closest(
+          '.ant-table-row, .list-item, .grid-row, tr, [role=row]');
+        if (prow) {
+          for (const cell of prow.querySelectorAll("td, th")) {
+            const t = (cell.textContent || "").trim();
+            if (t) { prTxt = t.slice(0, 80); break; }
+          }
+          if (!prTxt) prTxt = (prow.textContent || "").trim().slice(0, 80);
+        }
         return {hit: true, strategy: c.strategy, tagCls: (pick.className || ""),
           tagName: (pick.tagName || "").toLowerCase(),
           anchorTxt: rowAnchor || "",
-          pickedRow: pickedRow || "",
+          pickedRow: prTxt,
           rect: {x: r.x, y: r.y, width: r.width, height: r.height}};
       }
     }

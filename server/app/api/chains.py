@@ -159,6 +159,8 @@ async def get_chain(chain_id: int, db: Session = Depends(get_db)) -> dict:
                       "enabled": st.get("enabled", True),
                       "overrides": st.get("overrides") or {},
                       "cleanup": st.get("cleanup"),
+                      # AN 跨步状态传递：行锚注入来源步号（执行页消费）
+                      "row_anchor_from": st.get("row_anchor_from"),
                       "skill": brief})
     return {"id": row.id, "name": row.name, "system": row.system,
             "steps": steps, "created_at": str(row.created_at)}

@@ -76,3 +76,28 @@
   且近期语料无真 row-trigger 技能对（139 的锚是选择器非行锚）。
 - **第二轮前置**：录制「查找→选中（行触发）→更新」技能对（Snipe
   资产行勾选/行操作），再组链验收 row_anchor_from 注入闭环。
+
+## 六、第二轮 E2E 闭环（2026-10-10，链 14=313 查找点行→314 行内 Update）
+
+**闭环成功**：A（run 2838）pass 且 pickedRow=eate25244乙；B（run 2839）
+pass 且 Update 点击 pickedRow=**eate25244乙**（注入生效——非录制首行
+eate25514甲）。选择类输出→输入全链路：A 选的行→row_anchor_from 注入
+→B 的行操作转向同一行。
+
+第二轮修的四个真缺陷（每轮真机实证——E2E 修复轮纪律的价值）：
+
+1. **行操作链接不采集行文本**（capture 侧）：hostRowText 只认
+   checkbox/radio 和 ant-dropdown-trigger——表格行内普通链接/按钮
+   （Update/Checkout 等同文本多行不可区分）无行锚候选。修：行内
+   a/button/[role=button] 同样采集（describe-element +1 用例）。
+2. **pickedRow 捕获绑死 row-trigger 候选**：唯一 label 点击（tag 链接）
+   走早期文本候选命中，row-trigger（捕获点）不跑→句柄落空。修：捕获
+   移到通用 resolve 返回——命中元素在表格行内即捕获行键。
+3. **注入锚的 row-trigger 排序最后**：通用文本候选先命中任意行同名
+   链接（Update×18 行）→带锚候选没机会跑。修：注入时 row-trigger
+   候选**前置**。
+4. **链详情序列化丢字段**：GET /chains/{id} 的 steps 不含
+   row_anchor_from——执行页拿不到注入声明。修：序列化补字段。
+
+（另修脚本级：stepPickedRows 作用域 bug——push 写在 execute() 里
+引用了 runSkill 局部变量；Snipe 搜索框 fill 超时——录制流改直点行链接。）
