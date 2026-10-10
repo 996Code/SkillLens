@@ -498,7 +498,7 @@ async function execute(
           onProgress(`导航后实际页面: ${finalUrl.slice(0, 60)}`);
           if (finalUrl.startsWith("chrome-error://") || finalUrl === "about:blank") {
             return { seq: ins.seq, result: "error",
-                     evidence: { ...evidence, error: `目标站不可达: ${ins.url}` } };
+                     evidence: { ...evidence, error: `目标站不可达: ${redactNetworkUrl(String(ins.url || ""))}` } };
           }
           break;
         }
@@ -550,7 +550,7 @@ async function execute(
         onProgress(`登录态丢失（跳到登录页 ${finalUrl.slice(0, 50)}）——快败`);
         return { seq: ins.seq, result: "error",
                  evidence: { ...evidence, error:
-                   `登录态丢失：目标页跳转到登录页（${finalUrl.slice(0, 60)}）`
+                   `登录态丢失：目标页跳转到登录页（${redactNetworkUrl(finalUrl.slice(0, 60))}）`
                    + "——请先在浏览器登录目标系统后重试" } };
       }
     } catch { /* 探测失败 fail-open */ }

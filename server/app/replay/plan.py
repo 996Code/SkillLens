@@ -77,7 +77,7 @@ def compile_replay_plan(events: list[dict], overrides: dict[str, str]) -> dict:
             steps.append({"kind": "input", "name": name,
                           "value": str(overrides.get(name, original)),
                           "original_value": original})
-    # 303 铁证：首条 navigation 可能是跨系统停留页（192.168.99.22/404）
+    # 303 铁证：首条 navigation 可能是跨系统停留页（192.0.2.99/404）
     # ——url 与骨架版同源（动作时点+host 判定），不再直通首 nav
     return {"url": _plan_url(events), "steps": steps}
 

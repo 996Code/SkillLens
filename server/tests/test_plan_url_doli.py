@@ -74,18 +74,18 @@ def test_doli_create_button_annotated():
 
 
 def test_nav_step_insert_skips_offhost():
-    """303 铁证：录制混入跨系统停留页（192.168.99.22/404）被编译成
+    """303 铁证：录制混入跨系统停留页（192.0.2.99/404）被编译成
     goto 步——回放第一动作就导航离开目标系统，后续全 miss（Snipe
     303 步6+ miss 根因）。修：goto 步插入只认 plan 同 host 导航
     （与 _plan_url 的 action-host 纪律一致）。"""
     from app.replay.plan import compile_skeleton_plan
     events = [
-        {"seq": 0, "ts": 0, "kind": "navigation", "payload": {"url": "http://192.168.99.22/404"}},
+        {"seq": 0, "ts": 0, "kind": "navigation", "payload": {"url": "http://192.0.2.99/404"}},
         {"seq": 1, "ts": 100, "kind": "navigation", "payload": {"url": "http://127.0.0.1:8081/hardware/create"}},
         {"seq": 2, "ts": 200, "kind": "action", "payload": {"type": "input", "name": "t", "value": "x", "url": "http://127.0.0.1:8081/hardware/create", "target": {}}},
         {"seq": 3, "ts": 300, "kind": "action", "payload": {"type": "click", "target": {"label": "Save"}, "url": "http://127.0.0.1:8081/hardware/create"}},
     ]
     plan = compile_skeleton_plan(events, [], 's1', {}, [])
     gotos = [s["url"] for s in plan.get("steps", []) if s.get("kind") == "goto"]
-    assert all("192.168.99.22" not in u for u in gotos), f"异 host goto 混入: {gotos}"
+    assert all("192.0.2.99" not in u for u in gotos), f"异 host goto 混入: {gotos}"
     assert any("8081" in u for u in gotos), "目标 host 的多页导航仍应保留"

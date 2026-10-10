@@ -185,7 +185,7 @@ async def test_error_run_attribution_url_sanitized(client, monkeypatch):
 
     class FakePage:
         async def goto(self, url):
-            raise RuntimeError("net reset http://192.168.99.22:8080/mb3/login")
+            raise RuntimeError("net reset http://192.0.2.99:8080/mb3/login")
         async def wait_for_load_state(self, state, timeout=None): ...
         def on(self, *a): ...
         async def wait_for_timeout(self, ms): ...
@@ -206,5 +206,5 @@ async def test_error_run_attribution_url_sanitized(client, monkeypatch):
     body = (await client.post(f"/api/v1/skills/{skill_id}/replay",
                               json={"overrides": {}, "confirm_side_effect": True})).json()
     assert body["status"] == "error"
-    assert "192.168.99.22" not in (body.get("attribution") or "")
+    assert "192.0.2.99" not in (body.get("attribution") or "")
     assert "net reset" in (body.get("attribution") or "")

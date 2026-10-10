@@ -76,7 +76,7 @@ async def test_system_derivation_skips_error_pages(client):
         sid = str(uuid.uuid4())
         db.add(RecordingSession(id=sid, note="t-err-nav"))
         db.flush()
-        for seq, url in ((0, "http://192.168.99.22/404"),
+        for seq, url in ((0, "http://192.0.2.99/404"),
                          (1, "http://127.0.0.1:8069/web#action=x"),
                          (2, "http://127.0.0.1:8069/web#id=1")):
             db.add(RawEvent(session_id=sid, page_id="p", seq=seq, ts=seq,

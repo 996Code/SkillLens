@@ -136,6 +136,6 @@ class TestSwallow:
         import logging
         from app.exec.failures import swallow
         with caplog.at_level(logging.DEBUG, logger="skilllens"):
-            swallow("runner:x", RuntimeError("connect http://192.168.99.22/api failed"))
+            swallow("runner:x", RuntimeError("connect http://192.0.2.99/api failed"))
         msg = " ".join(r.getMessage() for r in caplog.records)
-        assert "192.168.99.22" not in msg and "<url>" in msg
+        assert "192.0.2.99" not in msg and "<url>" in msg
