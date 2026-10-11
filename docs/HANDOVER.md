@@ -53,18 +53,15 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
 ## 3. 差距清单（下一步工作，按优先级）
 
 ### 高（下一冲刺）——原三高优已全部完成（见 §2.5）
-（本清单 2026-10-10 收官批后仅剩一条，其余已清——见下）
-0. **Livewire 框架适配**（唯一剩余，独立特性立项）：303 终因=JS 设值
-   不同步 Livewire 组件状态（真机实证：原生 select 设值+dispatch
-   change 后 Save 仍 0 业务写——select2 隐藏层与 Livewire v3 的
-   wire:model 同步需专项：dispatch Livewire 事件或 trusted 输入流，
-   或录制面换 trusted 输入）。影响所有 Livewire 系统；303 主链路
-   （goto/fill/select2 定位）已全通。
-   ——已清项：收割 last_step_at 落列+索引（迁移 a7c8d9e0f1a2 已上
-   真实库，收割走列判据+TDD 2 用例）；generation 以「三通道新鲜度
-   闸」精简形态收口（storage 入口原有+port 通道补 at 校验+终态拒收
-   兜底——完整代际号为协议大改，当前防线已覆盖重放面）；健壮性体检
-   🔴🟡 全清（39f4044+edb439b）。
+**（差距清单 2026-10-11 全部清零）**
+- Livewire/select2 适配（5fee920）：303 三真根因修复（select2
+  mouseup+click+原生 change / fill 定位链 name 前置 / 跨系统脏断言
+  清除）——终验双 pass+库级确认；引擎级惠及所有 select2 系统。
+- 收割 last_step_at 落列+索引（迁移 a7c8d9e0f1a2）+generation 三
+  通道新鲜度闸+健壮性体检 🔴🟡 全清（39f4044+edb439b）——均已收口。
+
+下一步方向（新特性候选，非缺陷）：52 链全量回归轮 / 编排渗透率
+提升（row_anchor_from 推广到六系统业务链）/ 多账号并发与生产部署。
 
 ### 中
 4. ERPNext 技能深录（当前 2/3；SO 转单状态依赖已归档待跨步传递解锁）
