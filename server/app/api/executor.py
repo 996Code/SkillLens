@@ -546,6 +546,11 @@ async def executor_finish(run_id: int, body: ExecutorFinishRequest,
             run.status = "pass"
             if body.status == "fail" and only_miss:
                 run.flaky = True
+        elif not assertion_results:
+            # 空断言（技能未生成断言）：done 语义保持 pass——unverified
+            # 口径由 trends 层判（assertion_results 空即 unverified_pass，
+            # 与 P0-3 口径一致）；fail+空断言不恢复（无证据不放行）
+            run.status = "pass" if body.status == "done" else "fail"
         else:
             run.status = "fail"
 

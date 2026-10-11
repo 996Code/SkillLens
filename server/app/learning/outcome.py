@@ -82,6 +82,32 @@ def generate_assertions(db: Session, skill_id: int) -> list[OutcomeAssertion]:
                     continue
                 if any(k in t for k in _QUERY_LIKE_KEYS):
                     continue
+                # 跨系统污染守卫（链回归轮实证：296/301/302/304/305 断言
+                # 全混入 JeecG /framework/base-data 模板——录制会话流量
+                # 串台）：模板含完整 URL 且 host 与技能对齐会话 host 不符
+                # → 跳过（断言只认本系统证据）
+                if t.startswith("http") and "//" in t:
+                    try:
+                        from urllib.parse import urlparse as _up
+                        t_host = _up(t).netloc
+                        s_hosts = set()
+                        for _sid in (alignment.session_ids or []):
+                            nav = db.execute(
+                                select(RawEvent.payload).where(
+                                    RawEvent.session_id == _sid,
+                                    RawEvent.kind == "navigation").limit(3)
+                            ).scalars().all()
+                            for _pl in nav:
+                                _u = (_pl or {}).get("url") or ""
+                                if _u.startswith("http"):
+                                    s_hosts.add(_up(_u).netloc)
+                        if s_hosts and t_host and t_host not in s_hosts:
+                            logger.warning(
+                                "generate_assertions: skip cross-system "
+                                "template %r (skill hosts=%s)", t[:60], s_hosts)
+                            continue
+                    except Exception:
+                        pass
                 if (call.get("method") or "GET").upper() == "GET":
                     continue
                 rows.append(("api_status", t, 3,

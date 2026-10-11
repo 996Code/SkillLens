@@ -89,3 +89,22 @@ def test_nav_step_insert_skips_offhost():
     gotos = [s["url"] for s in plan.get("steps", []) if s.get("kind") == "goto"]
     assert all("192.0.2.99" not in u for u in gotos), f"异 host goto 混入: {gotos}"
     assert any("8081" in u for u in gotos), "目标 host 的多页导航仍应保留"
+
+
+def test_consecutive_goto_noise_collapsed():
+    """链回归轮实证（300/304）：录制含浏览性往返导航（订单页→第三方
+    详情→回订单页，中间无动作）——回放时实例 URL 落错页全 miss。
+    压缩规则：连续 goto 步（中间无动作）只保留最后一个（浏览轨迹非
+    业务步骤）。"""
+    from app.replay.plan import compile_skeleton_plan
+    events = [
+        {"seq": 0, "ts": 0, "kind": "navigation", "payload": {"url": "http://h/cmd/card.php?action=create"}},
+        {"seq": 1, "ts": 100, "kind": "action", "payload": {"type": "input", "name": "n", "value": "v", "url": "http://h/cmd/card.php?action=create", "target": {}}},
+        {"seq": 2, "ts": 200, "kind": "navigation", "payload": {"url": "http://h/soc/card.php?id=38"}},
+        {"seq": 3, "ts": 300, "kind": "navigation", "payload": {"url": "http://h/cmd/card.php?action=create"}},
+        {"seq": 4, "ts": 400, "kind": "action", "payload": {"type": "click", "target": {"label": "创建草稿"}, "url": "http://h/cmd/card.php?action=create"}},
+    ]
+    plan = compile_skeleton_plan(events, [], 's1', {}, [])
+    gotos = [s["url"] for s in plan.get("steps", []) if s.get("kind") == "goto"]
+    # 浏览往返（seq2→seq3 无动作）折叠：只留 seq3；动作间导航保留
+    assert gotos == ["http://h/cmd/card.php"], gotos

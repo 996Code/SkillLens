@@ -1233,9 +1233,12 @@ async function execute(
             const label = ${JSON.stringify(label)};
             // span 类触发器也算（若依 258 铁证：.user-nickname 是 span——
             // hover dropdown 的触发器常非 button）
+            // Dolibarr icon 链接族（新订单等）：title 属性承载人读标签
+            // （textContent 空）——title 参与匹配（与录制侧 describeElement
+            // 的 title 采集对齐）
             let els = [...document.querySelectorAll(
-              'button, [role=button], .user-nickname, .el-dropdown > *, span, input[type=submit], input[type=button]')]
-              .filter(e => ((e.textContent || e.value || '') + '').trim() === label
+              'button, [role=button], .user-nickname, .el-dropdown > *, span, input[type=submit], input[type=button], a[title]')]
+              .filter(e => ((e.textContent || e.value || e.title || '') + '').trim() === label
                 && e.isConnected);
             // 可见过滤后再判唯一（ERPNext 铁证：页面有隐藏模板副本+真按钮
             // =2 命中直接 miss——隐藏者不参与唯一性竞争）
@@ -1646,8 +1649,9 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
       const r = el.getBoundingClientRect();
       return r.width > 0 && r.height > 0; };
     // input[type=submit] 无 textContent——其 value 是人读标签（Dolibarr
-    // 「创建合作方」铁证：按钮全按 textContent 匹配必 miss）
-    const txt = (el) => ((el.textContent || el.value || '') + '').trim();
+    // 「创建合作方」铁证）；icon 链接（a[title]）title 承载标签（「新订单」
+    // 铁证）——三者并集参与匹配
+    const txt = (el) => ((el.textContent || el.value || el.title || '') + '').trim();
     for (const c of candidates) {
       let els = [];
       try {
@@ -1708,6 +1712,12 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
           const interact = [...document.querySelectorAll(
             "a, button, [role=button], input[type=submit], input[type=button]")]
             .filter(el => visible(el) && exact(el));
+          if (!interact.length) {
+            // title-only 链接兜底（icon 链接族——Dolibarr「新订单」）
+            const titled = [...document.querySelectorAll("a[title]")]
+              .filter(el => visible(el) && (el.title || '').trim() === label);
+            if (titled.length) { els = [titled[0]]; }
+          }
           if (interact.length) { els = [interact[0]]; }
           else {
             const any = [...document.querySelectorAll("a, button, span, td, div")]

@@ -252,7 +252,14 @@ def compile_skeleton_plan(events: list[dict], skeleton: list[dict], ref_session_
                     path = f"{m.group(1)}/app/{m.group(3)}/new"
             else:
                 continue
-            if nav_url and path not in seen_urls:
+            # 链回归轮实证（300/304）：连续 goto（中间无动作）=录制浏览
+            # 往返轨迹（订单页→第三方→回），非业务步骤——回放落错页全
+            # miss。插入时若 steps 尾已是 goto → 替换（保留最后一个）；
+            # 同 path 重复 goto（seen 命中）在替换场景也须更新
+            if steps and steps[-1].get("kind") == "goto":
+                steps[-1] = {"kind": "goto", "url": path}
+                seen_urls.add(path)
+            elif nav_url and path not in seen_urls:
                 seen_urls.add(path)
                 # 评审#3：goto 步携带归一化 URL（草稿尾缀已重写、query/hash
                 # 已剥）——原始 query 可能带会话 token，不得持久化进 plan；
