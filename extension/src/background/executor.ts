@@ -702,6 +702,51 @@ async function execute(
     // form-item label 三级查找+input 事件派发——ERPNext 234 PASS 实证；
     // resolver 候选对 fill 的 form-group 命中错元素/多元素 miss 实证）
     if (ins.op === "fill" && ins.value !== undefined) {
+      // select2 型目标适配（Snipe/Livewire 系统实证）：原生 select 被
+      // select2 接管（AJAX 懒加载选项）——JS 设值无效且选项未加载。
+      // 正确链=select2 open→轮询选项→mouseup+click（select2 4.x 监听
+      // mouseup，单纯 click 不选中——LWOK1 真机三字段终验实证）
+      try {
+        const s2 = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+          expression: `(async function(){
+            const label = ${JSON.stringify(label)};
+            const sel = document.querySelector('select[name="' + label + '"]');
+            if (!sel || !window.jQuery) return '';
+            if (!sel.parentElement || !sel.parentElement.querySelector('.select2-container')) return '';
+            const target = ${JSON.stringify(String(ins.value))};
+            for (let round = 0; round < 3; round++) {
+              // 前置 click 步可能已开下拉（触发器点击态不定）——先关再开
+              // 消除状态叠加（executor 链特有：click Select X → fill x_id）
+              try { jQuery(sel).select2('close'); } catch (e) { /* 未开 */ }
+              try { jQuery(sel).select2('open'); } catch (e) { return ''; }
+              for (let i = 0; i < 10; i++) {
+                await new Promise(r => setTimeout(r, 400));
+                const opt = [...document.querySelectorAll('.select2-results__option')]
+                  .find(o => o.textContent && o.textContent.includes(target)
+                    && o.getAttribute('aria-disabled') !== 'true');
+                if (opt) {
+                  opt.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
+                  opt.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                  await new Promise(r => setTimeout(r, 400));
+                  // select2 选中不走原生事件链——补 change 通知
+                  // Livewire wire:model（LWFIN2 实证：无此行 Save 提交空表单）
+                  sel.dispatchEvent(new Event('change', {bubbles: true}));
+                  await new Promise(r => setTimeout(r, 600));
+                  if (sel.value) return 'ok:' + sel.value;
+                }
+              }
+            }
+            return '';
+          })()`, returnByValue: true, awaitPromise: true }).catch(() => null);
+        const s2v = String(s2?.result?.value || "");
+        if (s2v.startsWith("ok:")) {
+          await sleep(400);
+          onProgress(`fill ${label}（select2 选项选中）`);
+          return { seq: ins.seq, result: "ok",
+                   evidence: { network: [], toasts: [],
+                               value_after: redactValueAfter(label, s2v.slice(3)) } };
+        }
+      } catch { /* 非 select2 页——走通用 fill 链 */ }
       // 直通+重试（模态/抽屉渲染窗口——JeecG 新增点击后模态 1-2s 才开，
       // 首次查找空实证）
       let setVal: any = null;
@@ -763,6 +808,18 @@ async function execute(
               }
             } catch (e) { /* 非 Frappe——通用链 */ }
             let target = null;
+            // ① name 精确匹配最优先（Snipe 303 铁证：label=asset_tags[1]
+            // 是 name 形态——placeholder/form-group 链全 miss，值从未
+            // 写进表单，Save 恒空表单被拦）
+            const byName = [...document.querySelectorAll(
+              'input[name="' + label + '"], textarea[name="' + label + '"]')]
+              .filter(e => e.getBoundingClientRect().width > 0);
+            if (byName.length === 1) target = byName[0];
+            else if (byName.length > 1) {
+              const inModal = byName.find(e => e.closest(
+                '.modal-content, .ant-modal-content, [role=dialog]'));
+              target = inModal || byName[0];
+            }
             // data-fieldname 多处同名（ERPNext 236 铁证：列表视图搜索栏与
             // Get Items 弹窗都有 search_term——querySelector 取文档序第一
             // 个=列表栏，modal 内的漏掉；modal/对话框内优先）

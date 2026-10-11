@@ -1,0 +1,50 @@
+[
+ {
+  "run_id": 2910,
+  "status": "fail",
+  "writes": 3,
+  "steps": 9,
+  "step_results": [
+   [
+    7,
+    "ok"
+   ],
+   [
+    8,
+    "ok"
+   ],
+   [
+    9,
+    "error"
+   ]
+  ],
+  "system": "Snipe",
+  "skill": 303,
+  "key": "asset_tags[1]",
+  "val": "s2f78753X"
+ },
+ {
+  "run_id": 2911,
+  "status": "fail",
+  "writes": 3,
+  "steps": 9,
+  "step_results": [
+   [
+    7,
+    "ok"
+   ],
+   [
+    8,
+    "ok"
+   ],
+   [
+    9,
+    "error"
+   ]
+  ],
+  "system": "Snipe",
+  "skill": 303,
+  "key": "asset_tags[1]",
+  "val": "s2f78799Y"
+ }
+]
