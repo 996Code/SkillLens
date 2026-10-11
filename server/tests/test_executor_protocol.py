@@ -602,3 +602,22 @@ class TestReapColumn:
             assert db.get(RR, rid).status == "running", "活跃步（列新）不应被收割"
         finally:
             db.close()
+
+
+async def test_finish_fail_with_passing_assertions_recovers(client, monkeypatch):
+    """链回归轮实证（2826/2919）：miss 步+断言全过=业务真实成功——
+    fail finish 也评估断言，全过改判 pass+flaky（恢复性标记）。"""
+    skill_id = await _seed_skill(client, monkeypatch)
+    r = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                          json={"overrides": {}, "confirm_side_effect": True})
+    rid = r.json()["run_id"]
+    f = await client.post(f"/api/v1/executor/runs/{rid}/finish", json={
+        "status": "fail",
+        "summary": {"failed_steps": [{"seq": 4, "result": "miss"}],
+                    "executed": [{"kind": "input", "ok": True}],
+                    "observed": [{"url": "http://t/a/9/save", "status": 200,
+                                  "method": "POST", "body": '{"code":200}'}]}})
+    assert f.status_code == 200
+    body = f.json()
+    assert body["status"] == "pass", "断言全过应恢复 pass"
+    assert body["flaky"] is True, "恢复性 pass 须带 flaky 标记"

@@ -1,0 +1,50 @@
+[
+ {
+  "chain": 2,
+  "verdict": "done",
+  "summary": "链执行结束：0/2 步通过（fail） | ",
+  "name": "JeecG 建表+建字典(unique)"
+ },
+ {
+  "chain": 3,
+  "verdict": "done",
+  "summary": "链执行结束：0/2 步通过（fail） | ",
+  "name": "JeecG AI2 跨步绑定"
+ },
+ {
+  "chain": 7,
+  "verdict": "done",
+  "summary": "链执行结束：0/2 步通过（fail） | ",
+  "name": "禅道 Bug 流"
+ },
+ {
+  "chain": 9,
+  "verdict": "done",
+  "summary": "链执行结束：1/3 步通过（fail） | ",
+  "name": "Snipe 生命周期（303→304→305）"
+ },
+ {
+  "chain": 10,
+  "verdict": "done",
+  "summary": "链执行结束：0/2 步通过（fail） | ",
+  "name": "Odoo 报价链"
+ },
+ {
+  "chain": 11,
+  "verdict": "done",
+  "summary": "链执行结束：2/2 步通过（pass） | ",
+  "name": "JeecG 字典流"
+ },
+ {
+  "chain": 12,
+  "verdict": "done",
+  "summary": "链执行结束：1/4 步通过（fail） | ",
+  "name": "Dolibarr 订单全链"
+ },
+ {
+  "chain": 14,
+  "verdict": "done",
+  "summary": "链执行结束：2/2 步通过（pass） | ",
+  "name": "AN 行锚注入验收"
+ }
+]

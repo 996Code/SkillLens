@@ -517,8 +517,12 @@ async def executor_finish(run_id: int, body: ExecutorFinishRequest,
 
     # AG4：done 时服务端确定性断言——插件证据（observed/executed）喂
     # evaluate_assertions（原封不动），判定语义=执行+断言；status 重判
+    # 链回归轮实证（run 2826 vs 2919）：miss 步+断言全过的业务真实成功
+    # ——fail 也评估断言，全过改判 pass+recovered 标记（判定完整性：
+    # 定位噪声不吞业务真相；断言不过维持 fail）
     assertion_results = None
-    if body.status == "done":
+    evaluate = body.status in ("done", "fail")
+    if evaluate:
         from app.models import OutcomeAssertion
         from app.replay.assert_eval import evaluate_assertions
         assertions = [{"kind": a.kind, "payload": a.payload} for a in
@@ -532,8 +536,16 @@ async def executor_finish(run_id: int, body: ExecutorFinishRequest,
             assertions, observed,
             executed_steps=body.summary.get("executed") or [])
         run.assertion_results = assertion_results
-        if all(a.get("passed") for a in assertion_results):
+        # 恢复条件收紧：断言**非空**且全过（空列表 all() 空真不放行——
+        # failure_class 测试实证：无断言的 fail 不许翻 pass）+失败步
+        # 全为 miss（AM1/AM2 的 error 类=期望-观测强证据，不参与恢复）
+        failed = body.summary.get("failed_steps") or []
+        only_miss = bool(failed) and all(
+            f.get("result") == "miss" for f in failed)
+        if assertion_results and all(a.get("passed") for a in assertion_results):
             run.status = "pass"
+            if body.status == "fail" and only_miss:
+                run.flaky = True
         else:
             run.status = "fail"
 
@@ -552,4 +564,4 @@ async def executor_finish(run_id: int, body: ExecutorFinishRequest,
     db.commit()
     db.refresh(run)
     return {"id": run.id, "status": run.status, "executor": run.executor,
-            "assertion_results": assertion_results}
+            "assertion_results": assertion_results, "flaky": run.flaky}
