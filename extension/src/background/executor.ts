@@ -1652,13 +1652,21 @@ async function resolve(debuggee: any, ins: Instruction, label: string,
     // 「创建合作方」铁证）；icon 链接（a[title]）title 承载标签（「新订单」
     // 铁证）——三者并集参与匹配
     const txt = (el) => ((el.textContent || el.value || el.title || '') + '').trim();
+    // JeecG 必填星号形态（269 铁证：录制 label=「*表名」、页面渲染
+    // 「表名」无星）——星号归一兜底：精确不中后按去星号比对
+    const bare = (t) => String(t || '').replace(/[\s*]/g, '');
     for (const c of candidates) {
       let els = [];
       try {
         if (c.kind === "role") {
-          const all = [...document.querySelectorAll(
+          let all = [...document.querySelectorAll(
             '[role="button"], button, input[type=submit], input[type=button]')]
             .filter(el => visible(el) && txt(el) === label);
+          if (!all.length && /[\s*]/.test(label)) {
+            all = [...document.querySelectorAll(
+              '[role="button"], button, input[type=submit], input[type=button]')]
+              .filter(el => visible(el) && bare(txt(el)) === bare(label));
+          }
           // 多命中时模态/抽屉内优先（JeecG 保存步实证：列表页工具栏
           // 与模态 footer 同名"保存"——first 取到列表页错按钮）
           const inModal = all.filter(el => el.closest(
