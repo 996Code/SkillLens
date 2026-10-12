@@ -163,7 +163,7 @@ cd server && uv run python ../scripts/live_browser.py 9222
   replay-engine / ingestion-pipeline / adapters-subsystem / auth-and-role-matrix /
   redaction-defense-in-depth / env-contract / change-intelligence /
   schema-migration-discipline（全带 file:line 引证）。
-- **测试基线**：server 722 / web 81 / extension 142（三套全绿是合并前提；
+- **测试基线**：server 729 / web 81 / extension 147（三套全绿是合并前提；
   conftest 每进程独立测试库——pytest 可并行）。
 - **异常处理四层防线**（2026-10-10）：AK 四码分类+预算+熔断（机制层）/
   AM 期望-观测对比写水位+登录守卫（语义层）/假 pass 收口（判定层）/
