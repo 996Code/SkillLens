@@ -63,7 +63,7 @@ async def flow_snipe_checkout(page) -> None:
     await page.wait_for_timeout(4000)
     # 第一行的 Checkout 行操作（title 型 icon 链接）
     row = page.locator("table tbody tr").first
-    await row.locator("a[title='Checkout']").click()
+    await row.locator("a", has_text="Checkout").click()
     await page.wait_for_timeout(3000)
     # 选用户（select2）
     await page.evaluate("""() => {
@@ -82,7 +82,7 @@ async def flow_snipe_row_update(page) -> None:
     await page.goto(f"{SNIPE}/hardware")
     await page.wait_for_timeout(4000)
     row = page.locator("table tbody tr").first
-    await row.locator("a[title='Update']").click()
+    await row.locator("a", has_text="Update").click()
     await page.wait_for_timeout(3000)
 
 
