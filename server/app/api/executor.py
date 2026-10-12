@@ -299,6 +299,16 @@ async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
                     if old and old in str(cand.get("anchor")):
                         cand["anchor"] = str(cand.get("anchor")).replace(
                             old, new)
+        # 重录批（goto 实例段通用化）：goto URL 参与换参——段边界匹配
+        # 替换（Snipe 304 铁证：录制 goto /hardware/18/checkout 的 18
+        # 是录制时资产 id，链绑定 {"18": "${stepN.res_id}"} 注入新 id）
+        if ins.get("op") == "goto" and ins.get("url"):
+            for old, new in body.overrides.items():
+                if old and str(new):
+                    import re as _re_url
+                    ins["url"] = _re_url.sub(
+                        rf"(?<=/){_re_url.escape(str(old))}(?=/|\?|#|$)",
+                        str(new), str(ins["url"]))
     # P2：自愈数据链插件端等效——活跃提案（verified/promoted）的
     # proposed_label 编译进对应 click 步候选首位（服务端 runner 的
     # repair_map 语义）

@@ -216,6 +216,12 @@ export async function runSkill(
         (n) => n.requestId === params?.requestId && n.status === undefined);
       if (preIdx >= 0) {
         networkLog[preIdx].status = params?.response?.status;
+        // 重录批（goto 实例段通用化）：文档型写请求的响应 URL 是重定向
+        // 后的最终 URL（含新实体 id——/hardware/{id}）——更新供
+        // ${stepN.res_id} 提取
+        if (params?.response?.url) {
+          networkLog[preIdx].url = redactNetworkUrl(params.response.url);
+        }
         pendingBodies.delete(params?.requestId);
         pendingReqBodies.delete(params?.requestId);
         return;

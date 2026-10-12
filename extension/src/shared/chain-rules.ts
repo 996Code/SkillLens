@@ -53,6 +53,26 @@ export function extractStepValue(
     }
     return null;
   }
+  if (key === "res_id") {
+    // 重录批（goto 实例段通用化）：步末 GET URL 的末位数字段=新实体
+    // id（创建流保存后页面跳 /hardware/{id}——响应 URL 已在
+    // responseReceived 更新为重定向后最终 URL）
+    for (let i = writes.length - 1; i >= 0; i--) {
+      const w = writes[i];
+      if (!w || (w.method || "GET").toUpperCase() !== "GET") continue;
+      const m = String(w.url || "").match(/\/(\d+)(?:\/[^\/]*)?$/);
+      if (m) {
+        // 多数字段取末位数字（/hardware/45/edit → 45）：找路径里
+        // 最后一个纯数字段
+        const segs = String(w.url || "").split("?")[0].split("/")
+          .filter(Boolean);
+        for (let j = segs.length - 1; j >= 0; j--) {
+          if (/^\d+$/.test(segs[j])) return segs[j];
+        }
+      }
+    }
+    return null;
+  }
   for (let i = writes.length - 1; i >= 0; i--) {
     const v = extractField(writes[i]?.reqBody, key);
     if (v != null) return v;

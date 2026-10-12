@@ -110,3 +110,25 @@ describe("AN 跨步状态传递：${stepN.row}（pickedRow 句柄）", () => {
     expect(resolveRowAnchor(9, ctx)).toBeNull();       // 越界
   });
 });
+
+describe("重录批：${stepN.res_id}（goto 实例段通用化）", () => {
+  it("从步末 GET URL 提取末位数字段（新实体 id）", () => {
+    const ctx = [[
+      { url: "http://127.0.0.1:8081/hardware/create", method: "POST" },
+      { url: "http://127.0.0.1:8081/hardware/45", method: "GET" },
+    ]] as any[];
+    expect(extractStepValue(ctx, "${step1.res_id}")).toBe("45");
+  });
+
+  it("多数字段取末位（/hardware/45/edit → 45）", () => {
+    const ctx = [[
+      { url: "http://127.0.0.1:8081/hardware/45/edit", method: "GET" },
+    ]] as any[];
+    expect(extractStepValue(ctx, "${step1.res_id}")).toBe("45");
+  });
+
+  it("无数字段/无 GET → null（链配置降级保留原 URL）", () => {
+    expect(extractStepValue([[{ url: "http://h/list", method: "GET" }]], "${step1.res_id}")).toBeNull();
+    expect(extractStepValue([[]], "${step1.res_id}")).toBeNull();
+  });
+});
