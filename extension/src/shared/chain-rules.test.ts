@@ -132,3 +132,21 @@ describe("重录批：${stepN.res_id}（goto 实例段通用化）", () => {
     expect(extractStepValue([[]], "${step1.res_id}")).toBeNull();
   });
 });
+
+describe("res_id 提取精度（写后首个数字段）", () => {
+  it("写请求之后的 GET 才算（写前列表 GET 不污染）", () => {
+    const ctx = [[
+      { url: "http://127.0.0.1:8081/hardware", method: "GET" },      // 写前列表
+      { url: "http://127.0.0.1:8081/hardware", method: "POST" },     // 保存
+      { url: "http://127.0.0.1:8081/hardware/77", method: "GET" },   // 写后新实体页
+      { url: "http://127.0.0.1:8081/hardware/1/edit", method: "GET" }, // 后续旧页
+    ]] as any[];
+    expect(extractStepValue(ctx, "${step1.res_id}")).toBe("77");
+  });
+  it("无写请求时回退末个数字段（只读流兼容）", () => {
+    const ctx = [[
+      { url: "http://h/hardware/45", method: "GET" },
+    ]] as any[];
+    expect(extractStepValue(ctx, "${step1.res_id}")).toBe("45");
+  });
+});

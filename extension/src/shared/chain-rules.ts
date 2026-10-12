@@ -54,22 +54,37 @@ export function extractStepValue(
     return null;
   }
   if (key === "res_id") {
-    // 重录批（goto 实例段通用化）：步末 GET URL 的末位数字段=新实体
-    // id（创建流保存后页面跳 /hardware/{id}——响应 URL 已在
-    // responseReceived 更新为重定向后最终 URL）
+    // 重录批（goto 实例段通用化）：新实体 id=**写请求之后**首个带数字
+    // 段的 GET（保存后页面跳 /hardware/{id}）。写前的列表 GET 是污染
+    // 源（链 18 实证：末位数字段取到列表页旧 id "1"）。无写请求回退
+    // 末个数字段（只读流兼容）
+    const numSeg = (url: string): string | null => {
+      const segs = String(url || "").split("?")[0].split("/").filter(Boolean);
+      for (let j = segs.length - 1; j >= 0; j--) {
+        if (/^\d+$/.test(segs[j])) return segs[j];
+      }
+      return null;
+    };
+    const hasWrite = writes.some(
+      (w) => w && ["POST", "PUT", "PATCH"].includes(
+        String(w.method || "GET").toUpperCase()));
+    if (hasWrite) {
+      let seenWrite = false;
+      for (const w of writes) {
+        const m = String((w && w.method) || "GET").toUpperCase();
+        if (["POST", "PUT", "PATCH"].includes(m)) { seenWrite = true; continue; }
+        if (seenWrite && m === "GET") {
+          const id = numSeg(String((w && w.url) || ""));
+          if (id) return id;
+        }
+      }
+      return null;
+    }
     for (let i = writes.length - 1; i >= 0; i--) {
       const w = writes[i];
       if (!w || (w.method || "GET").toUpperCase() !== "GET") continue;
-      const m = String(w.url || "").match(/\/(\d+)(?:\/[^\/]*)?$/);
-      if (m) {
-        // 多数字段取末位数字（/hardware/45/edit → 45）：找路径里
-        // 最后一个纯数字段
-        const segs = String(w.url || "").split("?")[0].split("/")
-          .filter(Boolean);
-        for (let j = segs.length - 1; j >= 0; j--) {
-          if (/^\d+$/.test(segs[j])) return segs[j];
-        }
-      }
+      const id = numSeg(String(w.url || ""));
+      if (id) return id;
     }
     return null;
   }
