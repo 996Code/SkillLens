@@ -33,8 +33,8 @@ def test_bare_ip_port_sanitized():
     """评审盲区：裸 IP:port 形态（无 scheme——Connection reset 类消息）
     同样必须脱敏。"""
     from app.sanitize import sanitize_error
-    out = sanitize_error(RuntimeError("net reset 192.168.1.50:8080/mb3/login failed"))
-    assert "192.168.1.50" not in out and "<url>" in out
+    out = sanitize_error(RuntimeError("net reset 192.0.2.50:8080/mb3/login failed"))
+    assert "192.0.2.50" not in out and "<url>" in out
     # 纯 IP 无 port
     out2 = sanitize_error("connect 10.0.0.8 refused")
     assert "10.0.0.8" not in out2 and "<url>" in out2
