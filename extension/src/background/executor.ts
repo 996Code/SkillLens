@@ -58,6 +58,33 @@ export async function api(path: string, init?: RequestInit): Promise<any> {
   return res.json();
 }
 
+async function recoverLoginSession(debuggee: any, targetUrl: string): Promise<boolean> {
+  /** AJ2 插件端恢复：目标 URL→系统名（服务端 /adapters/match 同源
+   * 语义——这里用 url origin 匹配适配器 base_url）→POST 恢复端点→
+   * cookie 经 CDP Network.setCookie 注入常驻浏览器。 */
+  try {
+    let system = "";
+    try {
+      const r = await api(`/adapters/match?url=${encodeURIComponent(targetUrl)}`);
+      system = String((r || {}).system || (r || {}).id || "");
+    } catch { /* match 失败——无适配器系统 */ }
+    if (!system) return false;
+    const res = await api("/executor/session/recover", {
+      method: "POST",
+      body: JSON.stringify({ system }),
+    });
+    const cookies = (res || {}).cookies || [];
+    if (!(res || {}).recovered || !cookies.length) return false;
+    for (const c of cookies) {
+      await chrome.debugger.sendCommand(debuggee, "Network.setCookie", {
+        name: c.name, value: c.value, domain: c.domain, path: c.path || "/",
+        ...(typeof c.expires === "number" && c.expires > 0 ? { expires: c.expires } : {}),
+      }).catch(() => {});
+    }
+    return true;
+  } catch { return false; }
+}
+
 export async function listExecutorSkills(): Promise<any[]> {
   return api("/executor/skills");
 }
@@ -554,11 +581,30 @@ async function execute(
         { expression: "location.href", returnByValue: true });
       const finalUrl = String(u?.result?.value || "");
       if (isLoginUrl(finalUrl) && !isLoginUrl(String(ins.url || ""))) {
-        onProgress(`登录态丢失（跳到登录页 ${finalUrl.slice(0, 50)}）——快败`);
+        // AJ2 闭环（插件端恢复）：守卫触发→调服务端恢复端点（适配器
+        // 登录例程，凭据不出服务端）→cookie 注入常驻浏览器→重导航
+        // 重试一次。失败才如实快败（e1_env）。
+        onProgress(`登录态丢失（跳到登录页）——尝试自动恢复`);
+        const recovered = await recoverLoginSession(debuggee, ins.url || "");
+        if (recovered) {
+          onProgress("登录态已恢复（cookie 注入）——重试当前步");
+          await chrome.debugger.sendCommand(debuggee, "Page.navigate",
+            { url: ins.url }).catch(() => {});
+          await sleep(4000);
+          const u2 = await chrome.debugger.sendCommand(debuggee,
+            "Runtime.evaluate",
+            { expression: "location.href", returnByValue: true }).catch(() => null);
+          const retryUrl = String(u2?.result?.value || "");
+          if (!isLoginUrl(retryUrl)) {
+            return { seq: ins.seq, result: "ok", evidence: { ...evidence,
+              session_recovered: true } };
+          }
+        }
         return { seq: ins.seq, result: "error",
                  evidence: { ...evidence, error:
                    `登录态丢失：目标页跳转到登录页（${redactNetworkUrl(finalUrl.slice(0, 60))}）`
-                   + "——请先在浏览器登录目标系统后重试" } };
+                   + (recovered ? "——恢复后仍跳登录页" : "——自动恢复失败")
+                   + "（e1_env 环境故障）" } };
       }
     } catch { /* 探测失败 fail-open */ }
     return { seq: ins.seq, result: "ok", evidence };

@@ -153,6 +153,69 @@ def compile_executor_plan(plan: dict, events: list[dict] | None = None) -> list[
     return out
 
 
+async def _recover_session(system: str) -> tuple[list[dict], bool]:
+    """AJ2 插件端恢复（闭环最后一环）：独立浏览器跑适配器登录例程，
+    成功返回 cookie 列表（插件注入常驻浏览器用——storage_state 文件
+    对 CDP 常驻浏览器无用，cookie 直迁）。凭据不出服务端（YAML）。"""
+    from pathlib import Path as _P
+    from app.system import SYSTEM_ADAPTER
+    aid = SYSTEM_ADAPTER.get(system or "")
+    if not aid:
+        return [], False
+    try:
+        from app.adapters.manifest import load_adapter_dir
+        from app.adapters.steps import login as adapter_login
+        from playwright.async_api import async_playwright
+        ms, _ = load_adapter_dir(_P("adapters"))
+        m = next((x for x in ms if x.id == aid), None)
+        if m is None or m.login is None:
+            return [], False
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            try:
+                ctx = await browser.new_context()
+                page = await ctx.new_page()
+                ok = await adapter_login(page, m)
+                cookies: list[dict] = []
+                if ok:
+                    state = await ctx.storage_state()
+                    cookies = [
+                        {"name": c["name"], "value": c["value"],
+                         "domain": c.get("domain", ""),
+                         "path": c.get("path", "/"),
+                         "expires": c.get("expires", -1)}
+                        for c in state.get("cookies", [])]
+                    # 同步写 states 文件（服务端回放路径同享恢复成果）
+                    state_dir = _P("artifacts") / "states"
+                    state_dir.mkdir(parents=True, exist_ok=True)
+                    import json as _json
+                    (state_dir / f"{aid}.json").write_text(
+                        _json.dumps(state), encoding="utf-8")
+                return cookies, ok
+            finally:
+                await browser.close()
+    except Exception as exc:
+        from app.exec.failures import swallow
+        swallow("executor:_recover_session", exc, warning=True)
+        return [], False
+
+
+class SessionRecoverRequest(BaseModel):
+    system: str
+
+
+@router.post("/executor/session/recover", dependencies=WRITE_GUARD)
+async def executor_session_recover(body: SessionRecoverRequest) -> dict:
+    """插件端登录态恢复：AM2 守卫触发后插件调用——服务端跑适配器登录
+    例程（独立浏览器，凭据不出服务端），cookie 返回插件注入常驻浏览器，
+    随后重试当前步。失败返回 recovered=false（插件如实报 e1_env）。"""
+    from app.system import SYSTEM_ADAPTER
+    if not SYSTEM_ADAPTER.get(body.system or ""):
+        raise HTTPException(404, f"未知系统：{body.system}")
+    cookies, ok = await _recover_session(body.system)
+    return {"recovered": ok, "cookies": cookies}
+
+
 # 垃圾 run 洪泛防线（131 run/13s 实证）：同 skill 上一个 extension run
 # 5s 内创建且以相同错误快速失败（attach 冲突类）→ 拒绝再创建——重试
 # 风暴的形态就是"秒败秒建"，此闸把洪泛压成 1 个；正常串行（前一个

@@ -621,3 +621,41 @@ async def test_finish_fail_with_passing_assertions_recovers(client, monkeypatch)
     body = f.json()
     assert body["status"] == "pass", "断言全过应恢复 pass"
     assert body["flaky"] is True, "恢复性 pass 须带 flaky 标记"
+
+
+class TestSessionRecover:
+    """AJ2 插件端登录恢复（闭环最后一环）：守卫触发→插件调本端点→
+    服务端跑适配器登录例程（独立浏览器）→cookie 返回插件注入常驻
+    浏览器→重试当前步。凭据不出服务端（YAML）。"""
+
+    async def test_recover_unknown_system_404(self, client, monkeypatch):
+        r = await client.post("/api/v1/executor/session/recover",
+                              json={"system": "不存在的系统"})
+        assert r.status_code == 404
+
+    async def test_recover_returns_cookies_on_success(self, client, monkeypatch):
+        """恢复成功→返回 cookie 列表（插件注入用）+recovered 标记。"""
+        import app.replay.runner as rm
+        from app.adapters.manifest import load_adapter_dir
+        from pathlib import Path
+        ms, _ = load_adapter_dir(Path("adapters"))
+        # 用真实清单的 JeecG（有 login）——mock 恢复为成功+假 cookie
+        async def fake_recover(system: str):
+            return [{"name": "SESSION", "value": "tok123",
+                     "domain": "127.0.0.1", "path": "/"}], True
+        monkeypatch.setattr("app.api.executor._recover_session", fake_recover)
+        r = await client.post("/api/v1/executor/session/recover",
+                              json={"system": "JeecG 表单"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["recovered"] is True
+        assert body["cookies"][0]["name"] == "SESSION"
+
+    async def test_recover_failure_returns_false(self, client, monkeypatch):
+        async def fake_recover(system: str):
+            return [], False
+        monkeypatch.setattr("app.api.executor._recover_session", fake_recover)
+        r = await client.post("/api/v1/executor/session/recover",
+                              json={"system": "JeecG 表单"})
+        assert r.status_code == 200
+        assert r.json()["recovered"] is False
