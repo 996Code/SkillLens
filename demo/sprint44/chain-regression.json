@@ -18,10 +18,10 @@
   "name": "禅道 Bug 流"
  },
  {
-  "chain": 10,
+  "chain": 21,
   "verdict": "done",
-  "summary": "链执行结束：0/2 步通过（fail） | ",
-  "name": "Odoo 报价链"
+  "summary": "链执行结束：1/1 步通过（pass） | ",
+  "name": "Odoo 报价链（m2o 适配+完整语料）"
  },
  {
   "chain": 11,
