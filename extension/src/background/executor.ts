@@ -760,7 +760,44 @@ async function execute(
     // form-item label 三级查找+input 事件派发——ERPNext 234 PASS 实证；
     // resolver 候选对 fill 的 form-group 命中错元素/多元素 miss 实证）
     if (ins.op === "fill" && ins.value !== undefined) {
-      // select2 型目标适配（Snipe/Livewire 系统实证）：原生 select 被
+      // Odoo m2o 关系字段适配（链 22 实证）：placeholder 含
+      // "Type to find"（Odoo 特征）——fill 只设值不触发选中协议，
+      // Confirm 被表单校验拦。正确链=输入→等下拉→点第一项
+      try {
+        const m2o = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+          expression: `(async function(){
+            const label = ${JSON.stringify(label)};
+            const inp = [...document.querySelectorAll('input')].find(
+              i => (i.placeholder || '').includes('Type to find'));
+            if (!inp) return '';
+            const set = Object.getOwnPropertyDescriptor(
+              HTMLInputElement.prototype, 'value').set;
+            set.call(inp, ${JSON.stringify(String(ins.value))});
+            inp.dispatchEvent(new Event('input', {bubbles: true}));
+            await new Promise(r => setTimeout(r, 1500));
+            const item = [...document.querySelectorAll(
+              '.o-autocomplete--dropdown-item, .ui-menu-item, [role=option]')]
+              .find(o => o.getBoundingClientRect().width > 0
+                && (o.textContent || '').trim().length > 0
+                && !/create|search more/i.test(o.textContent || ''));
+            if (item) {
+              item.dispatchEvent(new MouseEvent('mousedown', {bubbles: true}));
+              item.click();
+              await new Promise(r => setTimeout(r, 1000));
+              return 'ok:' + inp.value.slice(0, 20);
+            }
+            return '';
+          })()`, returnByValue: true, awaitPromise: true }).catch(() => null);
+        const m2ov = String(m2o?.result?.value || "");
+        if (m2ov.startsWith("ok:")) {
+          await sleep(500);
+          onProgress(`fill ${label}（Odoo m2o 下拉选中）`);
+          return { seq: ins.seq, result: "ok",
+                   evidence: { network: [], toasts: [],
+                               value_after: redactValueAfter(label, m2ov.slice(3)) } };
+        }
+      } catch { /* 非 Odoo 页——走通用链 */ }
+            // select2 型目标适配（Snipe/Livewire 系统实证）：原生 select 被
       // select2 接管（AJAX 懒加载选项）——JS 设值无效且选项未加载。
       // 正确链=select2 open→轮询选项→mouseup+click（select2 4.x 监听
       // mouseup，单纯 click 不选中——LWOK1 真机三字段终验实证）
