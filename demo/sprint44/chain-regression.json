@@ -14,7 +14,7 @@
  {
   "chain": 7,
   "verdict": "done",
-  "summary": "链执行结束：1/2 步通过（fail） | ",
+  "summary": "链执行结束：2/2 步通过（pass） | ",
   "name": "禅道 Bug 流"
  },
  {
@@ -30,10 +30,10 @@
   "name": "JeecG 字典流"
  },
  {
-  "chain": 14,
+  "chain": 20,
   "verdict": "done",
-  "summary": "链执行结束：1/2 步通过（fail） | ",
-  "name": "AN 行锚注入验收"
+  "summary": "链执行结束：2/2 步通过（pass） | ",
+  "name": "AN 行锚（318 干净语料）"
  },
  {
   "chain": 19,
@@ -44,7 +44,7 @@
  {
   "chain": 17,
   "verdict": "done",
-  "summary": "链执行结束：0/4 步通过（fail） | ",
+  "summary": "链执行结束：4/4 步通过（pass） | ",
   "name": "Dolibarr 订单全链"
  }
 ]
