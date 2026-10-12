@@ -586,7 +586,13 @@ async function execute(
       const u = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate",
         { expression: "location.href", returnByValue: true });
       const finalUrl = String(u?.result?.value || "");
-      if (isLoginUrl(finalUrl) && !isLoginUrl(String(ins.url || ""))) {
+      const loginFormProbe = await chrome.debugger.sendCommand(debuggee,
+        "Runtime.evaluate", { expression:
+          "!!(document.querySelector('input[name=username], input[name=password], #account')"
+          + " && document.querySelector('input[type=password]'))",
+        returnByValue: true }).catch(() => null);
+      const loginByForm = String(loginFormProbe?.result?.value || "") === "true";
+      if ((isLoginUrl(finalUrl) || loginByForm) && !isLoginUrl(String(ins.url || ""))) {
         // AJ2 闭环（插件端恢复）：守卫触发→调服务端恢复端点（适配器
         // 登录例程，凭据不出服务端）→cookie 注入常驻浏览器→重导航
         // 重试一次。失败才如实快败（e1_env）。
