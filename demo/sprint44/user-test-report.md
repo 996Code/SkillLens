@@ -43,3 +43,23 @@
 - 换参回放机制（fill_ 键换参+唯一值+写断言）在 ERPNext/Odoo **全绿**，
   Dolibarr/Snipe 失败为录制产物与环境态（已转后续需求，非机制缺陷）。
 - 基线：server 713 / extension 141。
+
+## 五、链回归 8/8 收官+重启韧性（2026-10-11~13 补录）
+
+**链回归全绿**（ebc6e67，证据 chain-regression.json）：六系统八链全 pass——
+链 2/3/11（JeecG）+7（禅道）+17（Dolibarr 订单全链 4/4）+19（Snipe 生命周期
+3/3）+20（AN 行锚）+21（Odoo 报价 m2o 适配）。路径=executor.html 真实执行页。
+
+**重启韧性实证**（2026-10-13）：宿主重启（六系统容器批量退出）→仅环境运维
+（docker start+起 server 8710/常驻浏览器 9222）→**零代码零脚本零链定义改动**
+直接复跑全量链回归 **8/8**。重启类故障已按类根治：
+
+| 重启触发问题 | 根治机制 |
+|---|---|
+| Odoo action id 漂移 | XML ID 稳定形态 `#action=sale.action_quotations` |
+| 登录态丢失 | AJ2 恢复闭环（守卫→服务端登录例程→cookie 注入→重试） |
+| Dolibarr 登录页无 /login URL | AM2 表单特征守卫 |
+| 录制实例值漂移 | goto URL 换参注入+`${stepN.res_id}` |
+
+**语料收口**：296 标 superseded→321（重录实际由 321+链 21 满足）；旧链 10
+删除（入口去重）。基线：server 730 / web 81 / ext 147。

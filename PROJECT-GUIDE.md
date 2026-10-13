@@ -116,9 +116,9 @@ uv run python -m app.create_user <用户名> <密码> admin   # 建号（S21 起
 uv run uvicorn app.main:app --port 8710
 
 # 三套测试（Windows：Node 命令前缀 export PATH="/d/github/.tools/node-v24.18.0-win-x64:$PATH"）
-cd server && uv run pytest -q                    # 508 passed
-cd server/web && npm test                        # 50 passed
-cd extension && npm run build && npm test        # 31 passed
+cd server && uv run pytest -q                    # 730 passed
+cd server/web && npm test                        # 81 passed
+cd extension && npm run build && npm test        # 147 passed
 
 # 常驻可见浏览器（录制/回放全程用户可见）
 cd server && uv run python ../scripts/live_browser.py 9222
@@ -139,40 +139,23 @@ cd server && uv run python ../scripts/live_browser.py 9222
 | Playwright 导出 | replay/exporter.py | skill/flow → 自包含脚本，独立运行验证过 |
 | LLM 边界 | llm/gateway.py + 各 verify 函数 | LLM 提案，确定性回查通过才生效 |
 
-## 5. 当前进度与下一步（2026-10-02）
+## 5. 当前进度与下一步（2026-10-13）
 
-- **项目状态：开发进行时（非可交付产品）**。主计划 MVP→M1→M4 + v1.6-v2.0
-  差距块功能已实现；核心管道端到端能跑；七系统核心业务链验证通过。
-  距"可用产品"的差距清单与开发路线图：`docs/HANDOVER.md` §2-§3。
-- **S43-4（2026-10-01/02）**：七系统核心业务链闭环——Snipe-IT 资产/禅道 QA/
-  Odoo 销售/Dolibarr 订单/JeecgBoot 在线表单/ERPNext CRM/若依权限，23 技能
-  学成、22 换参回放全 PASS、实体级验证（直查目标系统 DB/API）。
-  详见 `demo/sprint43/user-test-report.md`。
-- **平台化四阶段（2026-10-06）**：交互画像+指纹生成+URL 通配符配对+扩链
-  52/52+Firefly 零代码接入——八系统 53 技能全绿。架构契约：
-  `docs/arch/2026-10-07-platform-interaction-profile.md`；收口报告：
-  `demo/sprint-v21-matrix/platform-phase-report.md`。
-- **全库评审（2026-10-07）**：四域深审+6 处安全红线修复（网关 IP env 化/
-  路径穿越/attribution 脱敏/执行器三重脱敏/CDP 网络证据脱敏/插件配对 401）：
-  `docs/reviews/2026-10-07-full-codebase-audit.md`。
-- **三轮全库评审（2026-10-08）**：七域深审"声称的语义是否真的成立"——🔴 9 项全修
-  （viewer 角色收窄 WRITE_GUARD 31 端点/C1 确认取登录态/Skill.system 迁移漂移删列+drift 守卫/
-  写水位 GET 噪声/脱敏词表四处漂移→一致性测试/注入模板转义/AdaptersView 错写系统/IP 兜底回归），
-  🟡 43 修 34，缓修 34 项逐条附触发条件。报告：
-  `docs/reviews/2026-10-08-full-codebase-audit-round3.md`。同期补 8 篇 arch 文档：
-  replay-engine / ingestion-pipeline / adapters-subsystem / auth-and-role-matrix /
-  redaction-defense-in-depth / env-contract / change-intelligence /
-  schema-migration-discipline（全带 file:line 引证）。
-- **测试基线**：server 729 / web 81 / extension 147（三套全绿是合并前提；
+- **项目状态：内部可用产品形态**。录制→学习→回放→断言→报告→链编排→
+  插件页内执行端到端真机验证；六系统八链回归 8/8 全绿；异常处理四层
+  防线+自愈闭环落地。差距清单全部清零（`docs/HANDOVER.md` §3）。
+- **测试基线**：server 730 / web 81 / extension 147（三套全绿是合并前提；
   conftest 每进程独立测试库——pytest 可并行）。
+- **链回归 8/8+重启韧性**（2026-10-11~13）：编排渗透率两批+AJ2 登录
+  恢复闭环+goto 容错通用化+重录批——六系统八链全 pass；宿主重启后
+  零代码零脚本改动复跑 8/8（重启类故障按类根治：XML ID 稳定形态/
+  AJ2 恢复/AM2 表单守卫/goto 换参）。证据：`demo/sprint44/`。
 - **异常处理四层防线**（2026-10-10）：AK 四码分类+预算+熔断（机制层）/
   AM 期望-观测对比写水位+登录守卫（语义层）/假 pass 收口（判定层）/
   failureKind 三态呈现（呈现层）——设计见 specs/ AK+AM+AN 三篇。
-- **近期工作**（2026-10-03 v2.1 方向变更）：~~JeecG 链式 override~~ ✅（S43-5 完成，
-  row-anchor 换参注入+动态 id 断言归一，三链全 PASS 实体级验证）→ **块 AF 适配器
-  架构**（基座+声明式系统清单：manifest schema/探针运行时/例程库/链编排器/向导 UI）
-  + **块 AG 扩展执行后端**（chrome.debugger 插件桥接客户端回放，瘦执行器+双后端
-  一致性）→ L5 迁移实测并行不阻塞。规格：主计划 §4 块 AF/AG + §7 v2.1 变更记录。
+- **下一步方向候选**（非缺陷，待所有者裁定）：52 链全量回归轮（generation
+  完整版支撑）/多账号并发/生产部署（容器保活+会话保活）/执行页 UX
+  两候选（tab 复用/完成自动关）。
 - **交接材料**：`docs/HANDOVER.md`（**继任开发任务书**——差距清单/路线图/
   环境运维/凭据模式/7 枚继任开发提示词）。
 - 进度详情：`docs/specs/2026-09-24-master-delivery-plan.md`（§7 变更记录）与

@@ -11,10 +11,11 @@
 产品主干全通：**录制→学习→回放→断言→报告→链编排→插件页内执行**端到端
 真机验证；差距行动清单 P0/P1/P2/防再生 100% 收口；AK 异常收敛层（四码
 分类+预算+熔断）已落地。AM 期望-观测对比/AN 跨步状态传递/健壮性体检亦收官
-（见 §2.5）。测试基线 **server 729 / web 81 / ext 147**。
-技能库 240 活跃（八系统+通用）、12 链（六系统业务链全 pass）、1998 run。
-**它已是"内部可用产品形态"**——免登录开箱即用、异常有收敛、错误白话直达。
-剩余工作是深度打磨（AK6 存量迁移/多轮×换参战役/跨步状态传递）。
+（见 §2.5）。测试基线 **server 730 / web 81 / ext 147**。
+技能库 249 活跃（八系统+通用）、16 链（六系统业务链全 pass）、2952 run。
+**它已是"内部可用产品形态"**——免登录开箱即用、异常有收敛、错误白话直达、
+重启零改动复跑 8/8（2026-10-13 宿主重启实证，见 §2.6）。
+剩余工作为新方向候选（52 链全量回归轮/多账号并发/生产部署——见 §3）。
 
 ## 1. 项目是什么（不变，一图）
 
@@ -48,7 +49,35 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
 - **s44 换参矩阵**：换参机制全验证（ERPNext 6/6+Odoo 2/2+Snipe 4/4+Dolibarr 187+315）。
 - **315/303 追踪链**：编译器 3 污染（__ID__ 锚/动作时点锚/步级异 host goto）+执行器 8 缺陷（input[submit] 五通道/expectModal/假 pass 收口/**文档型写证据导航丢失**/error 路径证据丢弃）+判定层假 pass 收口——全部真机实证闭环。
 - **基础设施**：testpaths（收集地雷）/test.db 每进程 pid 隔离（lesson #59 机制化）/lessons #56-59。
-- 基线：**server 729 / web 81 / ext 147**。
+- 基线：**server 730 / web 81 / ext 147**。
+
+## 2.6 2026-10-11~13 会话增量（编排渗透率+链回归 8/8，交接前必读）
+
+- **AJ2 全闭环**（9865f2b）：插件端登录恢复——AM2 守卫（URL 词表∪
+  表单特征双通道）触发→服务端跑适配器登录例程（凭据不出 YAML）→
+  cookie 经 CDP 注入常驻浏览器→重试当前步。禅道容器重启丢态端到端
+  session_recovered=true→pass。
+- **编排渗透率两批**（71f3f62+5e6648b）：存量链四通病根治（goto
+  折叠/空断言语义/icon title 定位/跨系统断言守卫）+星号归一+坏断言
+  三族清理（expect_value=fail/code=0/success 动态业务结果当期望）。
+- **goto 容错通用化**（095ee6e，修类不修个案）：goto URL 换参注入
+  （段边界正则）+${stepN.res_id} 提取（写后首个数字段 GET）+文档型
+  写响应 URL 更新——新录制自动免疫实例值漂移。
+- **重录批**（b324eb7+d2b0230）：318/320 Snipe v2 完整语料学成；
+  Odoo 报价完整语料=技能 321+链 21。
+- **链回归 8/8 全绿**（ebc6e67+a6b04de）：六系统八链全 pass。
+  Odoo 双根治：action id 漂移（XML ID 稳定形态 `#action=sale.
+  action_quotations`）+m2o 关系字段适配（placeholder "Type to
+  find"→输入→等下拉→mousedown+click——select2 同族）。
+- **恢复性 pass 判定**（6fe056c）：fail finish 也评估断言，非空且
+  全过+失败步全 miss→改判 pass+flaky。
+- **全面检查收官**（5480e08+f0c8c34）：三套全量+链 8/8+导航 29
+  引用零缺失+基线三处同步+红线 IP 归一 TEST-NET。
+- **296/链 10 收口+重启零改动实证**（2026-10-13）：296 标
+  superseded→321、旧链 10 删除（入口去重）；宿主重启后零代码零
+  脚本改动直接复跑全量链回归 **8/8**——重启类故障已按类根治
+  （XML ID 稳定形态/AJ2 恢复/AM2 表单守卫/goto 换参），剩余仅
+  环境运维（docker start+起 server/浏览器）。
 
 ## 3. 差距清单（下一步工作，按优先级）
 
@@ -69,8 +98,9 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
    （Snipe 生命周期 3/3）+20（AN 行锚）+21（Odoo 报价 m2o 适配）。
    Odoo 双根治：action id 漂移（XML ID 稳定形态）+m2o 关系字段
    适配（下拉选中协议——与 select2 同族）。
-   Odoo 296 重录（action id 不透明动态值）。终轮：2/3/11/17 四链
-   稳定 pass——代码层全通。
+   2026-10-13 收口：296 标 superseded→321、旧链 10 删除（重录
+   实际由 321+链 21 满足——induce 产新行非原地更新）；宿主重启
+   后零改动复跑 8/8（重启韧性实证）。
 2. 多账号并发与生产部署（容器保活/会话保活属此域）。
 
 ### 中
@@ -99,8 +129,8 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
 
 ## 5. 测试与质量闸门（不变，复述关键）
 
-- 三套全绿才算完成：server `uv run pytest -q`（698）；extension
-  `export PATH="/d/github/.tools/node-v24.18.0-win-x64:$PATH" && npm test`（122）
+- 三套全绿才算完成：server `uv run pytest -q`（730）；extension
+  `export PATH="/d/github/.tools/node-v24.18.0-win-x64:$PATH" && npm test`（147）
 - TDD 先红后绿；真机验证（插件路径必须 executor.html/面板真实路径）
 - 阶段闸门仪式：测试→审查→文档→浏览器实测→报告→合并（AGENTS.md §一）
 
@@ -120,12 +150,15 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
 
 ## 7. 文档地图（更新后）
 
-- 主计划（唯一范围基准）：docs/specs/2026-09-24-master-delivery-plan.md（v2.7）
+- 主计划（唯一范围基准）：docs/specs/2026-09-24-master-delivery-plan.md（v2.8.5）
 - AK 设计：docs/specs/2026-10-09-ak-exception-convergence-design.md
+- AM/AN 设计：docs/specs/2026-10-10-am-expectation-anomaly-detection.md
+  / 2026-10-10-an-cross-step-state.md
 - 差距分析（已全收口）：docs/reviews/2026-10-09-system-gap-analysis.md
+- 健壮性体检：docs/reviews/2026-10-10-robustness-audit.md
 - AJ 调研：docs/references/harness-study-v2-*.md（5 篇）
-- lessons：docs/references/project-lessons.md（#1-#55+）
-- 架构契约：docs/arch/（14 篇）
+- lessons：docs/references/project-lessons.md（#1-#59）
+- 架构契约：docs/arch/（25 篇）
 
 ## 8. 继任 agent 提示词套件
 
@@ -138,7 +171,7 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
 3. docs/specs/2026-09-24-master-delivery-plan.md 的 §7 变更记录（近 20 条了解演进）
 
 然后按序做：
-① 跑通三套测试确认基线（server 698 / extension 122——命令在 HANDOVER §5）
+① 跑通三套测试确认基线（server 730 / extension 147——命令在 HANDOVER §5）
 ② 起环境：server 8710（PLUGIN_TRUST=1）+ 常驻浏览器 9222 + docker 容器
   （命令在 HANDOVER §4；改插件后必须重启 9222 浏览器）
 ③ 从差距清单 §3 高优开始：AK6 存量迁移（61 处 except 分批收敛，
