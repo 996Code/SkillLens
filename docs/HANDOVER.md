@@ -143,7 +143,8 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
 
 ## 4. 环境速查（Windows 开发机，务必先读 AGENTS.md §四）
 
-- server 8710：`cd server && uv run uvicorn app.main:app --host 127.0.0.1 --port 8710`
+- server 8710：`cd server && uv run uvicorn app.main:app --host 0.0.0.0 --port 8710`
+  （2026-10-14 起绑 0.0.0.0——局域网 IP 可访问（防火墙规则 SkillLens 8710 已加）；仅限可信内网：PLUGIN_TRUST 免登录+弱密码）
   （**PLUGIN_TRUST=1 前缀启动**——免登录依赖；.env 已含该行则直接启动）
 - 常驻浏览器 9222：`uv run --project server python scripts/live_browser.py 9222`
   （**改插件代码后必须重启它**——MV3 不热替换）
