@@ -347,6 +347,11 @@ export async function runSkill(
       recentWriteMark = writeResponseCount(networkLog);
       // 导航失败即中止（错误页上的后续步骤是假执行——UX 评审致命 2）
       if (ev.result === "error") {
+        // s45 收口：当前 error 步计入 failed_steps——否则服务端恢复性
+        // 判定只看断言全过就翻 pass 假阳（run 3210/3241 双实证：
+        // AM1 拦截步走此专用路径，绕过通用收集）
+        failedSteps.push({ seq: ev.seq, result: "error",
+                           label: instruction.label || instruction.name || instruction.op });
         await Promise.race([
           api(`/executor/runs/${runId}/step`, {
             method: "POST", body: JSON.stringify(ev) }),

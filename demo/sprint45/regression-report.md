@@ -46,6 +46,54 @@ unique 换参存在时同技能 pass（链 2 昨日 pass 实证）。非引擎�
 10-06 pass→今 fail 的真实漂移，与实例值不同族。→ 行动：单独深挖
 （对照 Frappe 官方 cypress 的 fill+save 协议）。
 
-## Phase B 结果
+## Phase B 结果：12/16 pass（基线八链零回归）
 
-（跑完后回填）
+基线八链（10-13 验过的 2/3/7/11/17/19/20/21）**全部保持 pass**。
+失败 4 链取证：
+
+| 链 | 结果 | 根因 |
+|---|---|---|
+| 1 | 0/2 | 首步 269 fail——无 unique 版旧验收链（链 2 是 unique 版且 pass），表名重复族 F1 |
+| 5 | 0/1 | 261（JeecG 数据库同步）e3_drift |
+| 13 | 1/2 | **发现真缺陷**：141 的 Save 点击被拦截（AM1 error）但 run 3210 判 pass 假阳——恢复性判定 error 洞（→已修，见下） |
+| 15 | 1/3 | 304（Snipe 借出）e3_drift——s44 已知（dropdown 录制弱，转链 19 满足） |
+
+## 回归轮产出的两个真修复（TDD 先红后绿，0624bc8）
+
+1. **F2 技能级坏断言**：全库清 310 条（984→674，初盘 143 因祝词模式
+   扩展到 310；备份 bad-assertions-removed.json）+outcome.py 生成处
+   防再生守卫 `_is_dynamic_business_result`；toast 断言规格修正
+   （纯祝词不生成，含实体文案才生成）。
+2. **恢复性 pass 判定 error 洞**（run 3210 实证）：插件 failedSteps
+   显式排除 error 步→服务端 only_miss 判据空转→AM1 写水位快败
+   （提交被拦截强证据）被断言恰好全过翻 pass 假阳。双端修：插件
+   error 计入 failedSteps+服务端 has_error 阻断恢复（对齐 runner
+   S42-7 说真话防线）。
+
+## 结论
+
+- **零引擎级回归**：基线八链全 pass；Phase A 22/48 的失败全数归因于
+  四族（F1 无换参协议实例值重复 22 格/F2 坏断言 4 格/F3 已知 __ID__
+  缺口 4 格/F4 ERPNext 表单双加载漂移 4 格），其中 F2 与链 13 判定洞
+  已修。
+- 遗留行动项：①ERPNext 235/236 表单双加载深挖（F4）；②矩阵协议对
+  写技能补 unique 换参（对齐 s44 做法）；③链 1/5 与 261/304 转清理
+  或重录候选；④修复后复验轮（跑动中）。
+
+## 复验轮（修复后）：15 链 11 pass，零回归+假阳消失
+
+修复（插件 error 计入 failed_steps+服务端 has_error 阻断恢复）后复跑
+（1-13 与 15-21 两段，均真机 executor.html 路径）：
+
+| 链 | 结果 | 说明 |
+|---|---|---|
+| 2/3/4/6/7/8/11/17/19/20/21 | **pass** | 基线八链全保持 |
+| 1 | fail | 269 无 unique 旧链（F1）；重试 3227 pass+flaky=1（真恢复路径正确带标） |
+| 5 | fail | 261 e3_drift（同轮前） |
+| 13 | fail | **修复生效实证**：141 Save 被拦截从假 pass（3210）→如实 fail（3243，failed_steps 含 error 步）——链 1/2 是说真话 |
+| 15 | fail | 304 借出 e3_drift（s44 已知，链 19 已替代满足） |
+
+修复行为差异（run 级证据）：
+- run 3227/3229/3233 flaky=1——miss 步+断言全过的**真恢复**正确带标
+- run 3243 failed_steps=[{seq:7,result:error,label:Save}]——error 强证据
+  不再被断言放行（对比修复前 3210/3241 的裸 pass 假阳）

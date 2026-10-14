@@ -45,6 +45,17 @@ MATRIX = {
 CHAINS = list(range(1, 22))  # 1-21（10 已删，脚本内跳过不存在的）
 
 
+def chains_filter(argv: list[str]) -> list[int]:
+    """--chain 13,15 或 --chain-from 15：支持补跑/单跑。"""
+    if "--chain" in argv:
+        i = argv.index("--chain")
+        return [int(x) for x in argv[i + 1].split(",")]
+    if "--chain-from" in argv:
+        i = argv.index("--chain-from")
+        return [c for c in CHAINS if c >= int(argv[i + 1])]
+    return CHAINS
+
+
 def get_token() -> str:
     with httpx.Client(timeout=15.0) as c:
         c.headers["X-SkillLens-Agent"] = "1"
@@ -141,7 +152,7 @@ def main() -> None:
                     time.sleep(3)
 
     if phase in (None, "chains"):
-        for cid in CHAINS:
+        for cid in chains_filter(sys.argv):
             row = db.execute("SELECT name FROM chain WHERE id=?", (cid,)).fetchone()
             if not row:
                 continue
