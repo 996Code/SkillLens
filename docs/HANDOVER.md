@@ -96,6 +96,14 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
   正确带 flaky（3227/3229/3233），拦截步如实 fail（3243）。
 - 回归脚本 `scripts/s45_regression.py`（--matrix/--chains/--chain N）；
   报告 demo/sprint45/regression-report.{md,json}。
+- **AO 块引擎零系统知识外置**（v2.8.7，b72327e/f4fb51f/d10da2e）：
+  AO1 菜单/表单容器/控件/校验选择器上画像（插件 4 处+服务端
+  locate/探测层）；AO3 select2 全套 fill 协议按 dropdown.engine 声明
+  驱动（Snipe/Odoo 已显式声明）；AO4 resolver 编译矩阵画像化（选择器
+  随候选下发）。AO2 零改动实证（八系统全默认即对）。顺手修 3 个
+  预存在缺陷（fill 优先序/AM1 拦截丢证据/select2 open 态可见性）。
+  每批真机链回归护航（8/8、4/4、5/5）——"平台+组件化"按严格标准
+  成立（引擎运行时组件知识全在画像声明轨道）。
 - 遗留行动项：①ERPNext 235/236 表单双加载深挖（对照 Frappe 官方
   cypress fill+save 协议）②矩阵协议写技能补 unique 换参（对齐 s44）
   ③链 1/5 与 261/304/141 转清理或重录候选。
