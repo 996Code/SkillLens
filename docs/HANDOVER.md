@@ -11,7 +11,7 @@
 产品主干全通：**录制→学习→回放→断言→报告→链编排→插件页内执行**端到端
 真机验证；差距行动清单 P0/P1/P2/防再生 100% 收口；AK 异常收敛层（四码
 分类+预算+熔断）已落地。AM 期望-观测对比/AN 跨步状态传递/健壮性体检亦收官
-（见 §2.5）。测试基线 **server 730 / web 81 / ext 147**。
+（见 §2.5）。测试基线 **server 733 / web 81 / ext 147**（s45 后）。
 技能库 249 活跃（八系统+通用）、16 链（六系统业务链全 pass）、2952 run。
 **它已是"内部可用产品形态"**——免登录开箱即用、异常有收敛、错误白话直达、
 重启零改动复跑 8/8（2026-10-13 宿主重启实证，见 §2.6）。
@@ -49,7 +49,7 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
 - **s44 换参矩阵**：换参机制全验证（ERPNext 6/6+Odoo 2/2+Snipe 4/4+Dolibarr 187+315）。
 - **315/303 追踪链**：编译器 3 污染（__ID__ 锚/动作时点锚/步级异 host goto）+执行器 8 缺陷（input[submit] 五通道/expectModal/假 pass 收口/**文档型写证据导航丢失**/error 路径证据丢弃）+判定层假 pass 收口——全部真机实证闭环。
 - **基础设施**：testpaths（收集地雷）/test.db 每进程 pid 隔离（lesson #59 机制化）/lessons #56-59。
-- 基线：**server 730 / web 81 / ext 147**。
+- 基线：**server 730 / web 81 / ext 147**（s45 后 733，见 §2.7）。
 
 ## 2.6 2026-10-11~13 会话增量（编排渗透率+链回归 8/8，交接前必读）
 
@@ -78,6 +78,27 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
   脚本改动直接复跑全量链回归 **8/8**——重启类故障已按类根治
   （XML ID 稳定形态/AJ2 恢复/AM2 表单守卫/goto 换参），剩余仅
   环境运维（docker start+起 server/浏览器）。
+
+## 2.7 2026-10-14 会话增量（s45 全量回归轮，交接前必读）
+
+- **s45 回归轮**（0624bc8+复验提交）：52 格矩阵（10-06 P3 矩阵技能
+  superseded 映射后 25 技能×2 轮）+16 链全量，两阶段真机跑——
+  **基线八链零回归**；Phase A 22/48 失败全数分诊四族（F1 无换参协议
+  实例值重复 22 格/F2 坏断言 4 格/F3 __ID__ 已知缺口/F4 ERPNext 235/236
+  表单双加载漂移——后者待深挖）。基线 **server 733**（+3 新测试）。
+- **F2 技能级坏断言清理**：链级清理（5e6648b）漏了生成入口——全库
+  984→674 条（动态业务结果值 success/code 0/纯祝词 toast 全族，备份
+  demo/sprint45/bad-assertions-removed.json）+outcome.py 生成守卫
+  `_is_dynamic_business_result`；157/285 稳定 fail→真机转绿。
+- **恢复性 pass 判定 error 洞**（run 3210/3241 双实证假阳）：插件
+  failedSteps 排除 error 步且 AM1 快败走专用中止路径再绕过收集→
+  服务端断言恰好全过就翻 pass。双端修+专用路径补计；修复后真恢复
+  正确带 flaky（3227/3229/3233），拦截步如实 fail（3243）。
+- 回归脚本 `scripts/s45_regression.py`（--matrix/--chains/--chain N）；
+  报告 demo/sprint45/regression-report.{md,json}。
+- 遗留行动项：①ERPNext 235/236 表单双加载深挖（对照 Frappe 官方
+  cypress fill+save 协议）②矩阵协议写技能补 unique 换参（对齐 s44）
+  ③链 1/5 与 261/304/141 转清理或重录候选。
 
 ## 3. 差距清单（下一步工作，按优先级）
 
@@ -129,7 +150,7 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
 
 ## 5. 测试与质量闸门（不变，复述关键）
 
-- 三套全绿才算完成：server `uv run pytest -q`（730）；extension
+- 三套全绿才算完成：server `uv run pytest -q`（733）；extension
   `export PATH="/d/github/.tools/node-v24.18.0-win-x64:$PATH" && npm test`（147）
 - TDD 先红后绿；真机验证（插件路径必须 executor.html/面板真实路径）
 - 阶段闸门仪式：测试→审查→文档→浏览器实测→报告→合并（AGENTS.md §一）
@@ -171,7 +192,7 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
 3. docs/specs/2026-09-24-master-delivery-plan.md 的 §7 变更记录（近 20 条了解演进）
 
 然后按序做：
-① 跑通三套测试确认基线（server 730 / web 81 / extension 147——命令在 HANDOVER §5）
+① 跑通三套测试确认基线（server 733 / web 81 / extension 147——命令在 HANDOVER §5）
 ② 起环境：server 8710（PLUGIN_TRUST=1）+ 常驻浏览器 9222 + docker 容器
   （命令在 HANDOVER §4；改插件后必须重启 9222 浏览器）
 ③ 差距清单已全部清零——从 HANDOVER §3 下一步方向候选开工
