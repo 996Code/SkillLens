@@ -222,17 +222,21 @@ async def _locate_with_repair(page, label: str,
                              tag: str | None = None,
                              ordinal: int | None = None,
                              path: str | None = None,
-                             prefer_controls: bool = False):
+                             prefer_controls: bool = False,
+                             container_sel: str | None = None,
+                             control_sel: str | None = None):
     """S24 块 U：定位失败时按提案库重试——返回 (locator, strategy, proposal_id)。
 
     无提案或提案也定位失败 → 抛 LookupError（步骤照常失败）。
     S43-4：上步交互触发的重渲染窗口（Frappe modal 勾选行后按钮瞬时
     不可见）——首轮失败后短暂重试再走修复链。
+    AO1：container_sel/control_sel 从画像来（None=引擎默认词表）。
     """
     try:
         locator, strategy = await locate(
             page, label, labels=extra_labels, tag=tag, ordinal=ordinal, path=path,
-            prefer_controls=prefer_controls)
+            prefer_controls=prefer_controls, container_sel=container_sel,
+            control_sel=control_sel)
         return locator, strategy, None
     except LookupError:
         for _ in range(3):
@@ -240,7 +244,8 @@ async def _locate_with_repair(page, label: str,
             try:
                 locator, strategy = await locate(
                     page, label, labels=extra_labels, tag=tag, ordinal=ordinal,
-                    path=path, prefer_controls=prefer_controls)
+                    path=path, prefer_controls=prefer_controls,
+                    container_sel=container_sel, control_sel=control_sel)
                 return locator, strategy, None
             except LookupError:
                 continue
@@ -274,7 +279,7 @@ _VALIDATION_SEL = (
     # 成功但 "Please select Quotation" 拦住后续，步骤需判失败给归因）
     ".msgprint, .modal .indicator"
 )
-_PROBE_JS = """() => {
+_PROBE_TEMPLATE = """() => {
     const out = [];
     document.querySelectorAll(%SEL%).forEach(el => {
         const t = (el.textContent || '').trim();
@@ -284,19 +289,30 @@ _PROBE_JS = """() => {
         if (el.validationMessage) out.push(el.validationMessage.slice(0, 100));
     });
     return [...new Set(out)].slice(0, 10);
-}""".replace("%SEL%", repr(_VALIDATION_SEL))
+}"""
 
 
-async def collect_validation_errors(page) -> list[str]:
+async def collect_validation_errors(page, extra_sel: str | None = None
+                                    ) -> list[str]:
     """点击后短暂探测页面校验错误文本（跨 frame，fail-open）。
 
     S43-4：含 Frappe 桌面端 msgprint/indicator 弹层，但须语义过滤——
     成功 toast（Saved/Submitted/成功）不是校验错误，只有拦截语义
-    （Please/mandatory/required/不能为空/Error 等）才计入。"""
+    （Please/mandatory/required/不能为空/Error 等）才计入。
+    AO1：extra_sel=画像 validation_error_selector（加法并集——系统
+    特有错误元素入探测，不改引擎默认词表）。"""
+
+    def _probe_js(sel: str) -> str:
+        return _PROBE_TEMPLATE.replace("%SEL%", repr(sel))
+
+    sel = _VALIDATION_SEL
+    if extra_sel:
+        sel = f"{_VALIDATION_SEL}, {extra_sel}"
+    probe = _probe_js(sel)
     texts: list[str] = []
     for fr in page.frames:
         try:
-            errs = await fr.evaluate(_PROBE_JS)
+            errs = await fr.evaluate(probe)
             texts.extend(errs or [])
         except Exception:
             continue
@@ -321,8 +337,17 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                        settle_timeout_ms: int = 10000,
                        repair_map: dict[str, dict] | None = None,
                        shot_dir: Path | None = None,
-                       row_anchor_hints: list[str] | None = None) -> dict:
+                       row_anchor_hints: list[str] | None = None,
+                       interaction_profile: dict | None = None) -> dict:
     observed: list[dict] = []
+
+    # AO1（引擎零系统知识）：画像选择器提取——form_fill 容器/控件/
+    # 校验错误选择器下传 locate 与探测层。None=引擎默认词表（与
+    # manifest.FormFillProfile 默认值锁定一致，无画像零行为变化）
+    ff = (interaction_profile or {}).get("form_fill") or {}
+    ip_container_sel = ff.get("container_selector")
+    ip_control_sel = ff.get("control_selector")
+    ip_validation_sel = ff.get("validation_error_selector")
 
     # S23 块 V：request/response 配对测 API 延迟（request 对象做键）
     req_times: dict = {}
@@ -405,7 +430,8 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                 locator, strategy, rep_id = await _locate_with_repair(
                     page, step["label"], repair_map,
                     extra_labels=step.get("labels"), tag=step.get("tag"),
-                    ordinal=step.get("ordinal"), path=step.get("path"))
+                    ordinal=step.get("ordinal"), path=step.get("path"),
+                    container_sel=ip_container_sel, control_sel=ip_control_sel)
                 # S43-4：checkbox 用 check()——结果列表渲染时 checkbox
                 # 反复重建，普通 click 的 stability 等待会超时；check 幂等
                 # 且自带等待
@@ -587,11 +613,13 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                     pass
                 # S42-7：点击后探测表单校验错误（拦截文案作归因证据，
                 # fail-open 记录不判定）
+                entry_pending_validation_errors: list[str] = []
                 try:
                     await page.wait_for_timeout(300)
-                    v_errs = await collect_validation_errors(page)
+                    v_errs = await collect_validation_errors(page, extra_sel=ip_validation_sel)
                     if v_errs:
                         entry["validation_errors"] = v_errs
+                        entry_pending_validation_errors = v_errs
                 except Exception:
                     pass
                 # S43-4：写类按钮等待写响应（基线在点击前记录）——
@@ -624,7 +652,7 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                         hint = ""
                         pw_healed = False
                         try:
-                            errs = await collect_validation_errors(page)
+                            errs = await collect_validation_errors(page, extra_sel=ip_validation_sel)
                             if errs:
                                 hint = f" 提示: {errs[0][:100]}"
                                 # P2-11 ERPNext 实证：v15 表单 portal 密码必填
@@ -646,7 +674,9 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                                                 extra_labels=step.get("labels"),
                                                 tag=step.get("tag"),
                                                 ordinal=step.get("ordinal"),
-                                                path=step.get("path"))
+                                                path=step.get("path"),
+                                                container_sel=ip_container_sel,
+                                                control_sel=ip_control_sel)
                                             await loc2.click(timeout=timeout_ms)
                                             await page.wait_for_timeout(1500)
                                             pw_healed = write_response_count(
@@ -664,6 +694,12 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                             continue
                         entry = {**step, "ok": False,
                                  "error": f"点击后无写请求（提交被拦）{hint}"}
+                        # C3 证据完整：拦截分支保留已采集的校验错误
+                        # （AO1 画像探测文本是归因关键证据，不随 entry
+                        # 重建丢弃）
+                        if entry_pending_validation_errors:
+                            entry["validation_errors"] = \
+                                entry_pending_validation_errors
                         executed.append(entry)
                         await _shot_step(page, shot_dir, i, entry)
                         failed = True
@@ -713,7 +749,8 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                     page, step["name"], repair_map,
                     extra_labels=step.get("labels"), tag=step.get("tag"),
                     ordinal=step.get("ordinal"), path=step.get("path"),
-                    prefer_controls=True)
+                    prefer_controls=True, container_sel=ip_container_sel,
+                    control_sel=ip_control_sel)
                 # S43-4：类型守卫——重渲窗口内 locate 可能命中字段包装
                 # div（fill 必抛错）。命中不可填元素时限定 input/textarea
                 # 重定位（labels 轮转已含字段名变体）

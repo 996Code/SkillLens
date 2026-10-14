@@ -3,10 +3,28 @@
  "matrix": [],
  "chains": [
   {
-   "chain": 15,
+   "chain": 2,
    "verdict": "done",
-   "summary": "链执行结束：1/3 步通过（fail） | ",
-   "name": "s44-Snipe 生命周期链（unique 换参）"
+   "summary": "链执行结束：2/2 步通过（pass） | ",
+   "name": "真机验收链v3：建表(unique)+建字典"
+  },
+  {
+   "chain": 3,
+   "verdict": "done",
+   "summary": "链执行结束：2/2 步通过（pass） | ",
+   "name": "AI2跨步验证v2：建表→字典绑表名"
+  },
+  {
+   "chain": 7,
+   "verdict": "done",
+   "summary": "链执行结束：2/2 步通过（pass） | ",
+   "name": "禅道Bug流：草稿→模板"
+  },
+  {
+   "chain": 11,
+   "verdict": "done",
+   "summary": "链执行结束：2/2 步通过（pass） | ",
+   "name": "JeecG字典流：查询→创建条目"
   },
   {
    "chain": 17,

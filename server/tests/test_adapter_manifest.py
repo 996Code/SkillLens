@@ -190,6 +190,51 @@ credentials: {username: u, password_literal: p}
     assert m.interaction_profile is None
 
 
+def test_interaction_profile_ao1_selector_externalization():
+    """AO1（引擎零系统知识）：组件选择器上画像——引擎残留的 antd/
+    element-plus/select2 硬编码选择器外置为声明字段。默认值=原引擎
+    硬编码值（零画像零行为变化），系统可在 YAML 覆盖。"""
+    doc = """
+id: demo3
+target: {base_url: "http://t"}
+credentials: {username: u, password_literal: p}
+interaction_profile:
+  dropdown:
+    menu_item_selector: '.my-menu-item'
+  form_fill:
+    container_selector: '.my-form-group, .my-form-item'
+    control_selector: '.my-select-widget'
+    validation_error_selector: '.my-field-error'
+"""
+    m, _ = load_manifest_text(doc)
+    ip = m.interaction_profile
+    assert ip.dropdown.menu_item_selector == ".my-menu-item"
+    assert ip.form_fill.container_selector == ".my-form-group, .my-form-item"
+    assert ip.form_fill.control_selector == ".my-select-widget"
+    assert ip.form_fill.validation_error_selector == ".my-field-error"
+
+
+def test_interaction_profile_ao1_defaults_match_engine_hardcoded():
+    """AO1 默认值=引擎现硬编码值（向后兼容锚）——改引擎默认前先锁住
+    现值，防止外置时默认值漂移改变无画像系统行为。"""
+    doc = """
+id: demo4
+target: {base_url: "http://t"}
+credentials: {username: u, password_literal: p}
+interaction_profile:
+  dropdown: {}
+  form_fill: {}
+"""
+    m, _ = load_manifest_text(doc)
+    ip = m.interaction_profile
+    assert ip.dropdown.menu_item_selector == (
+        ".ant-dropdown-menu-item, .el-dropdown-menu__item")
+    assert ".form-group" in ip.form_fill.container_selector
+    assert ".ant-form-item" in ip.form_fill.container_selector
+    assert ".select2-container" in ip.form_fill.control_selector
+    assert ".ant-form-item-explain-error" in ip.form_fill.validation_error_selector
+
+
 def test_probe_container_rejects_option_injection():
     """评审三轮 #2：container 直入 docker CLI argv——`-` 开头会被 docker
     解析为选项（--user=0 → root 进容器），清单可由 reviewer 写盘 → 必须

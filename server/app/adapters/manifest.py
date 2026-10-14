@@ -142,10 +142,17 @@ class Chain(BaseModel):
 
 class DropdownProfile(BaseModel):
     """下拉菜单交互（ant-dropdown/el-dropdown 家族差异声明）。"""
-    engine: str = "generic"                 # ant-design | element-plus | generic
+    engine: str = "generic"                 # ant-design | element-plus | generic | select2
     menu_item_match: str = "exact"          # exact | includes（图标文本混入）
     menu_item_click: str = "trusted"        # trusted（React mousedown 委托）| elclick
     mount_wait_ms: int = 400                # 菜单挂载重试窗口
+    # AO1（引擎零系统知识）：菜单项选择器外置——默认=原插件硬编码值
+    menu_item_selector: str = (
+        ".ant-dropdown-menu-item, .el-dropdown-menu__item")
+    # hover 流入场景的宽兜底链（dropdown 匹配失败后的最后防线）
+    menu_item_selector_fallback: str = (
+        ".el-dropdown-menu__item, .ant-dropdown-menu-item, "
+        "li [role=menuitem], li")
 
 
 class ModalSubmitProfile(BaseModel):
@@ -162,6 +169,15 @@ class FormFillProfile(BaseModel):
     field_locators: list[str] = Field(default_factory=lambda: [
         "data-fieldname", "placeholder", "form-item-label", "name-attr"])
     same_label_priority: str = "modal_first"  # modal_first | first
+    # AO1（引擎零系统知识）：表单容器/自绘控件/校验错误选择器外置——
+    # 默认=原引擎硬编码值（向后兼容锚，test_adapter_manifest 锁定）
+    container_selector: str = (
+        ".form-group, .ant-form-item, [class*=form-group]")
+    control_selector: str = (
+        ".select2-container, .picker, .ant-select, .ant-picker")
+    validation_error_selector: str = (
+        ".ant-form-item-explain-error, .el-form-item__error, "
+        ".invalid-feedback, .form-control-feedback")
 
 
 class RowActionProfile(BaseModel):

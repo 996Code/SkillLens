@@ -12,7 +12,9 @@ def _xpath_str(s: str) -> str:
 
 
 async def _try_locate(page: Page, label: str,
-                      prefer_controls: bool = False) -> tuple[Locator, str] | None:
+                      prefer_controls: bool = False,
+                      container_sel: str | None = None,
+                      control_sel: str | None = None) -> tuple[Locator, str] | None:
     # S42：iframe 架构应用（禅道综合界面等）业务内容渲染在子 frame——
     # 逐 frame 尝试候选策略（主 frame 优先）
     frames = [page.main_frame] + [f for f in page.frames if f is not page.main_frame]
@@ -23,15 +25,26 @@ async def _try_locate(page: Page, label: str,
         if hit is not None:
             return hit
     for frame in frames:
-        hit = await _try_locate_in_frame(page, frame, label, prefer_controls)
+        hit = await _try_locate_in_frame(page, frame, label, prefer_controls,
+                                         container_sel=container_sel,
+                                         control_sel=control_sel)
         if hit is not None:
             return hit
     return None
 
 
+# AO1 默认值单一事实：引擎默认词表（=manifest.FormFillProfile 默认值，
+# test_adapter_manifest 锁定向后兼容）——locate 层原硬编码搬到此常量
+DEFAULT_CONTAINER_SEL = ".form-group, .ant-form-item, [class*=form-group]"
+DEFAULT_CONTROL_SEL = ".select2-container, .picker, .ant-select, .ant-picker"
+
+
 async def _try_locate_in_frame(page: Page, frame, label: str,
                                prefer_controls: bool,
-                               strong_only: bool = False) -> tuple[Locator, str] | None:
+                               strong_only: bool = False,
+                               container_sel: str | None = None,
+                               control_sel: str | None = None
+                               ) -> tuple[Locator, str] | None:
     # S43-4：两级遍历——强语义（精确按钮名/title/name）在所有 frame 上
     # 先跑一轮，弱策略（text）第二轮才跑。禅道实测：iframe 业务页的
     # 图标操作（a[title=执行]）与顶层菜单纯文本"执行"同名——按
@@ -87,11 +100,14 @@ async def _try_locate_in_frame(page: Page, frame, label: str,
         # S43-4：逗号选择器按文档序取 first——hidden select（select2-
         # hidden-accessible）会抢在容器前。分两候选：先自绘控件容器，
         # 再原生控件（容器是用户真实点击目标）
+        # AO1：容器/控件选择器从画像来（默认=引擎原词表）
+        csel = container_sel or DEFAULT_CONTAINER_SEL
+        wsel = control_sel or DEFAULT_CONTROL_SEL
         candidates += [
-            (frame.locator(".form-group, .ant-form-item", has_text=label)
-             .locator(".select2-container, .picker, .ant-select, .ant-picker").first,
+            (frame.locator(csel, has_text=label)
+             .locator(wsel).first,
              "form-group-control"),
-            (frame.locator(".form-group, .ant-form-item", has_text=label)
+            (frame.locator(csel, has_text=label)
              .locator("input:not(label input), select:not(label select), "
                       "textarea:not(label textarea)").first,
              "form-group-native"),
@@ -174,7 +190,7 @@ async def _try_locate_in_frame(page: Page, frame, label: str,
     ]
     if not short_label:
         candidates.append(
-            (frame.locator(".form-group, .ant-form-item, [class*=form-group]",
+            (frame.locator(container_sel or DEFAULT_CONTAINER_SEL,
                            has_text=label).locator(".select2-container").first,
              "select2"))
     # S43-4：必填星号前缀（ant "*表名"）——label 与渲染文本都剥 '*' 再配
@@ -193,7 +209,12 @@ async def _try_locate_in_frame(page: Page, frame, label: str,
         # S43-4：fill 场景剔除 data-fieldname-any（字段包装 div 同带
         # data-fieldname，fill 必抛"not an input"——Frappe 行编辑实测）
         order = ["placeholder", "label", "name-attr", "data-fieldname",
-                 "id", "input-value", "role-button", "text",
+                 "id", "input-value",
+                 # AO1 发现（预存在缺陷）：fill 优先序漏了自家最强的
+                 # 控件策略——form-group 容器命中真控件，text 会抢中
+                 # label 文本（不可填）。控件策略置于 text 前
+                 "form-group-control", "form-group-native", "role-button",
+                 "text",
                  # S43-4：JeecG 设计器 label 带*前缀的容器键
                  "cgf-item", "form-item-bare"]
         by_strategy = {s: (l, s) for l, s in candidates}
@@ -277,7 +298,9 @@ async def locate(page: Page, label: str, *,
                  tag: str | None = None,
                  ordinal: int | None = None,
                  path: str | None = None,
-                 prefer_controls: bool = False) -> tuple[Locator, str]:
+                 prefer_controls: bool = False,
+                 container_sel: str | None = None,
+                 control_sel: str | None = None) -> tuple[Locator, str]:
     """S36 多信号定位：快路径逐候选 label 走全策略矩阵（任何 UI 框架
     只要暴露任一信号即可命中，无需逐框架适配）；全部失败后结构兜底
     （path 祖先链 + ordinal nth-of-type，唯一命中才用——宁缺毋滥）。
@@ -292,7 +315,9 @@ async def locate(page: Page, label: str, *,
         for lbl in [label, *(labels or [])]:
             if not lbl:
                 continue
-            hit = await _try_locate(page, lbl, prefer_controls=prefer_controls)
+            hit = await _try_locate(page, lbl, prefer_controls=prefer_controls,
+                                    container_sel=container_sel,
+                                    control_sel=control_sel)
             if hit is not None:
                 return hit
         if attempt < 11:

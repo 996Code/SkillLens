@@ -466,6 +466,11 @@ async function execute(
   stepsSinceGoto = 0,
 ): Promise<{ seq: number; result: string; evidence: any }> {
   const evidence: any = { network: [], toasts: [] };
+  // AO1（引擎零系统知识）：菜单项选择器从画像读——默认=原硬编码值
+  // （antd/element-plus），系统可在 adapters/*.yaml 的
+  // interaction_profile.dropdown.menu_item_selector 覆盖
+  const ipMenuSel = ((globalThis as any).__ip?.dropdown?.menu_item_selector)
+    || '.ant-dropdown-menu-item, .el-dropdown-menu__item';
   if (ins.op === "goto") {
     // AH6 页内执行：目标≈当前 URL 则跳过导航——两次 Page.navigate 会
     // 销毁页面上下文（悬浮面板/用户输入状态全丢）；已在目标页是页内
@@ -740,7 +745,7 @@ async function execute(
               const match = (t) => ${JSON.stringify(ddMatch)} === 'exact'
                 ? t === label : t.includes(label);
               const items = [...document.querySelectorAll(
-                '.ant-dropdown-menu-item, .el-dropdown-menu__item')]
+                ${JSON.stringify(ipMenuSel)})]
                 .filter(e => e.getBoundingClientRect().width > 0
                   && match((e.textContent||'').trim()));
               if (!items.length) return '';
@@ -1448,7 +1453,7 @@ async function execute(
               expression: `(() => {
                 const label = ${JSON.stringify(label)};
                 const items = [...document.querySelectorAll(
-                  '.ant-dropdown-menu-item, .el-dropdown-menu__item')]
+                  ${JSON.stringify(ipMenuSel)})]
                   .filter(e => (e.textContent||'').trim() === label
                     && e.getBoundingClientRect().width > 0);
                 if (!items.length) return '';
@@ -1489,7 +1494,7 @@ async function execute(
               "Runtime.evaluate", {
                 expression: `(() => {
                   const items = [...document.querySelectorAll(
-                    '.ant-dropdown-menu-item, .el-dropdown-menu__item')]
+                    ${JSON.stringify(ipMenuSel)})]
                     .filter(e => e.getBoundingClientRect().width > 0);
                   return items.length;
                 })()`, returnByValue: true }).catch(() => null);
@@ -1603,10 +1608,15 @@ async function execute(
     await chrome.debugger.sendCommand(debuggee, "Input.dispatchMouseEvent", {
       type: "mouseMoved", x, y });
     await sleep(1000);
+    // AO1：hover 流入场景的宽兜底链从画像读（含 li——比 menu_item_selector
+    // 更宽，是 dropdown 匹配失败后的最后防线）
+    const ipMenuFallback = ((globalThis as any).__ip?.dropdown
+      ?.menu_item_selector_fallback)
+      || '.el-dropdown-menu__item, .ant-dropdown-menu-item, li [role=menuitem], li';
     const ddItem = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
       expression: `(function(){
         const items = [...document.querySelectorAll(
-          '.el-dropdown-menu__item, .ant-dropdown-menu-item, li [role=menuitem], li')]
+          ${JSON.stringify(ipMenuFallback)})]
           .filter(e => (e.textContent||'').trim() === ${JSON.stringify(label)}
             && e.getBoundingClientRect().width > 0);
         if (!items.length) return '';
