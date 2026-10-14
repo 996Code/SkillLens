@@ -153,6 +153,14 @@ class DropdownProfile(BaseModel):
     menu_item_selector_fallback: str = (
         ".el-dropdown-menu__item, .ant-dropdown-menu-item, "
         "li [role=menuitem], li")
+    # AO3：select2 家族选择器组（engine=select2 时 fill 协议用）——
+    # 默认=引擎原硬编码值；非 select2 家族系统不声明 engine=select2
+    # 即不触达此协议
+    select2_container: str = ".select2-container"
+    select2_open_state: str = (
+        ".select2-container--open .select2-results__option")
+    select2_search_field: str = "input.select2-search__field:visible"
+    select2_option: str = ".select2-results__option"
 
 
 class ModalSubmitProfile(BaseModel):

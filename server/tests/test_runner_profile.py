@@ -70,3 +70,48 @@ async def test_execute_plan_profile_form_container():
                                     interaction_profile=profile)
         await browser.close()
     assert result["executed"][0]["ok"] is True, result["executed"]
+
+
+async def test_execute_plan_select2_protocol_from_profile():
+    """AO3：select2 fill 协议按画像 engine 驱动——engine=select2 且选择器
+    组从画像读；自定义容器/选项类名（引擎默认词表不含）可命中。"""
+    html = """
+    <html><body>
+      <div class="my-sel2"><span class="my-sel2-rendered">状态</span></div>
+      <select name="状态" style="display:none"></select>
+      <button role="button">保存</button>
+      <div class="my-sel2-drop" style="display:none">
+        <ul><li class="my-sel2-opt">在用</li></ul>
+      </div>
+    </body></html>
+    """
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.route("http://mock.local/", lambda route: route.fulfill(
+            status=200, content_type="text/html; charset=utf-8", body=html))
+        await page.goto("http://mock.local/")
+        # 点容器开"下拉"，点选项
+        await page.evaluate("""() => {
+          document.querySelector('.my-sel2').addEventListener('click', () => {
+            document.querySelector('.my-sel2-drop').style.display = 'block';
+          });
+          document.querySelector('.my-sel2-opt').addEventListener('click', () => {
+            window.__picked = true;
+          });
+        }""")
+        plan = {"url": "http://mock.local/", "steps": [
+            {"kind": "input", "name": "状态", "value": "在用",
+             "original_value": "o"},
+        ]}
+        profile = {"dropdown": {
+            "engine": "select2",
+            "select2_container": ".my-sel2",
+            "select2_open_state": ".my-sel2-drop .my-sel2-opt",
+            "select2_search_field": "input.my-nosearch",
+            "select2_option": ".my-sel2-opt"}}
+        result = await execute_plan(page, plan,
+                                    interaction_profile=profile)
+        await browser.close()
+    step = result["executed"][0]
+    assert step["ok"] is True, result["executed"]

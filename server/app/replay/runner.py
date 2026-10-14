@@ -348,6 +348,16 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
     ip_container_sel = ff.get("container_selector")
     ip_control_sel = ff.get("control_selector")
     ip_validation_sel = ff.get("validation_error_selector")
+    # AO3：select2 家族选择器组（engine=select2 声明才走协议；选择器
+    # 默认=引擎原硬编码值——DOM 检测兜底保持 generic 系统零变化）
+    dd = (interaction_profile or {}).get("dropdown") or {}
+    ip_dd_engine = dd.get("engine", "generic")
+    ip_s2_container = dd.get("select2_container", ".select2-container")
+    ip_s2_open = dd.get("select2_open_state",
+                        ".select2-container--open .select2-results__option")
+    ip_s2_search = dd.get("select2_search_field",
+                          "input.select2-search__field:visible")
+    ip_s2_option = dd.get("select2_option", ".select2-results__option")
 
     # S23 块 V：request/response 配对测 API 延迟（request 对象做键）
     req_times: dict = {}
@@ -779,33 +789,46 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                 tag_name = await locator.evaluate("el => el.tagName")
                 # S43-4：select2 下拉（name=宿主 select 名）——fill 无效，
                 # 须开容器→搜索→点结果（Snipe-IT 等 bootstrap 系）
-                is_select2 = await locator.evaluate(
-                    "el => !!(el.closest('.select2-container')"
-                    " || el.querySelector('.select2-container')"
-                    " || (el.classList && el.classList.contains('select2-container'))"
-                    " || (el.tagName === 'SELECT' && el.nextElementSibling"
-                    "     && el.nextElementSibling.classList.contains('select2-container')))")
+                # AO3：选择器组从画像来（engine=select2 声明时自定义类名
+                # 生效）；generic 系统保留 DOM 特征检测兜底——select2
+                # 家族元素出现即走协议（历史行为零变化）
+                if ip_dd_engine == "select2":
+                    is_select2 = True
+                else:
+                    is_select2 = await locator.evaluate(
+                        "el => !!(el.closest('.select2-container')"
+                        " || el.querySelector('.select2-container')"
+                        " || (el.classList && el.classList.contains('select2-container'))"
+                        " || (el.tagName === 'SELECT' && el.nextElementSibling"
+                        "     && el.nextElementSibling.classList.contains('select2-container')))")
                 if is_select2:
                     if tag_name == "SELECT":
                         container = locator.locator(
-                            "xpath=..").locator(".select2-container").first
+                            "xpath=..").locator(ip_s2_container).first
                     else:
                         container = locator
                     # 前置 click 步（"Select Status"）可能已开弹层——
                     # 已开则不重复点（重开会闪断选项渲染）
-                    already_open = await page.locator(
-                        ".select2-container--open .select2-results__option").count()
+                    # AO3：open 态检测须查可见——display:none 的 DOM
+                    # 骨架也命中 count()（首次误判已开→跳过开容器→
+                    # 选项永远不可见超时）
+                    _open_loc = page.locator(ip_s2_open)
+                    already_open = 0
+                    if await _open_loc.count():
+                        for _i in range(min(await _open_loc.count(), 3)):
+                            if await _open_loc.nth(_i).is_visible():
+                                already_open += 1
                     if not already_open:
                         await container.click(timeout=timeout_ms, force=True)
                         await page.wait_for_timeout(800)
                     # 本地数据下拉（statuslabels 等）无搜索框——直接点
                     # 匹配选项；AJAX 下拉（models/users）先搜索再点
-                    search = page.locator("input.select2-search__field:visible").first
+                    search = page.locator(ip_s2_search).first
                     if await search.count():
                         await search.fill(step["value"], timeout=timeout_ms)
                         await page.wait_for_timeout(900)
                     opt = page.locator(
-                        ".select2-results__option",
+                        ip_s2_option,
                         has_text=step["value"]).first
                     await opt.click(timeout=timeout_ms)
                     await page.wait_for_timeout(600)
