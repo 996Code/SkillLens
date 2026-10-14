@@ -3,6 +3,24 @@
  "matrix": [],
  "chains": [
   {
+   "chain": 2,
+   "verdict": "done",
+   "summary": "链执行结束：2/2 步通过（pass） | ",
+   "name": "真机验收链v3：建表(unique)+建字典"
+  },
+  {
+   "chain": 7,
+   "verdict": "done",
+   "summary": "链执行结束：2/2 步通过（pass） | ",
+   "name": "禅道Bug流：草稿→模板"
+  },
+  {
+   "chain": 17,
+   "verdict": "done",
+   "summary": "链执行结束：4/4 步通过（pass） | ",
+   "name": "Dolibarr订单全链：第三方→订单→确认→发票"
+  },
+  {
    "chain": 19,
    "verdict": "done",
    "summary": "链执行结束：3/3 步通过（pass） | ",
@@ -13,18 +31,6 @@
    "verdict": "done",
    "summary": "链执行结束：1/1 步通过（pass） | ",
    "name": "Odoo 报价链（完整语料）"
-  },
-  {
-   "chain": 2,
-   "verdict": "done",
-   "summary": "链执行结束：2/2 步通过（pass） | ",
-   "name": "真机验收链v3：建表(unique)+建字典"
-  },
-  {
-   "chain": 3,
-   "verdict": "done",
-   "summary": "链执行结束：2/2 步通过（pass） | ",
-   "name": "AI2跨步验证v2：建表→字典绑表名"
   }
  ]
 }
