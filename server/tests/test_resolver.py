@@ -79,3 +79,34 @@ async def test_resolver_locate_parity_on_real_page():
     assert r["hit"] is True
     assert strategy == r["strategy"]
     assert loc_id == "save"  # 两者都点中真按钮（sidebar 同名按钮被排除）
+
+
+def test_ao4_profile_selectors_flow_into_candidates():
+    """AO4（引擎零系统知识）：画像选择器进 resolver 候选——自定义
+    容器/控件/select2 选择器随候选传递，插件端 JS 用候选内 selector
+    （模板不写死）。默认（无画像）=原引擎硬编码值零变化。"""
+    ip = {"form_fill": {"container_selector": ".my-field",
+                        "control_selector": ".my-widget"},
+          "dropdown": {"select2_container": ".my-sel2"}}
+    cands = compile_resolve_candidates("资产名称", labels=["资产名称"],
+                                       interaction_profile=ip)
+    by = {c["strategy"]: c for c in cands}
+    assert by["form-group-control"]["selector"] == ".my-field"
+    assert "control_selector" in by["form-group-control"], \
+        "控件选择器须随候选传递（JS 模板不再硬编码）"
+    assert by["form-group-control"]["control_selector"] == ".my-widget"
+    assert ".my-sel2" in by["select2-by-name"]["selector"]
+    # JS 模板按候选内 control_selector 查控件
+    js = build_resolver_js(cands)
+    assert "c.control_selector" in js, "resolver JS 须消费候选内控件选择器"
+
+
+def test_ao4_defaults_unchanged_without_profile():
+    """无画像：候选 selector=引擎默认词表（与 locate DEFAULT_CONTAINER_SEL
+    同源——三段式超集，resolver 原两段式并入统一默认）。"""
+    from app.replay.locate import DEFAULT_CONTAINER_SEL, DEFAULT_CONTROL_SEL
+    cands = compile_resolve_candidates("资产名称", labels=["资产名称"])
+    by = {c["strategy"]: c for c in cands}
+    assert by["form-group-control"]["selector"] == DEFAULT_CONTAINER_SEL
+    assert by["form-group-control"]["control_selector"] == DEFAULT_CONTROL_SEL
+    assert ".select2-container" in by["select2-by-name"]["selector"]

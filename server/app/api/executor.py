@@ -98,12 +98,47 @@ def _load_plan_input(db: Session, skill: Skill) -> tuple[dict, list[dict]]:
     return plan, events
 
 
-def compile_executor_plan(plan: dict, events: list[dict] | None = None) -> list[dict]:
+def _load_interaction_profile(db: Session, skill: Skill,
+                              goto_url: str = "") -> dict | None:
+    """AO4：技能 → 适配器 → 画像 dict（goto URL 匹配优先，系统名兜底）。"""
+    try:
+        from app.adapters.manifest import load_adapter_dir as _lad
+        from app.adapters.urlmatch import match_adapter as _ma
+        from app.system import SYSTEM_ADAPTER, skill_systems
+        from pathlib import Path as _P
+        _mans, _ = _lad(_P(__file__).resolve().parents[2] / "adapters")
+        _m = _ma(goto_url, _mans) if goto_url else None
+        if _m is None:
+            _label = skill_systems(db, [skill.id]).get(skill.id, "")
+            _sys = SYSTEM_ADAPTER.get(_label)
+            _m = next((x for x in _mans if x.id == _sys), None) if _sys else None
+        if _m and _m.interaction_profile:
+            return _m.interaction_profile.model_dump()
+    except Exception:
+        pass
+    return None
+
+
+def _plan_interaction_profile(db: Session, skill: Skill,
+                              instructions: list[dict]) -> dict | None:
+    """plan 内 goto url 优先匹配（与端点内原逻辑同源）。"""
+    try:
+        _goto_url = next((i.get("url") for i in instructions
+                          if i.get("op") == "goto"), "")
+        return _load_interaction_profile(db, skill, _goto_url)
+    except Exception:
+        return None
+
+
+def compile_executor_plan(plan: dict, events: list[dict] | None = None,
+                          interaction_profile: dict | None = None) -> list[dict]:
     """计划步 → 微指令序列（确定性纯函数：同 plan 同序列）。
 
     AM1：click 的写效果期望 = 证据派生（录制时 click 后有写请求——
     events 给定时）∪ 词表兜底（save/submit 族，防 net-hook 经典表单
-    盲区）。插件端执行后对比观测（期望-观测对比异常检测）。"""
+    盲区）。插件端执行后对比观测（期望-观测对比异常检测）。
+    AO4：interaction_profile 传入 resolve 候选编译（容器/控件/select2
+    选择器随候选下发——插件端不持系统知识）。"""
     seq = 1
     out: list[dict] = []
     from app.replay.plan import expect_write_for, expect_write_from_events
@@ -126,7 +161,8 @@ def compile_executor_plan(plan: dict, events: list[dict] | None = None) -> list[
                         "name": step.get("name"), "value": step.get("value"),
                         "labels": step.get("labels") or [],
                         "resolve_candidates": compile_resolve_candidates(
-                            step.get("name") or "", step.get("labels")),
+                            step.get("name") or "", step.get("labels"),
+                            interaction_profile=interaction_profile),
                         "timeout_ms": DEFAULT_TIMEOUT_MS})
         elif step.get("kind") == "click":
             # AG5 行锚：labels 里的宿主行文本（>6 字符含 ASCII alnum，
@@ -141,7 +177,8 @@ def compile_executor_plan(plan: dict, events: list[dict] | None = None) -> list[
                         "tag": step.get("tag"),
                         "resolve_candidates": compile_resolve_candidates(
                             step.get("label") or "", step.get("labels"),
-                            tag=step.get("tag"), row_anchor=row_anchor),
+                            tag=step.get("tag"), row_anchor=row_anchor,
+                            interaction_profile=interaction_profile),
                         "expect_write": expect_write_for(steps, i) or i in ev_expects,
                         "timeout_ms": DEFAULT_TIMEOUT_MS})
         seq += 1
@@ -257,7 +294,10 @@ async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
         raise HTTPException(409, "含写操作，需 C1 确认（confirm_side_effect=true）")
 
     plan, events = _load_plan_input(db, skill)
-    instructions = compile_executor_plan(plan, events)
+    # AO4：画像先于编译加载（plan url 匹配→系统名兜底），随候选下发
+    _ip = _load_interaction_profile(db, skill, plan.get("url") or "")
+    instructions = compile_executor_plan(plan, events,
+                                         interaction_profile=_ip)
     # goto 实例段归一（ERPNext 236 铁证：录制保存的单据 URL
     # /desk/sales-order/new-sales-order-xxxx 带随机后缀——回放到已提交
     # 旧单上 Frappe 弹回旧页，后续步全打到错误页面）
@@ -357,24 +397,7 @@ async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
     # 同时落 run.plan（复现/诊断可查）。
     # P2.5 定位方式：goto URL → url_matches 通配符自动配对（油猴 @match
     # 语义——新系统接入零改代码）；URL 未命中回退技能所属系统映射
-    ip_dump = None
-    try:
-        from app.adapters.manifest import load_adapter_dir as _lad
-        from app.adapters.urlmatch import match_adapter as _ma
-        from app.system import SYSTEM_ADAPTER, skill_systems
-        from pathlib import Path as _P
-        _mans, _ = _lad(_P(__file__).resolve().parents[2] / "adapters")
-        _goto_url = next((i.get("url") for i in instructions
-                          if i.get("op") == "goto"), "")
-        _m = _ma(_goto_url, _mans) if _goto_url else None
-        if _m is None:
-            _label = skill_systems(db, [skill.id]).get(skill.id, "")
-            _sys = SYSTEM_ADAPTER.get(_label)
-            _m = next((x for x in _mans if x.id == _sys), None) if _sys else None
-        if _m and _m.interaction_profile:
-            ip_dump = _m.interaction_profile.model_dump()
-    except Exception:
-        pass
+    ip_dump = _plan_interaction_profile(db, skill, instructions)
     if ip_dump:
         run.plan = {**run.plan, "interaction_profile": ip_dump}
         db.commit()

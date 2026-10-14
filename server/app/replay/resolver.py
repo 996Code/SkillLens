@@ -14,10 +14,15 @@ _NAV_EXCLUDE_XPATH = (
 
 
 def _candidate(strategy: str, selector: str, kind: str = "click",
-               anchor: str | None = None) -> dict:
+               anchor: str | None = None,
+               control_selector: str | None = None) -> dict:
     out = {"strategy": strategy, "selector": selector, "kind": kind}
     if anchor:
         out["anchor"] = anchor
+    # AO4：控件选择器随候选传递（form-group-control 类策略插件端 JS
+    # 用它查容器内控件——模板不再硬编码 antd/element/select2 词表）
+    if control_selector:
+        out["control_selector"] = control_selector
     return out
 
 
@@ -25,7 +30,9 @@ def compile_resolve_candidates(label: str, labels: list[str] | None = None,
                                tag: str | None = None,
                                ordinal: int | None = None,
                                path: str | None = None,
-                               row_anchor: str | None = None) -> list[dict]:
+                               row_anchor: str | None = None,
+                               interaction_profile: dict | None = None
+                               ) -> list[dict]:
     """locate 策略矩阵的编译版：语义强度序产候选 selector。
 
     与 locate() 的对应关系（策略名同源便于审计）：
@@ -38,6 +45,13 @@ def compile_resolve_candidates(label: str, labels: list[str] | None = None,
     # short_label 门：防 'on' 等短值子串误命中——但 JeecG "*表名"（3 字符
     # 含 ASCII 星号+中文）是真实字段名——放宽为：纯 ASCII ≤3 才跳过
     short_label = len(label) <= 3 and all(c.isascii() for c in label)
+    # AO4：画像选择器（默认=引擎原硬编码值——与 locate/manifest 同源锁定）
+    from app.replay.locate import DEFAULT_CONTAINER_SEL, DEFAULT_CONTROL_SEL
+    ff = (interaction_profile or {}).get("form_fill") or {}
+    dd = (interaction_profile or {}).get("dropdown") or {}
+    container_sel = ff.get("container_selector", DEFAULT_CONTAINER_SEL)
+    control_sel = ff.get("control_selector", DEFAULT_CONTROL_SEL)
+    s2_container = dd.get("select2_container", ".select2-container")
     cands: list[dict] = [
         _candidate("title-attr",
                    f'//*[@title={_xpath_str(label)} and {_NAV_EXCLUDE_XPATH}]'),
@@ -49,11 +63,13 @@ def compile_resolve_candidates(label: str, labels: list[str] | None = None,
     if not short_label:
         cands += [
             _candidate("form-group-control",
-                       '.form-group, .ant-form-item', kind="form-group-control"),
+                       container_sel, kind="form-group-control",
+                       control_selector=control_sel),
             _candidate("form-group-native",
-                       '.form-group, .ant-form-item', kind="form-group-native"),
+                       container_sel, kind="form-group-native",
+                       control_selector="input, select, textarea"),
             _candidate("select2-by-name",
-                       f'select[name="{label}"] ~ .select2-container'),
+                       f'select[name="{label}"] ~ {s2_container.split(",")[0].strip()}'),
         ]
     cands += [
         _candidate("menuitem",
@@ -124,8 +140,9 @@ _RESOLVER_JS_TEMPLATE = """(args) => {
         const groups = [...doc.querySelectorAll(c.selector)].filter(
           g => (g.textContent || '').includes(label));
         for (const g of groups) {
-          const ctl = g.querySelector(
-            '.select2-container, .picker, .ant-select, .ant-picker');
+          // AO4：控件选择器随候选传递（画像外置——模板不硬编码词表）
+          const ctl = g.querySelector(c.control_selector
+            || '.select2-container, .picker, .ant-select, .ant-picker');
           if (ctl && visible(ctl)) return ctl;
         }
         return null;
@@ -134,7 +151,8 @@ _RESOLVER_JS_TEMPLATE = """(args) => {
         const groups = [...doc.querySelectorAll(c.selector)].filter(
           g => (g.textContent || '').includes(label));
         for (const g of groups) {
-          const ctl = g.querySelector('input, select, textarea');
+          const ctl = g.querySelector(c.control_selector
+            || 'input, select, textarea');
           if (ctl && visible(ctl)) return ctl;
         }
         return null;
