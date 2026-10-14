@@ -356,3 +356,19 @@ class TestSystemLabelField:
         ms, _ = load_adapter_dir(Path("adapters"))
         for m in ms:
             assert m.system_label, f"{m.id} 缺 system_label——系统名映射会缺失"
+
+
+def test_ao_residual_cleanup_custom_select_defaults():
+    """AO 残留清理：自绘下拉（el-select 家族）选择器上画像——默认=
+    引擎原硬编码值（向后兼容锚）；select2 策略后代选择器同步可覆盖。"""
+    doc = """
+id: demo5
+target: {base_url: "http://t"}
+credentials: {username: u, password_literal: p}
+interaction_profile:
+  dropdown: {}
+"""
+    m, _ = load_manifest_text(doc)
+    ip = m.interaction_profile
+    assert ip.dropdown.custom_select_selector == (
+        ".el-select:has(.el-select__placeholder)")

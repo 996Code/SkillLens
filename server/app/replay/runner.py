@@ -224,7 +224,9 @@ async def _locate_with_repair(page, label: str,
                              path: str | None = None,
                              prefer_controls: bool = False,
                              container_sel: str | None = None,
-                             control_sel: str | None = None):
+                             control_sel: str | None = None,
+                             select2_sel: str | None = None,
+                             custom_sel_sel: str | None = None):
     """S24 块 U：定位失败时按提案库重试——返回 (locator, strategy, proposal_id)。
 
     无提案或提案也定位失败 → 抛 LookupError（步骤照常失败）。
@@ -236,7 +238,8 @@ async def _locate_with_repair(page, label: str,
         locator, strategy = await locate(
             page, label, labels=extra_labels, tag=tag, ordinal=ordinal, path=path,
             prefer_controls=prefer_controls, container_sel=container_sel,
-            control_sel=control_sel)
+            control_sel=control_sel, select2_sel=select2_sel,
+            custom_sel_sel=custom_sel_sel)
         return locator, strategy, None
     except LookupError:
         for _ in range(3):
@@ -245,7 +248,8 @@ async def _locate_with_repair(page, label: str,
                 locator, strategy = await locate(
                     page, label, labels=extra_labels, tag=tag, ordinal=ordinal,
                     path=path, prefer_controls=prefer_controls,
-                    container_sel=container_sel, control_sel=control_sel)
+                    container_sel=container_sel, control_sel=control_sel,
+                    select2_sel=select2_sel, custom_sel_sel=custom_sel_sel)
                 return locator, strategy, None
             except LookupError:
                 continue
@@ -358,6 +362,10 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
     ip_s2_search = dd.get("select2_search_field",
                           "input.select2-search__field:visible")
     ip_s2_option = dd.get("select2_option", ".select2-results__option")
+    # AO 残留清理：locate 策略矩阵的 select2 后代/自绘下拉选择器
+    ip_s2_sel = dd.get("select2_container", ".select2-container")
+    ip_custom_sel = dd.get(
+        "custom_select_selector", ".el-select:has(.el-select__placeholder)")
 
     # S23 块 V：request/response 配对测 API 延迟（request 对象做键）
     req_times: dict = {}
@@ -441,7 +449,8 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                     page, step["label"], repair_map,
                     extra_labels=step.get("labels"), tag=step.get("tag"),
                     ordinal=step.get("ordinal"), path=step.get("path"),
-                    container_sel=ip_container_sel, control_sel=ip_control_sel)
+                    container_sel=ip_container_sel, control_sel=ip_control_sel,
+                    select2_sel=ip_s2_sel, custom_sel_sel=ip_custom_sel)
                 # S43-4：checkbox 用 check()——结果列表渲染时 checkbox
                 # 反复重建，普通 click 的 stability 等待会超时；check 幂等
                 # 且自带等待
@@ -686,7 +695,9 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                                                 ordinal=step.get("ordinal"),
                                                 path=step.get("path"),
                                                 container_sel=ip_container_sel,
-                                                control_sel=ip_control_sel)
+                                                control_sel=ip_control_sel,
+                                                select2_sel=ip_s2_sel,
+                                                custom_sel_sel=ip_custom_sel)
                                             await loc2.click(timeout=timeout_ms)
                                             await page.wait_for_timeout(1500)
                                             pw_healed = write_response_count(
@@ -760,7 +771,8 @@ async def execute_plan(page: Page, plan: dict, timeout_ms: int = 5000,
                     extra_labels=step.get("labels"), tag=step.get("tag"),
                     ordinal=step.get("ordinal"), path=step.get("path"),
                     prefer_controls=True, container_sel=ip_container_sel,
-                    control_sel=ip_control_sel)
+                    control_sel=ip_control_sel,
+                    select2_sel=ip_s2_sel, custom_sel_sel=ip_custom_sel)
                 # S43-4：类型守卫——重渲窗口内 locate 可能命中字段包装
                 # div（fill 必抛错）。命中不可填元素时限定 input/textarea
                 # 重定位（labels 轮转已含字段名变体）

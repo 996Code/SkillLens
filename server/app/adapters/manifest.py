@@ -161,6 +161,9 @@ class DropdownProfile(BaseModel):
         ".select2-container--open .select2-results__option")
     select2_search_field: str = "input.select2-search__field:visible"
     select2_option: str = ".select2-results__option"
+    # AO 残留清理：自绘下拉容器（element-plus el-select 家族——空
+    # placeholder 渲染为容器内裸 span，点击 span 不开下拉须点容器）
+    custom_select_selector: str = ".el-select:has(.el-select__placeholder)"
 
 
 class ModalSubmitProfile(BaseModel):

@@ -97,7 +97,11 @@ def compile_resolve_candidates(label: str, labels: list[str] | None = None,
         # Frappe save（官方 cypress save 命令）：button[data-label=Save]
         # （data-label 属性非文本）
         _candidate("frappe-save", 'button[data-label="Save"], .primary-action', kind="frappe-save"),
-        _candidate("el-select-placeholder", '.el-select', kind="el-select"),
+        _candidate("el-select-placeholder",
+                   (interaction_profile or {}).get("dropdown", {}).get(
+                       "custom_select_selector",
+                       ".el-select:has(.el-select__placeholder)").split(
+                           ":has")[0], kind="el-select"),
         _candidate("label", "label", kind="label"),
         _candidate("id", f'#{label}'),
         _candidate("name-attr", f'[name="{label}"]'),
@@ -158,7 +162,9 @@ _RESOLVER_JS_TEMPLATE = """(args) => {
         return null;
       }
       case "el-select": {
-        const els = [...doc.querySelectorAll('.el-select:has(.el-select__placeholder), .el-select')];
+        // AO 残留清理：容器选择器从候选来（画像可覆盖；默认 el-select
+        // 家族——JS 侧不做 :has 前置过滤，可见性谓词已等价筛掉空壳）
+        const els = [...doc.querySelectorAll(c.selector)];
         return els.find(el => visible(el) &&
           (el.textContent || '').includes(label)) || null;
       }

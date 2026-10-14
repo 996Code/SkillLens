@@ -14,7 +14,9 @@ def _xpath_str(s: str) -> str:
 async def _try_locate(page: Page, label: str,
                       prefer_controls: bool = False,
                       container_sel: str | None = None,
-                      control_sel: str | None = None) -> tuple[Locator, str] | None:
+                      control_sel: str | None = None,
+                      select2_sel: str | None = None,
+                      custom_sel_sel: str | None = None) -> tuple[Locator, str] | None:
     # S42：iframe 架构应用（禅道综合界面等）业务内容渲染在子 frame——
     # 逐 frame 尝试候选策略（主 frame 优先）
     frames = [page.main_frame] + [f for f in page.frames if f is not page.main_frame]
@@ -27,7 +29,9 @@ async def _try_locate(page: Page, label: str,
     for frame in frames:
         hit = await _try_locate_in_frame(page, frame, label, prefer_controls,
                                          container_sel=container_sel,
-                                         control_sel=control_sel)
+                                         control_sel=control_sel,
+                                         select2_sel=select2_sel,
+                                         custom_sel_sel=custom_sel_sel)
         if hit is not None:
             return hit
     return None
@@ -43,7 +47,9 @@ async def _try_locate_in_frame(page: Page, frame, label: str,
                                prefer_controls: bool,
                                strong_only: bool = False,
                                container_sel: str | None = None,
-                               control_sel: str | None = None
+                               control_sel: str | None = None,
+                               select2_sel: str | None = None,
+                               custom_sel_sel: str | None = None
                                ) -> tuple[Locator, str] | None:
     # S43-4：两级遍历——强语义（精确按钮名/title/name）在所有 frame 上
     # 先跑一轮，弱策略（text）第二轮才跑。禅道实测：iframe 业务页的
@@ -149,12 +155,12 @@ async def _try_locate_in_frame(page: Page, frame, label: str,
         # S43-4：placeholder 精确匹配——checkbox 的 value="on" 会成为
         # 采集 label，子串匹配意外命中任何含 "on" 的 placeholder/杂项
         (frame.get_by_placeholder(label, exact=True), "placeholder"),
-        # S43-4：element-plus el-select 空 placeholder 渲染为
-        # .el-select__placeholder 容器内的裸 span 文本（非 input 属性）
-        # ——录制点击抓到该文本；点击 span 不开下拉，须点 el-select 容器
+        # S43-4：element-plus el-select 空 placeholder 渲染为容器内裸 span
+        # 文本（非 input 属性）——录制点击抓到该文本；点击 span 不开下拉，
+        # 须点容器。AO 残留清理：选择器从画像来（默认=原硬编码）
         (frame.locator(
-            '.el-select:has(.el-select__placeholder)').filter(
-            has_text=label).first,
+            custom_sel_sel or '.el-select:has(.el-select__placeholder)'
+        ).filter(has_text=label).first,
          "el-select-placeholder"),
         (frame.get_by_label(label, exact=True) if short_label
          else frame.get_by_label(label), "label"),
@@ -191,7 +197,8 @@ async def _try_locate_in_frame(page: Page, frame, label: str,
     if not short_label:
         candidates.append(
             (frame.locator(container_sel or DEFAULT_CONTAINER_SEL,
-                           has_text=label).locator(".select2-container").first,
+                           has_text=label).locator(
+                               select2_sel or ".select2-container").first,
              "select2"))
     # S43-4：必填星号前缀（ant "*表名"）——label 与渲染文本都剥 '*' 再配
     bare = label.lstrip("*").strip()
@@ -300,7 +307,9 @@ async def locate(page: Page, label: str, *,
                  path: str | None = None,
                  prefer_controls: bool = False,
                  container_sel: str | None = None,
-                 control_sel: str | None = None) -> tuple[Locator, str]:
+                 control_sel: str | None = None,
+                 select2_sel: str | None = None,
+                 custom_sel_sel: str | None = None) -> tuple[Locator, str]:
     """S36 多信号定位：快路径逐候选 label 走全策略矩阵（任何 UI 框架
     只要暴露任一信号即可命中，无需逐框架适配）；全部失败后结构兜底
     （path 祖先链 + ordinal nth-of-type，唯一命中才用——宁缺毋滥）。
@@ -317,7 +326,9 @@ async def locate(page: Page, label: str, *,
                 continue
             hit = await _try_locate(page, lbl, prefer_controls=prefer_controls,
                                     container_sel=container_sel,
-                                    control_sel=control_sel)
+                                    control_sel=control_sel,
+                                    select2_sel=select2_sel,
+                                    custom_sel_sel=custom_sel_sel)
             if hit is not None:
                 return hit
         if attempt < 11:
