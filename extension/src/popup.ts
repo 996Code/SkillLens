@@ -10,6 +10,12 @@ const meta = document.getElementById("meta")!;
 const conn = document.getElementById("conn")!;
 const connText = document.getElementById("conn-text")!;
 
+// 工作台入口链接：href 从 AGENT_URL 推导（单一事实源——改部署地址只动 types.ts）
+import("./shared/types").then(({ AGENT_URL }) => {
+  const a = document.getElementById("open-workbench") as HTMLAnchorElement | null;
+  if (a) a.href = AGENT_URL.replace("/api/v1", "") + "/";
+});
+
 function render(recording: boolean, noteText: string, sessionId: string | null,
                 counts?: Record<string, number>): void {
   status.textContent = recording ? "录制中" : "未录制";
