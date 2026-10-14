@@ -316,7 +316,10 @@ export async function runSkill(
       if (ev?.evidence?.pickedRow) stepPickedRows.push(ev.evidence.pickedRow);
       // s44 假 pass 收口：未救回的 miss/unsupported 步记录（finish 据此
       // 如实判 fail——干预救回的步以 ok 重报不落此）
-      if (ev.result !== "ok" && ev.result !== "error" && ev.result !== "duplicate") {
+      // s45 收口：error 步（AM1 写水位快败=提交被拦截强证据）也计入——
+      // 排除它会让服务端恢复性判定空转，断言恰好全过就翻 pass 假阳
+      // （run 3210 实证）。服务端 only_miss 判据会正确区分 miss/error。
+      if (ev.result !== "ok" && ev.result !== "duplicate") {
         failedSteps.push({ seq: ev.seq, result: ev.result,
                            label: instruction.label || instruction.name || instruction.op });
       }

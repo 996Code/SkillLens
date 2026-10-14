@@ -20,6 +20,29 @@ _QUERY_LIKE_KEYS = ("reportview", "search_link", "search_widget",
                     "render_public_asset", "get_views")
 _WRITE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
 
+# 坏断言三族（链级清理 5e6648b 同规则）：回放时随业务结果漂移的
+# 动态值——expect_value 固化它们等于把"成功与否"当期望，判定失真
+_DYNAMIC_RESULT_VALUES = {
+    "success", "fail", "failed", "error", "ok", "true", "false",
+    "0", "1", "200", "成功", "失败",
+    # 无区分度动态提示（s45 F2 全库实证：各 82+ 条）：录制现场错误
+    # 产物/通用祝词，回放必漂移
+    "未选中任何数据", "no results found", "saved", "新增成功",
+}
+
+
+def _is_dynamic_business_result(value) -> bool:
+    """state_signal 值是动态业务结果（success/fail/code 0/1、成功/失败
+    类 toast 文案）→ 不生成断言。具体业务值（名称/编号）不受影响。"""
+    if not isinstance(value, str):
+        return False
+    v = value.strip().lower()
+    if v in _DYNAMIC_RESULT_VALUES:
+        return True
+    # toast 类动态文案：'保存成功'/'操作成功'/'xx成功'/'xx失败'——
+    # 前缀任意动词+成功/失败结尾的祝词模式
+    return v.endswith(("成功", "失败")) and len(v) <= 8
+
 
 def _normalize_template(url: str) -> str:
     """路径段序列，动态段（模板 {id}、纯数字段、UUID 段）归一 {id}——
@@ -116,6 +139,11 @@ def generate_assertions(db: Session, skill_id: int) -> list[OutcomeAssertion]:
                 if (not isinstance(sig, dict) or not sig.get("api")
                         or sig.get("field") is None or "value" not in sig):
                     logger.warning("generate_assertions: skip malformed state_signal %r", sig)
+                    continue
+                # 坏断言三族防再生（s45 F2：链级清理 5e6648b 漏了生成入口）：
+                # 动态业务结果值（success/fail/code 0/1/成功类 toast）随业务
+                # 结果漂移，断言必假 fail/假 pass——不生成
+                if _is_dynamic_business_result(sig["value"]):
                     continue
                 payload = {"api_template": sig["api"], "field": sig["field"],
                            "expect_value": sig["value"]}

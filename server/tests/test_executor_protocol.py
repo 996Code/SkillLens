@@ -623,6 +623,29 @@ async def test_finish_fail_with_passing_assertions_recovers(client, monkeypatch)
     assert body["flaky"] is True, "恢复性 pass 须带 flaky 标记"
 
 
+async def test_finish_fail_with_error_step_not_recovered(client, monkeypatch):
+    """s45 回归实证（run 3210）：error 步=AM1 写水位快败（点击后无写请求
+    ——提交被表单校验拦截），是期望-观测强证据；插件侧不进 failed_steps
+    导致服务端恢复性判定空转，断言恰好全过（GET 类 api_status）就翻
+    pass 假阳。error 步必须阻断恢复（对齐 runner S42-7 说真话防线）。"""
+    skill_id = await _seed_skill(client, monkeypatch)
+    r = await client.post(f"/api/v1/skills/{skill_id}/assertions")
+    assert r.status_code == 200
+    r = await client.post(f"/api/v1/executor/skills/{skill_id}/plan",
+                          json={"overrides": {}, "confirm_side_effect": True})
+    rid = r.json()["run_id"]
+    f = await client.post(f"/api/v1/executor/runs/{rid}/finish", json={
+        "status": "fail",
+        "summary": {"failed_steps": [{"seq": 7, "result": "error"}],
+                    "executed": [{"kind": "input", "ok": True}],
+                    "observed": [{"url": "http://t/a/9/save", "status": 200,
+                                  "method": "POST", "body": '{"code":200}'}]}})
+    assert f.status_code == 200
+    body = f.json()
+    assert body["status"] == "fail", "error 步（提交被拦截）不得被断言放行"
+    assert body["flaky"] is False
+
+
 class TestSessionRecover:
     """AJ2 插件端登录恢复（闭环最后一环）：守卫触发→插件调本端点→
     服务端跑适配器登录例程（独立浏览器）→cookie 返回插件注入常驻

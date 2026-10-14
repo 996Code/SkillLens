@@ -175,8 +175,11 @@ async def test_no_ui_text_without_state_diff(client, monkeypatch):
 async def test_generate_toast_assertion(client, monkeypatch):
     """S12 N3 层1：after 快照 toasts → state_signal 断言（field=toast）。
     state_signals 直接进断言 payload，生成路径零特判；verify 也走既有
-    state_signal 通道（两 session 的 after 快照都带该 toast → 通过）。"""
-    skill_id = await _make_snapshot_skill(client, monkeypatch, toasts=["保存成功"])
+    state_signal 通道（两 session 的 after 快照都带该 toast → 通过）。
+    s45 F2 修正：纯祝词 toast（'保存成功'）是动态业务结果——断言主力
+    坏源（全库 84 条），改为不生成；含实体的具体文案才生成。"""
+    skill_id = await _make_snapshot_skill(
+        client, monkeypatch, toasts=["客户 SL-168 保存成功"])
     await client.post(f"/api/v1/skills/{skill_id}/assertions")
     rows = (await client.get(f"/api/v1/skills/{skill_id}/assertions")).json()
     toast = [r for r in rows if r["kind"] == "state_signal"
@@ -184,9 +187,19 @@ async def test_generate_toast_assertion(client, monkeypatch):
     assert len(toast) == 1, rows
     assert toast[0]["layer"] == 3
     assert toast[0]["api_template"] == "/orders/{id}/save"
-    assert toast[0]["payload"]["expect_value"] == "保存成功"
+    assert toast[0]["payload"]["expect_value"] == "客户 SL-168 保存成功"
     v = (await client.post(f"/api/v1/assertions/{toast[0]['id']}/verify")).json()
     assert v["passed"] is True, v
+
+
+async def test_no_assertion_from_generic_toast(client, monkeypatch):
+    """纯祝词 toast（'保存成功'/'未选中任何数据'）不生成断言——
+    动态业务结果族（s45 F2：全库 84+82 条实证主力坏源）。"""
+    skill_id = await _make_snapshot_skill(
+        client, monkeypatch, toasts=["保存成功", "未选中任何数据"])
+    await client.post(f"/api/v1/skills/{skill_id}/assertions")
+    rows = (await client.get(f"/api/v1/skills/{skill_id}/assertions")).json()
+    assert all(r["payload"].get("field") != "toast" for r in rows), rows
 
 
 async def test_no_toast_assertion_without_toasts(client, monkeypatch):
@@ -329,3 +342,36 @@ async def test_generate_assertions_malformed_evidence_skipped(client, monkeypatc
     rows = (await client.get(f"/api/v1/skills/{skill_id}/assertions")).json()
     assert rows  # 良构证据仍生成断言
     assert all(r["payload"].get("field") != "broken" for r in rows)
+
+
+async def test_no_assertion_from_dynamic_business_result(client, monkeypatch):
+    """s45 回归 F2 族防再生：state_signals 值为动态业务结果
+    （success/fail/0/1/true/成功——回放时随业务结果漂移，属坏断言三族）
+    不得生成 state_signal 断言。链级清理（5e6648b）漏了生成入口。"""
+    skill_id, sid = await _make_learned_skill(client, monkeypatch)
+    from app.db import SessionLocal
+    from app.models import SemanticAction
+    db = SessionLocal()
+    try:
+        act = db.query(SemanticAction).filter_by(session_id=sid).first()
+        act.state_signals = list(act.state_signals or []) + [
+            {"api": "/index.php", "field": "result", "value": "success"},
+            {"api": "/x", "field": "code", "value": "0"},
+            {"api": "/x", "field": "toast", "value": "保存成功"},
+            {"api": "/x", "field": "status", "value": "fail"},
+            # 良构具体值仍应生成
+            {"api": "/x", "field": "name", "value": "SL-客户-168"},
+        ]
+        db.commit()
+    finally:
+        db.close()
+    resp = await client.post(f"/api/v1/skills/{skill_id}/assertions")
+    assert resp.status_code == 200
+    rows = (await client.get(f"/api/v1/skills/{skill_id}/assertions")).json()
+    evs = {(r["payload"].get("field"), r["payload"].get("expect_value"))
+           for r in rows if r["kind"] == "state_signal"}
+    assert ("result", "success") not in evs
+    assert ("code", "0") not in evs
+    assert ("toast", "保存成功") not in evs   # toast 含动态文案：不生成
+    assert ("status", "fail") not in evs
+    assert ("name", "SL-客户-168") in evs     # 具体值保留

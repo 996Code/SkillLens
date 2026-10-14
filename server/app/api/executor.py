@@ -613,9 +613,11 @@ async def executor_finish(run_id: int, body: ExecutorFinishRequest,
         # failure_class 测试实证：无断言的 fail 不许翻 pass）+失败步
         # 全为 miss（AM1/AM2 的 error 类=期望-观测强证据，不参与恢复）
         failed = body.summary.get("failed_steps") or []
+        has_error = any(f.get("result") == "error" for f in failed)
         only_miss = bool(failed) and all(
             f.get("result") == "miss" for f in failed)
-        if assertion_results and all(a.get("passed") for a in assertion_results):
+        if assertion_results and all(a.get("passed") for a in assertion_results) \
+                and not has_error:
             run.status = "pass"
             if body.status == "fail" and only_miss:
                 run.flaky = True
