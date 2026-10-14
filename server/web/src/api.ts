@@ -1002,3 +1002,33 @@ export async function deleteFieldType(id: number): Promise<{ ok: boolean }> {
   }
   return resp.json() as Promise<{ ok: boolean }>;
 }
+
+// ---------- UI 优化批1：仪表盘数据（S28 端点此前无前端消费） ----------
+
+export interface DashboardPayload {
+  skills: { total: number; learned: number; candidate: number; generic_learned: number };
+  replays: {
+    total: number; pass: number; fail: number; error: number;
+    shadow: number; flaky: number;
+    recent: Array<{
+      id: number; skill_id: number; skill_name: string;
+      status: string; mode: string; flaky: boolean;
+      duration_ms: number | null; ts: string;
+    }>;
+  };
+  reports: { total: number; last: Record<string, number> | null };
+  trend: Array<{ date: string; total: number; pass: number }>;
+}
+
+export function getDashboard(): Promise<DashboardPayload> {
+  return get<DashboardPayload>("/api/v1/dashboard");
+}
+
+export interface SystemTrend {
+  system: string; total: number; pass: number; fail: number;
+  rate: number; e1_env: number; e2_infra: number; unverified_pass: number;
+}
+
+export function getSystemTrends(): Promise<SystemTrend[]> {
+  return get<SystemTrend[]>("/api/v1/skills/trends");
+}

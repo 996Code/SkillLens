@@ -47,21 +47,28 @@ async def get_timeline(
     db: Session = Depends(get_db),
 ) -> list:
     items: list[dict] = []
-    run_rows = db.query(ReplayRun).order_by(
-        ReplayRun.created_at.desc()).limit(limit).all()
+    # UI 优化批1（性能）：plan 列是数百 KB 级 JSON（执行状态/证据全量）
+    # ——整行加载 50 行即 30s+（2026-10-14 实测 34.7s）。列选择只取
+    # 展示字段；步数 SQL 端 json_array_length；Skill 名批查（消 N+1）
+    from sqlalchemy import func as _f
+    run_rows = db.query(
+        ReplayRun.id, ReplayRun.skill_id, ReplayRun.status, ReplayRun.mode,
+        ReplayRun.duration_ms, ReplayRun.created_at,
+        _f.ifnull(_f.json_array_length(ReplayRun.executed), 0).label("steps"),
+    ).order_by(ReplayRun.created_at.desc()).limit(limit).all()
     systems = skill_systems(db, [r.skill_id for r in run_rows])  # S38：目标系统维度
+    _names = {sid: name for sid, name in db.query(Skill.id, Skill.name).filter(
+        Skill.id.in_({r.skill_id for r in run_rows} or {0}))}
 
     # 测试运行（自动测试）
     for r in run_rows:
-        skill = db.get(Skill, r.skill_id)
-        skill_name = skill.name if skill else f"#{r.skill_id}"
-        steps = len((r.executed or []))
+        skill_name = _names.get(r.skill_id, f"#{r.skill_id}")
         dur = f"{r.duration_ms}ms" if r.duration_ms else "—"
         system = systems.get(r.skill_id, "未知系统")
         items.append({
             "type": "test_run", "id": r.id,
             "title": f"自动测试 · {skill_name}",
-            "subtitle": f"{system} · {r.status} · {r.mode} · {steps} 步 · {dur}",
+            "subtitle": f"{system} · {r.status} · {r.mode} · {r.steps} 步 · {dur}",
             "ts": r.created_at.isoformat(),
             "system": system,
         })

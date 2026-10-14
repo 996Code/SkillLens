@@ -1,23 +1,66 @@
 <script setup lang="ts">
-// S40 系统总览 v2：真正的图渲染——流水线内嵌 SVG 流程图 +
-// 自动化流程按系统分组卡片（含节点色条预览）。不是文字链接假装是图。
+// 系统总览 v3（UI 优化批1）：仪表盘门面——S28 /dashboard 端点此前无前端
+// 消费（"功能设计了但没用起来"体检首例），本页接上：指标卡带 + 14 天
+// 趋势 + 系统健康（trends）+ 最近运行 + 流水线图。假节点色条预览墙移除。
 import { computed, onMounted, ref } from "vue";
-import { getSkills, listSuites } from "../../api";
-import type { SkillListItem, SuiteItem } from "../../api";
-import { groupBySystem, systemColor } from "../../system-group";
+import { getSkills, listSuites, getDashboard, getSystemTrends } from "../../api";
+import type { SkillListItem, SuiteItem, DashboardPayload, SystemTrend } from "../../api";
+import { systemColor } from "../../system-group";
 
 const suites = ref<SuiteItem[]>([]);
 const skills = ref<SkillListItem[]>([]);
+const dash = ref<DashboardPayload | null>(null);
+const trends = ref<SystemTrend[]>([]);
 // S43-2：流水线卡片"批量测试"节点的子图展开态
 const expanded = ref<Record<number, boolean>>({});
 const loading = ref(true);
 const error = ref("");
 
-const bySystem = computed(() => groupBySystem(skills.value));
+const passRate = computed(() => {
+  const r = dash.value?.replays;
+  if (!r || !(r.pass + r.fail + r.error)) return null;
+  return Math.round((r.pass / (r.pass + r.fail + r.error)) * 100);
+});
+
+// 14 天趋势柱图（纯确定性渲染——无图表库依赖）
+const trendView = computed(() => {
+  const t = dash.value?.trend ?? [];
+  const max = Math.max(1, ...t.map((d) => d.total));
+  return t.map((d) => ({
+    ...d,
+    h: Math.max(2, Math.round((d.total / max) * 56)),
+    ph: Math.max(1, Math.round((d.pass / max) * 56)),
+    label: d.date.slice(5),
+  }));
+});
+
+const rateTone = (rate: number) =>
+  rate >= 90 ? "pass" : rate >= 60 ? "warn" : "fail";
+
+function fmtDuration(ms: number | null): string {
+  if (!ms) return "—";
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+}
+
+function fmtAgo(ts: string): string {
+  const diff = Date.now() - new Date(ts).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "刚刚";
+  if (m < 60) return `${m} 分钟前`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} 小时前`;
+  return `${Math.floor(h / 24)} 天前`;
+}
 
 onMounted(async () => {
   try {
-    [suites.value, skills.value] = await Promise.all([listSuites(), getSkills()]);
+    const [s, sk, d, t] = await Promise.all([
+      listSuites(), getSkills(), getDashboard(), getSystemTrends(),
+    ]);
+    suites.value = s;
+    skills.value = sk;
+    dash.value = d;
+    trends.value = t;
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -29,15 +72,112 @@ onMounted(async () => {
 <template>
   <section>
     <h1>系统总览</h1>
-    <p class="muted page-desc">
-      流水线与自动化流程以图组织。点流水线进入执行；点流程查看流程图。
-    </p>
+    <p class="muted page-desc">技能库健康度、执行趋势与最近运行。</p>
 
     <p v-if="loading" class="muted">加载中…</p>
     <p v-else-if="error" class="error">加载失败：{{ error }}</p>
 
     <template v-else>
-      <!-- 流水线：内嵌 SVG 流程图 -->
+      <!-- 指标卡带 -->
+      <div class="metric-grid" data-testid="overview-metrics">
+        <div class="metric-card">
+          <span class="metric-label">技能库存</span>
+          <span class="metric-value">{{ dash?.skills.total ?? "—" }}</span>
+          <span class="metric-sub muted">
+            learned {{ dash?.skills.learned ?? 0 }} · candidate {{ dash?.skills.candidate ?? 0 }}
+          </span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">总通过率</span>
+          <span class="metric-value" :class="passRate === null ? '' : `tone-${rateTone(passRate)}`">
+            {{ passRate === null ? "—" : `${passRate}%` }}
+          </span>
+          <span class="metric-sub muted">
+            {{ dash?.replays.total ?? 0 }} 次回放 · flaky {{ dash?.replays.flaky ?? 0 }}
+          </span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">累计失败</span>
+          <span class="metric-value tone-fail">{{ dash?.replays.fail ?? 0 }}</span>
+          <span class="metric-sub muted">
+            error {{ dash?.replays.error ?? 0 }} · shadow {{ dash?.replays.shadow ?? 0 }}
+          </span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">四分类报告</span>
+          <span class="metric-value">{{ dash?.reports.total ?? 0 }}</span>
+          <span class="metric-sub muted">流水线 {{ suites.length }} 组 · 技能 {{ skills.length }}</span>
+        </div>
+      </div>
+
+      <!-- 14 天趋势 + 系统健康 -->
+      <div class="dash-row">
+        <div class="block dash-trend">
+          <h2>近 14 天执行趋势</h2>
+          <p v-if="!trendView.length" class="muted">暂无回放数据</p>
+          <div v-else class="trend-chart" data-testid="overview-trend">
+            <div v-for="d in trendView" :key="d.date" class="trend-col"
+                 :title="`${d.date}：${d.total} 次（pass ${d.pass}）`">
+              <div class="trend-bar-wrap">
+                <div class="trend-bar" :style="{ height: `${d.h}px` }"></div>
+                <div class="trend-bar pass" :style="{ height: `${d.ph}px` }"></div>
+              </div>
+              <span class="trend-label">{{ d.label }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="block dash-systems">
+          <h2>系统健康（近 30 天）</h2>
+          <p v-if="!trends.length" class="muted">暂无回放数据</p>
+          <div v-else class="sys-health-list" data-testid="overview-systems">
+            <div v-for="t in trends" :key="t.system" class="sys-health-row">
+              <span class="sys-dot" :style="{ background: systemColor(t.system) }"></span>
+              <span class="sys-health-name">{{ t.system }}</span>
+              <div class="sys-health-bar">
+                <div class="sys-health-fill" :class="`tone-bg-${rateTone(t.rate)}`"
+                     :style="{ width: `${t.rate}%` }"></div>
+              </div>
+              <span class="sys-health-rate" :class="`tone-${rateTone(t.rate)}`">{{ t.rate }}%</span>
+              <span class="muted sys-health-runs">{{ t.total }} 次</span>
+              <span v-if="t.unverified_pass" class="chip warn"
+                    :title="`${t.unverified_pass} 次 pass 无断言佐证`">
+                无断言 {{ t.unverified_pass }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 最近运行 -->
+      <div class="block">
+        <h2>最近运行</h2>
+        <p v-if="!dash?.replays.recent.length" class="muted">暂无运行</p>
+        <table v-else class="tbl" data-testid="overview-recent">
+          <thead>
+            <tr><th>Run</th><th>技能</th><th>状态</th><th>模式</th><th>耗时</th><th>时间</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in dash!.replays.recent" :key="r.id">
+              <td>
+                <RouterLink :to="`/graph/run/${r.id}`">#{{ r.id }}</RouterLink>
+              </td>
+              <td>
+                <RouterLink :to="`/graph/skill/${r.skill_id}`">{{ r.skill_name }}</RouterLink>
+              </td>
+              <td>
+                <span class="badge" :class="`badge-${r.status}`">
+                  {{ r.status }}<template v-if="r.flaky"> ·flaky</template>
+                </span>
+              </td>
+              <td class="muted">{{ r.mode }}</td>
+              <td class="muted">{{ fmtDuration(r.duration_ms) }}</td>
+              <td class="muted">{{ fmtAgo(r.ts) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 流水线：内嵌 SVG 流程图（保留） -->
       <div class="block" data-testid="overview-pipelines">
         <h2>流水线（{{ suites.length }}）</h2>
         <p v-if="!suites.length" class="muted">
@@ -101,43 +241,136 @@ onMounted(async () => {
           </div>
         </div>
       </div>
-
-      <!-- 自动化流程：按系统分组，卡片含节点色条预览 -->
-      <div class="block" data-testid="overview-skills">
-        <h2>自动化流程（{{ skills.length }}）</h2>
-        <div v-for="[sys, list] in bySystem" :key="sys" class="sys-group">
-          <div class="sys-head">
-            <span class="sys-dot" :style="{ background: systemColor(sys) }"></span>
-            <span class="sys-name">{{ sys }}</span>
-            <span class="muted">{{ list.length }} 个</span>
-          </div>
-          <div class="flow-grid">
-            <RouterLink
-              v-for="s in list"
-              :key="s.id"
-              :to="`/graph/skill/${s.id}`"
-              class="flow-card"
-              :data-testid="`flow-${s.id}`"
-            >
-              <span class="flow-name">{{ s.name }}</span>
-              <span class="flow-preview">
-                <i class="fp-node page"></i><span class="fp-arrow">→</span><i class="fp-node action"></i><span class="fp-arrow">→</span><i class="fp-node assert"></i>
-              </span>
-              <span class="flow-meta muted">
-                {{ s.status }} · {{ Math.round(s.confidence * 100) }}%
-              </span>
-            </RouterLink>
-          </div>
-        </div>
-        <p v-if="skills.length === 0" class="muted">
-          暂无自动化流程，先录制一轮操作
-        </p>
-      </div>
     </template>
   </section>
 </template>
 
 <style scoped>
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.metric-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.metric-label {
+  font-size: 12px;
+  color: var(--color-gray-6);
+}
+.metric-value {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.metric-value.tone-pass { color: var(--color-success, #16a34a); }
+.metric-value.tone-warn { color: var(--color-warning, #d97706); }
+.metric-value.tone-fail { color: var(--color-danger, #dc2626); }
+.metric-sub { font-size: 12px; }
+
+.dash-row {
+  display: grid;
+  grid-template-columns: minmax(320px, 5fr) minmax(320px, 4fr);
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  align-items: start;
+}
+@media (max-width: 1000px) {
+  .dash-row { grid-template-columns: 1fr; }
+}
+.trend-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 84px;
+  padding-top: var(--space-2);
+}
+.trend-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.trend-bar-wrap {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 60px;
+}
+.trend-bar {
+  width: 10px;
+  border-radius: 2px 2px 0 0;
+  background: var(--color-danger-soft, #fecaca);
+}
+.trend-bar.pass {
+  background: var(--color-success, #16a34a);
+}
+.trend-label {
+  font-size: 10px;
+  color: var(--color-gray-5);
+  white-space: nowrap;
+}
+.sys-health-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.sys-health-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sys-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+}
+.sys-health-name {
+  width: 90px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sys-health-bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--color-gray-2, #eef2f7);
+  overflow: hidden;
+}
+.sys-health-fill {
+  height: 100%;
+  border-radius: 4px;
+}
+.sys-health-fill.tone-bg-pass { background: var(--color-success, #16a34a); }
+.sys-health-fill.tone-bg-warn { background: var(--color-warning, #d97706); }
+.sys-health-fill.tone-bg-fail { background: var(--color-danger, #dc2626); }
+.sys-health-rate {
+  width: 44px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.sys-health-rate.tone-pass { color: var(--color-success, #16a34a); }
+.sys-health-rate.tone-warn { color: var(--color-warning, #d97706); }
+.sys-health-rate.tone-fail { color: var(--color-danger, #dc2626); }
+.sys-health-runs { font-size: 12px; width: 48px; text-align: right; }
+.chip.warn { background: var(--color-warning-soft, #fef3c7); }
+
 .pipe-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
@@ -187,7 +420,7 @@ onMounted(async () => {
   margin: var(--space-1) 0 var(--space-2);
   padding: var(--space-2);
   border: 1px dashed var(--color-warning);
-  border-radius: var(--radius-md, 6px);
+  border-radius: 6px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -202,75 +435,5 @@ onMounted(async () => {
 }
 .pipe-sub-leaf:hover {
   text-decoration: underline;
-}
-.sys-group {
-  margin-bottom: var(--space-4);
-}
-.sys-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-}
-.sys-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  display: inline-block;
-  /* 配色经 systemColor() 内联绑定（未列系统回退默认灰） */
-}
-.sys-name {
-  font-weight: 700;
-  font-size: 14px;
-  color: var(--color-gray-8);
-}
-.flow-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: var(--space-2);
-}
-.flow-card {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-3);
-  text-decoration: none;
-  color: inherit;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-.flow-card:hover {
-  border-color: var(--color-primary);
-  box-shadow: var(--shadow-sm);
-}
-.flow-name {
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.flow-preview {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-.fp-node {
-  width: 18px;
-  height: 10px;
-  border-radius: 3px;
-  display: inline-block;
-}
-.fp-node.page { background: #3b82f6; }
-.fp-node.action { background: #f59e0b; }
-.fp-node.assert { background: #16a34a; }
-.fp-arrow {
-  font-size: 9px;
-  color: var(--color-gray-4);
-}
-.flow-meta {
-  font-size: 11px;
 }
 </style>

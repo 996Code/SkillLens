@@ -179,7 +179,11 @@ async def skill_trends(db: Session = Depends(get_db)) -> list[dict]:
     from app.system import skill_systems
     from app.change.failure_class import pass_rate
     since = datetime.utcnow() - timedelta(days=30)
-    rows = db.query(ReplayRun).filter(
+    # UI 优化批1（性能）：列选择——只取聚合字段（plan 列数百 KB 不加载，
+    # 2026-10-14 实测整行加载 2875 行 13.2s → 列选择 <0.1s）
+    rows = db.query(
+        ReplayRun.skill_id, ReplayRun.status, ReplayRun.failure_class
+    ).filter(
         ReplayRun.created_at >= since,
         ReplayRun.status.in_(("pass", "fail", "error"))).all()
     systems = skill_systems(db, [r.skill_id for r in rows])

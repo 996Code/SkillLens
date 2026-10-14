@@ -55,8 +55,11 @@ async def get_dashboard(db: Session = Depends(get_db)) -> dict:
     flaky = db.query(func.count(ReplayRun.id)).filter(
         ReplayRun.flaky == True).scalar() or 0  # noqa: E712
 
-    recent_rows = db.query(ReplayRun).order_by(
-        ReplayRun.id.desc()).limit(10).all()
+    # UI 优化批1（性能）：列选择——plan 列不加载
+    recent_rows = db.query(
+        ReplayRun.id, ReplayRun.skill_id, ReplayRun.status, ReplayRun.mode,
+        ReplayRun.flaky, ReplayRun.duration_ms, ReplayRun.created_at,
+    ).order_by(ReplayRun.id.desc()).limit(10).all()
     skill_names = {s.id: s.name for s in db.query(Skill.id, Skill.name).filter(
         Skill.id.in_([r.skill_id for r in recent_rows] or [0])).all()}
     recent = [{
