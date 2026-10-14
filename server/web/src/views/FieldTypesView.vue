@@ -8,6 +8,7 @@ import {
   listFieldTypes,
   updateFieldType,
 } from "../api";
+import { askConfirm } from "../confirm";
 import type { FieldTypeHintItem } from "../api";
 import { currentUser } from "../api";
 
@@ -89,7 +90,7 @@ async function saveEdit(): Promise<void> {
 }
 
 async function remove(id: number): Promise<void> {
-  if (!window.confirm("确定删除该规则？（不可恢复）")) return;
+  if (!(await askConfirm("确定删除该规则？（不可恢复）"))) return;
   busy.value = true;
   try {
     await deleteFieldType(id);

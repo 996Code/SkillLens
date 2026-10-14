@@ -4,7 +4,7 @@
 //   - 一键执行：预演（默认，安全）/ 执行（勾选副作用确认，C1 门控）
 //   - 执行汇总：X 个操作 / Y 通过 / 失败明细（链接 run 详情）
 //   - 执行历史
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 
 // S42：分组增删后通知壳刷新左树计数（此前 graph-changed 是死接线）
 const emit = defineEmits<{ graphChanged: [] }>();
@@ -15,9 +15,11 @@ import {
   listSuites,
   runSuite,
 } from "../api";
+import { askConfirm } from "../confirm";
 import type { SuiteItem, SuiteRunSummary } from "../api";
 import { getSkills } from "../api";
 import type { SkillListItem } from "../api";
+import { groupBySystem } from "../system-group";
 
 const suites = ref<SuiteItem[]>([]);
 const skills = ref<SkillListItem[]>([]);
@@ -45,6 +47,26 @@ const historyError = ref("");
 function toggleSkill(id: number): void {
   if (checked.value.has(id)) checked.value.delete(id);
   else checked.value.add(id);
+}
+
+// UI 批2：选择器重构——249 平铺 checkbox → 系统分组 + 搜索 + 已选 chips
+const pickerQuery = ref("");
+const pickerGroups = computed(() => {
+  const q = pickerQuery.value.trim().toLowerCase();
+  const pool = q
+    ? skills.value.filter((s) => s.name.toLowerCase().includes(q)
+                           || (s.system ?? "").toLowerCase().includes(q))
+    : skills.value;
+  return groupBySystem(pool);
+});
+const checkedSkills = computed(() =>
+  skills.value.filter((s) => checked.value.has(s.id)));
+function toggleGroup(sys: string, ids: number[]): void {
+  const all = ids.every((i) => checked.value.has(i));
+  for (const i of ids) {
+    if (all) checked.value.delete(i);
+    else checked.value.add(i);
+  }
 }
 
 async function create(): Promise<void> {
@@ -101,7 +123,7 @@ async function showHistory(id: number): Promise<void> {
 }
 
 async function remove(id: number): Promise<void> {
-  if (!window.confirm("确定删除该分组？（不可恢复，执行历史保留）")) return;
+  if (!(await askConfirm("确定删除该分组？（不可恢复，执行历史保留）"))) return;
   try {
     await deleteSuite(id);
     await load();
@@ -154,16 +176,42 @@ onMounted(() => void load());
         </button>
       </div>
       <p v-if="createError" class="error">{{ createError }}</p>
+      <div v-if="checkedSkills.length" class="picked-chips" data-testid="picked-chips">
+        <span v-for="s in checkedSkills" :key="s.id" class="chip picked-chip">
+          {{ s.name }}
+          <button class="chip-x" type="button"
+                  :aria-label="`移除 ${s.name}`" @click="toggleSkill(s.id)">×</button>
+        </span>
+      </div>
+      <input
+        v-model="pickerQuery"
+        type="text"
+        class="picker-search"
+        placeholder="搜索流程名/系统…"
+        aria-label="搜索流程"
+        data-testid="picker-search"
+      />
       <div class="skill-picker" data-testid="skill-picker">
-        <label v-for="s in skills" :key="s.id" class="pick-row">
-          <input
-            type="checkbox"
-            :checked="checked.has(s.id)"
-            @change="toggleSkill(s.id)"
-          />
-          <span>{{ s.name }}</span>
-          <span class="muted">（{{ s.status }} · 置信度 {{ Math.round(s.confidence * 100) }}%）</span>
-        </label>
+        <div v-for="[sys, list] in pickerGroups" :key="sys" class="pick-group">
+          <div class="pick-group-head">
+            <button class="btn btn-sm" type="button"
+                    @click="toggleGroup(sys, list.map((s) => s.id))">
+              全选/清空
+            </button>
+            <span class="pick-group-name">{{ sys }}</span>
+            <span class="muted">{{ list.length }}</span>
+          </div>
+          <label v-for="s in list" :key="s.id" class="pick-row">
+            <input
+              type="checkbox"
+              :checked="checked.has(s.id)"
+              @change="toggleSkill(s.id)"
+            />
+            <span>{{ s.name }}</span>
+            <span class="muted">（{{ s.status }} · 置信度 {{ Math.round(s.confidence * 100) }}%）</span>
+          </label>
+        </div>
+        <p v-if="!pickerGroups.length" class="muted">无匹配流程</p>
       </div>
     </div>
 
@@ -314,3 +362,49 @@ onMounted(() => void load());
 .ng { color: var(--color-danger); font-weight: 700; }
 .skipped { color: var(--color-gray-5); }
 </style>
+
+/* UI 批2：选择器重构 */
+.picked-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--space-2);
+}
+.picked-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--color-primary-soft, #e0e7ff);
+}
+.chip-x {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-gray-6);
+  padding: 0 2px;
+}
+.chip-x:hover { color: var(--color-danger, #dc2626); }
+.picker-search {
+  width: 100%;
+  margin-bottom: var(--space-2);
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.pick-group {
+  margin-bottom: var(--space-2);
+}
+.pick-group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  position: sticky;
+  top: 0;
+  background: var(--color-surface);
+  padding: 2px 0;
+}
+.pick-group-name {
+  font-weight: 700;
+  font-size: 13px;
+}

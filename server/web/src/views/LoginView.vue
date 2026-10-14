@@ -76,7 +76,7 @@ async function submit(): Promise<void> {
 .login-card {
   width: 320px;
   padding: 32px 28px;
-  background: #fff;
+  background: var(--color-surface);
   border-radius: 10px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
   display: flex;
@@ -92,21 +92,21 @@ async function submit(): Promise<void> {
   flex-direction: column;
   gap: 6px;
   font-size: 13px;
-  color: #555;
+  color: var(--color-gray-7);
 }
 .form-row input {
   padding: 8px 10px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--color-gray-4);
   border-radius: 6px;
   font-size: 14px;
 }
 .error {
-  color: #c0392b;
+  color: var(--color-danger);
   font-size: 13px;
   margin: 0;
 }
 .hint {
-  color: #999;
+  color: var(--color-gray-5);
   font-size: 12px;
   margin: 0;
 }

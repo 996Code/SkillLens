@@ -171,24 +171,24 @@ onMounted(load);
 
 <style scoped>
 .page { padding: 20px; }
-.hint { color: #6b7280; font-size: 13px; margin-bottom: 16px; }
+.hint { color: var(--color-gray-6); font-size: 13px; margin-bottom: 16px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-.card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; cursor: pointer; }
-.card:hover { border-color: #2563eb; }
+.card { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 10px; padding: 14px; cursor: pointer; }
+.card:hover { border-color: var(--color-primary); }
 .row { display: flex; justify-content: space-between; align-items: center; }
 .name { font-weight: 600; }
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
-.badge.ok { background: #dcfce7; color: #166534; }
-.badge.warn { background: #fef3c7; color: #92400e; }
-.meta { color: #6b7280; font-size: 12px; margin-top: 4px; }
+.badge.ok { background: var(--color-success-soft); color: var(--color-success, #15803d); }
+.badge.warn { background: var(--color-warning-soft); color: var(--color-warning, #b45309); }
+.meta { color: var(--color-gray-6); font-size: 12px; margin-top: 4px; }
 .meta.small { font-size: 11px; }
-.lint { color: #92400e; font-size: 11px; margin-top: 4px; }
+.lint { color: var(--color-warning, #b45309); font-size: 11px; margin-top: 4px; }
 .editor { margin-top: 20px; }
-textarea { width: 100%; font: 12px/1.6 Consolas, monospace; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; }
+textarea { width: 100%; font: 12px/1.6 Consolas, monospace; border: 1px solid var(--color-border); border-radius: 8px; padding: 12px; }
 .actions { margin-top: 8px; display: flex; gap: 8px; align-items: center; }
-button { padding: 6px 18px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; cursor: pointer; }
-button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
-.ok-text { color: #16a34a; font-size: 13px; }
-.err-text { color: #dc2626; font-size: 13px; }
-.loading { color: #6b7280; }
+button { padding: 6px 18px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-surface); cursor: pointer; }
+button.primary { background: var(--color-primary); color: var(--color-surface); border-color: var(--color-primary); }
+.ok-text { color: var(--color-success); font-size: 13px; }
+.err-text { color: var(--color-danger); font-size: 13px; }
+.loading { color: var(--color-gray-6); }
 </style>

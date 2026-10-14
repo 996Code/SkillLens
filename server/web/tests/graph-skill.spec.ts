@@ -47,6 +47,13 @@ function mockFetch(opts: { proposals?: typeof proposals; visual?: unknown } = {}
       return new Response(JSON.stringify(flow),
         { status: 200, headers: { "content-type": "application/json" } });
     }
+    if (url.includes("/runs")) {
+      return new Response(JSON.stringify([
+        { id: 9, skill_id: 3, status: "pass", mode: "execute",
+          flaky: true, failure_class: null, duration_ms: 1234,
+          created_at: "2026-09-27T10:00:00", steps: 2 },
+      ]), { status: 200, headers: { "content-type": "application/json" } });
+    }
     if (url.includes("locate-proposals")) {
       return new Response(
         JSON.stringify(opts.proposals ?? proposals),
@@ -118,7 +125,8 @@ describe("SkillGraphView 详情面板（S42 合并）", () => {
     expect(section.textContent).toContain("保存");
     expect(section.textContent).toContain("提交表单");
     expect(section.textContent).toContain("promoted");
-    expect(root.querySelector("[data-testid='flaky-badge']")?.textContent)
+    // UI 批2：flaky 标记随 last_run 块升级进历史表（badge 内联 ·flaky）
+    expect(root.querySelector("[data-testid='skill-run-history']")?.textContent)
       .toContain("flaky");
     expect(root.querySelector("[data-testid='reject-1']")).not.toBeNull();
   });

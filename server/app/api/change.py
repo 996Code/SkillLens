@@ -132,6 +132,24 @@ async def report(delta_id: int, body: ReportRequest,
             "observed_delta_id": obs.id, "perf": perf_ctx, **r}
 
 
+@router.get("/expected-deltas")
+async def list_expected_deltas(status: str = "confirmed",
+                               db: Session = Depends(get_db)) -> list[dict]:
+    """UI 批3：ReplayLaunch 下拉数据源——按状态列轻量行（changes 只取
+    计数，SQL 端 json_array_length）。"""
+    from sqlalchemy import func as _f
+    rows = db.query(
+        ExpectedDelta.id, ExpectedDelta.requirement_id,
+        ExpectedDelta.feature, ExpectedDelta.version,
+        ExpectedDelta.created_at,
+        _f.ifnull(_f.json_array_length(ExpectedDelta.changes), 0),
+    ).filter(ExpectedDelta.status == status
+    ).order_by(ExpectedDelta.created_at.desc()).limit(50).all()
+    return [{"id": r[0], "requirement_id": r[1], "feature": r[2],
+             "version": r[3], "created_at": r[4].isoformat(),
+             "change_count": r[5]} for r in rows]
+
+
 @router.get("/expected-deltas/{delta_id}")
 async def get_expected(delta_id: int, db: Session = Depends(get_db)) -> dict:
     row = db.get(ExpectedDelta, delta_id)

@@ -1043,3 +1043,37 @@ export interface ReportListItem {
 export function listReports(): Promise<ReportListItem[]> {
   return get<ReportListItem[]>("/api/v1/reports");
 }
+
+export interface FailureRunRow {
+  id: number; skill_id: number; skill_name: string;
+  status: string; failure_class: string | null;
+  system: string; created_at: string;
+}
+
+export interface FailuresSummary {
+  total: number; unclassified: number;
+  by_class: Record<string, { count: number; label: string; runs: FailureRunRow[] }>;
+}
+
+export function getFailuresSummary(days = 30): Promise<FailuresSummary> {
+  return get<FailuresSummary>(`/api/v1/failures/summary?days=${days}`);
+}
+
+export interface SkillRunRow {
+  id: number; skill_id: number; status: string; mode: string;
+  flaky: boolean; failure_class: string | null;
+  duration_ms: number | null; created_at: string; steps: number;
+}
+
+export function listSkillRuns(skillId: number | string): Promise<SkillRunRow[]> {
+  return get<SkillRunRow[]>(`/api/v1/skills/${skillId}/runs`);
+}
+
+export interface ConfirmedDeltaOption {
+  id: number; requirement_id: string; feature: string;
+  version: number; change_count: number; created_at: string;
+}
+
+export function listConfirmedDeltas(): Promise<ConfirmedDeltaOption[]> {
+  return get<ConfirmedDeltaOption[]>("/api/v1/expected-deltas?status=confirmed");
+}

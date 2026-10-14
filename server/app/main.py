@@ -22,6 +22,7 @@ from app.api import (
     events,
     executor,
     export,
+    failures,
     flows,
     generic_skills,
     health,
@@ -107,6 +108,7 @@ app.include_router(replay.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(change.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(baseline.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(cards.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(failures.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(reports.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(audit.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(field_types.router, prefix=API_PREFIX, dependencies=_GUARDED)

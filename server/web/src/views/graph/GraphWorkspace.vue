@@ -8,6 +8,8 @@ import { getSkills, listSuites, logout } from "../../api";
 import type { SkillListItem, SuiteItem } from "../../api";
 import { groupBySystem } from "../../system-group";
 import { useToasts } from "../../toast";
+import { useConfirmReq, answerConfirm } from "../../confirm";
+const confirmReq = useConfirmReq();
 
 const toasts = useToasts();
 
@@ -114,6 +116,7 @@ async function doLogout(): Promise<void> {
       <!-- 测试活动 -->
       <div class="gw-tree-group">测试活动</div>
       <RouterLink to="/graph/timeline" class="gw-tree-leaf">⌇ 时间线</RouterLink>
+      <RouterLink to="/graph/failures" class="gw-tree-leaf">⚠ 失败分析</RouterLink>
       <RouterLink to="/graph/learning" class="gw-tree-leaf">↗ 学习图</RouterLink>
 
       <!-- 工具 -->
@@ -140,6 +143,17 @@ async function doLogout(): Promise<void> {
     </main>
   </div>
 
+  <!-- UI 批3：确认弹层（替代 window.confirm——样式归体系） -->
+  <div v-if="confirmReq" class="sl-confirm-mask" data-testid="confirm-mask">
+    <div class="sl-confirm">
+      <p>{{ confirmReq.message }}</p>
+      <div class="sl-confirm-btns">
+        <button class="btn" @click="answerConfirm(false)">取消</button>
+        <button class="btn btn-primary" data-testid="confirm-ok"
+                @click="answerConfirm(true)">确定</button>
+      </div>
+    </div>
+  </div>
   <!-- 全局 toast（UI 批1）：成功/失败可见——静默吞错终结 -->
   <div class="sl-toasts" data-testid="global-toasts">
     <div v-for="t in toasts" :key="t.id" class="sl-toast" :class="`sl-toast-${t.kind}`">
@@ -330,3 +344,30 @@ async function doLogout(): Promise<void> {
 }
 .sl-toast-ok { border-left-color: var(--color-success, #16a34a); }
 .sl-toast-err { border-left-color: var(--color-danger, #dc2626); }
+
+/* UI 批3：确认弹层 */
+.sl-confirm-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+.sl-confirm {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  max-width: 380px;
+  box-shadow: var(--shadow-md, 0 8px 24px rgba(0,0,0,.18));
+}
+.sl-confirm p {
+  margin: 0 0 var(--space-3);
+  font-size: 14px;
+}
+.sl-confirm-btns {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}

@@ -6,7 +6,7 @@
 // execute 时二者不齐禁用提交（二要素齐备才发 confirm_side_effect=true）。
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { getReplayRun, getSkillCard, replayObserve } from "../api";
+import { getReplayRun, getSkillCard, replayObserve , listConfirmedDeltas } from "../api";
 import type { ReplayRunDetail, SkillCard } from "../api";
 import { assertExpect, assertObserved, snapshotDiffRows } from "../run-format";
 
@@ -21,6 +21,17 @@ const error = ref("");
 const mode = ref<"shadow" | "execute">("shadow");
 const confirmed = ref(false);
 const deltaId = ref("");
+// UI 批3：手填 id → confirmed 下拉（体检点名粗糙交互）
+const deltaOptions = ref<Array<{ id: number; requirement_id: string;
+  feature: string; version: number; change_count: number }>>([]);
+
+async function loadDeltaOptions(): Promise<void> {
+  try {
+    deltaOptions.value = await listConfirmedDeltas();
+  } catch {
+    deltaOptions.value = [];  // 下拉失败退化为手填（fail-open）
+  }
+}
 const overrides = reactive<Record<string, string>>({});
 
 // ---------- 结果状态 ----------
@@ -125,7 +136,10 @@ watch(() => route.params.skillId, () => {
   if (route.name === "replay-launch") void load();
 });
 
-onMounted(() => void load());
+onMounted(() => {
+  void load();
+  void loadDeltaOptions();
+});
 </script>
 
 <template>
@@ -186,12 +200,20 @@ onMounted(() => void load());
         <div class="block">
           <h2>目标 delta</h2>
           <p class="muted hint">
-            填写已确认（confirmed）的 expected_delta id。提交走
-            POST /expected-deltas/{id}/observe——shadow 执行不产生观测会被 409 拒绝，
-            需要观测数据请选 execute；未确认的 delta 同样 409。
+            选择已确认（confirmed）的 expected_delta。shadow 执行不产生
+            观测会被 409 拒绝，需要观测数据请选 execute；未确认的 delta 同样 409。
           </p>
-          <input v-model="deltaId" type="text" inputmode="numeric"
-                 placeholder="expected_delta_id" aria-label="expected_delta_id" />
+          <select v-if="deltaOptions.length" v-model="deltaId"
+                  aria-label="expected_delta_id" data-testid="delta-select">
+            <option value="" disabled>选择 delta…</option>
+            <option v-for="d in deltaOptions" :key="d.id" :value="String(d.id)">
+              #{{ d.id }} · {{ d.requirement_id }} · {{ d.feature }} ·
+              {{ d.change_count }} 项变更
+            </option>
+          </select>
+          <input v-else v-model="deltaId" type="text" inputmode="numeric"
+                 placeholder="expected_delta_id（无 confirmed delta，可手填）"
+                 aria-label="expected_delta_id" />
         </div>
 
         <button type="submit" class="btn btn-primary" :disabled="!canSubmit">

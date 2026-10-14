@@ -10,6 +10,7 @@ import {
   fetchVisualImage,
   getLocateProposals,
   getSkillCard,
+  listSkillRuns,
   getSkillConsistency,
   getSkillFlow,
   getSkillStateMachine,
@@ -26,11 +27,14 @@ import type {
   StateMachineDTO,
   VisualBaselineResponse,
 } from "../../api";
+import type { SkillRunRow } from "../../api";
 import { assertExpect } from "../../run-format";
 import FlowGraph from "../../components/FlowGraph.vue";
 
 const route = useRoute();
 const card = ref<SkillCard | null>(null);
+// UI 批2：run 历史（此前只有 last_run 一条——可追溯性对齐 TestRail）
+const runsHistory = ref<SkillRunRow[]>([]);
 const flow = ref<FlowGraphDTO | null>(null);
 // S43-2：状态机归纳（多轮录制状态信号 → 转移图）
 const stateMachine = ref<StateMachineDTO | null>(null);
@@ -174,7 +178,18 @@ function varValues(values: Record<string, string> | undefined): string[] {
   return Object.values(values ?? {});
 }
 
-onMounted(() => void load());
+onMounted(() => {
+  void load();
+  void loadRuns();
+});
+
+async function loadRuns(): Promise<void> {
+  try {
+    runsHistory.value = await listSkillRuns(String(route.params.skillId));
+  } catch {
+    runsHistory.value = [];  // 历史区 fail-open（不阻塞主卡）
+  }
+}
 </script>
 
 <template>
@@ -340,15 +355,28 @@ onMounted(() => void load());
 
       <!-- 执行历史（下钻到执行图）+ 操作入口 -->
       <div class="block" data-testid="skill-run-history">
-        <h2>最近执行</h2>
-        <p v-if="!card.last_run" class="muted">未执行</p>
-        <RouterLink v-else :to="`/graph/run/${card.last_run.id}`" class="run-link">
-          <span class="dot" :class="`dot-${card.last_run.status}`"></span>
-          {{ card.last_run.status }} · {{ card.last_run.mode }} ·
-          {{ card.last_run.ts.replace("T", " ").slice(0, 16) }}
-          <span v-if="card.last_run.flaky" class="badge badge-flaky" data-testid="flaky-badge">flaky</span>
-          <span class="muted">（点开看执行图）</span>
-        </RouterLink>
+        <h2>执行历史（{{ runsHistory.length }}）</h2>
+        <p v-if="!runsHistory.length" class="muted">未执行</p>
+        <table v-else class="tbl">
+          <thead>
+            <tr><th>Run</th><th>状态</th><th>模式</th><th>步数</th><th>失败类</th><th>耗时</th><th>时间</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in runsHistory.slice(0, 15)" :key="r.id">
+              <td><RouterLink :to="`/graph/run/${r.id}`">#{{ r.id }}</RouterLink></td>
+              <td>
+                <span class="badge" :class="`badge-${r.status}`">
+                  {{ r.status }}<template v-if="r.flaky"> ·flaky</template>
+                </span>
+              </td>
+              <td class="muted">{{ r.mode }}</td>
+              <td class="muted">{{ r.steps }}</td>
+              <td class="muted">{{ r.failure_class ?? "—" }}</td>
+              <td class="muted">{{ r.duration_ms ? (r.duration_ms / 1000).toFixed(1) + "s" : "—" }}</td>
+              <td class="muted">{{ r.created_at.replace("T", " ").slice(0, 16) }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <footer class="replay-cta">

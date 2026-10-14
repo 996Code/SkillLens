@@ -51,3 +51,15 @@ async def test_generate_non_dict_change_element_stays_draft(client, monkeypatch)
     assert r.status_code == 201
     body = r.json()
     assert body["status"] == "draft" and body["notes"]
+
+
+async def test_list_confirmed_deltas(client):
+    """UI 批3：ReplayLaunch delta 下拉数据源——confirmed 列表轻量行
+    （手填数字 id 是体检点名的粗糙交互）。"""
+    resp = await client.get("/api/v1/expected-deltas?status=confirmed")
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert isinstance(rows, list)
+    for r in rows:
+        assert {"id", "requirement_id", "feature", "version",
+                "change_count", "created_at"} <= set(r)

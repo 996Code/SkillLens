@@ -7,7 +7,8 @@ from app.db import SessionLocal
 from app.ingestion.fieldchange import extract_field_changes
 from app.learning.outcome import generate_assertions, verify_against_session
 from app.learning.skill import induce_skill
-from app.models import FieldChange, OutcomeAssertion, RecordingSession, Skill
+from app.models import (FieldChange, OutcomeAssertion, RecordingSession,
+                        ReplayRun, Skill)
 from app.api.auth import WRITE_GUARD
 
 router = APIRouter()
@@ -168,6 +169,24 @@ async def bulk_archive(body: BulkArchiveRequest, db: Session = Depends(get_db)) 
         n += 1
     db.commit()
     return {"archived": n, "requested": len(body.ids)}
+
+
+@router.get("/skills/{skill_id}/runs")
+async def skill_runs_history(skill_id: int, db: Session = Depends(get_db)) -> list[dict]:
+    """UI 批2：Skill 页 run 历史——轻量行列选择（plan 不加载，UI 批1 纪律），
+    created_at 倒序取最近 50。"""
+    from sqlalchemy import func as _f
+    rows = db.query(
+        ReplayRun.id, ReplayRun.skill_id, ReplayRun.status, ReplayRun.mode,
+        ReplayRun.flaky, ReplayRun.failure_class, ReplayRun.duration_ms,
+        ReplayRun.created_at,
+        _f.ifnull(_f.json_array_length(ReplayRun.executed), 0),
+    ).filter(ReplayRun.skill_id == skill_id
+    ).order_by(ReplayRun.created_at.desc()).limit(50).all()
+    return [{"id": r[0], "skill_id": r[1], "status": r[2], "mode": r[3],
+             "flaky": bool(r[4]), "failure_class": r[5],
+             "duration_ms": r[6], "created_at": r[7].isoformat(),
+             "steps": r[8]} for r in rows]
 
 
 @router.get("/skills/trends")

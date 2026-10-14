@@ -181,3 +181,52 @@ async def test_timeline_items_have_system(client, monkeypatch):
     rec = next(r for r in rows if r["type"] == "recording")
     assert tr["system"] == "t"
     assert rec["system"] == "t"
+
+
+async def test_failures_aggregate_endpoint(client):
+    """UI 批2：失败分析工作台数据源——failure_class 聚合（近 N 天）+
+    按类下钻 run 列表。数据已在库（AJ1 落列），此前无任何聚合 UI。"""
+    resp = await client.get("/api/v1/failures/summary?days=30")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "total" in body and "by_class" in body
+    # by_class 形态：类名 → {count, runs: 最近 run 轻量行}
+    for cls, agg in body["by_class"].items():
+        assert isinstance(cls, str)
+        assert {"count", "runs"} <= set(agg)
+        for r in agg["runs"]:
+            assert {"id", "skill_id", "skill_name", "status",
+                    "created_at"} <= set(r)
+
+
+async def test_skill_runs_history(client):
+    """UI 批2：Skill 页 run 历史——按技能列轻量 run 行（列选择）。"""
+    from app.db import SessionLocal
+    from app.models import Alignment, ReplayRun, Skill
+    db = SessionLocal()
+    try:
+        sk = db.query(Skill).first()
+        if not sk:
+            al = Alignment(session_ids=["seed-runs-sid"], skeleton=[],
+                              param_variables=[], input_variables=[])
+            db.add(al)
+            db.flush()
+            sk = Skill(name="RunsHistorySeed", alignment_id=al.id,
+                       skeleton=[], status="learned",
+                       description="seed for runs history",
+                       param_variables=[], input_variables=[],
+                       confidence=0.5, evidence_count=0, notes="")
+            db.add(sk)
+            db.flush()
+        db.add(ReplayRun(skill_id=sk.id, mode="execute", status="pass", plan={}))
+        db.commit()
+        sid = sk.id
+    finally:
+        db.close()
+    resp = await client.get(f"/api/v1/skills/{sid}/runs")
+    assert resp.status_code == 200, resp.text[:200]
+    assert resp.headers["content-type"].startswith("application/json"),         "SPA 兜底返 HTML=路由未注册（曾假绿的根因）"
+    rows = resp.json()
+    assert isinstance(rows, list) and rows
+    assert {"id", "skill_id", "status", "mode", "created_at"} <= set(rows[0])
+    assert all(r["skill_id"] == sid for r in rows)
