@@ -110,6 +110,9 @@ def _skill_brief(db: Session, skill_id: int) -> dict:
     from app.replay.plan import requires_confirmation
     s = db.get(Skill, skill_id)
     return {"id": s.id, "name": s.name,
+            # AQ1：用户可读主文案（95% 技能有 LLM 描述——场景页步骤
+            # 时间线主文案，技术名降为副标题）
+            "description": s.description or "",
             "requires_confirmation": requires_confirmation(s.skeleton or []),
             "fill_fields": _fill_fields(db, skill_id)}
 
@@ -164,6 +167,24 @@ async def get_chain(chain_id: int, db: Session = Depends(get_db)) -> dict:
                       "skill": brief})
     return {"id": row.id, "name": row.name, "system": row.system,
             "steps": steps, "created_at": str(row.created_at)}
+
+
+@router.put("/chains/{chain_id}", dependencies=WRITE_GUARD)
+async def update_chain(chain_id: int, body: ChainIn,
+                       db: Session = Depends(get_db)) -> dict:
+    """AQ4：场景编辑（改名/启停步/换参/重排）——校验与 POST 同源
+    （悬空引用 422；插件空间面板与 Web 场景页共用此端点）。"""
+    row = db.get(Chain, chain_id)
+    if not row:
+        raise HTTPException(404, "chain not found")
+    _validate_steps(db, body.steps)
+    row.name = body.name
+    row.system = body.system
+    row.steps = [st.model_dump() for st in body.steps]
+    db.commit()
+    db.refresh(row)
+    return {"id": row.id, "name": row.name, "system": row.system,
+            "steps": row.steps, "created_at": str(row.created_at)}
 
 
 @router.delete("/chains/{chain_id}", dependencies=WRITE_GUARD)

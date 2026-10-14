@@ -1077,3 +1077,52 @@ export interface ConfirmedDeltaOption {
 export function listConfirmedDeltas(): Promise<ConfirmedDeltaOption[]> {
   return get<ConfirmedDeltaOption[]>("/api/v1/expected-deltas?status=confirmed");
 }
+
+// ---------- AQ 信息架构：测试场景（链）一等公民 ----------
+
+export interface ChainStepBrief {
+  skill_id: number | null;
+  chain_id: number | null;
+  setup: boolean;
+  enabled: boolean;
+  overrides: Record<string, string>;
+  cleanup: string | null;
+  row_anchor_from: number | null;
+  skill?: { id: number; name: string; description?: string;
+            requires_confirmation?: boolean;
+            fill_fields?: Array<{ name: string; first_value: string }> } | null;
+}
+
+export interface ChainDetail {
+  id: number; name: string; system: string;
+  steps: ChainStepBrief[]; created_at: string;
+}
+
+export interface ChainListItem {
+  id: number; name: string; system: string;
+  steps: Array<{ skill_id: number | null }>; created_at: string;
+}
+
+export function listChains(system?: string): Promise<ChainListItem[]> {
+  return get<ChainListItem[]>(
+    `/api/v1/chains${system ? `?system=${encodeURIComponent(system)}` : ""}`);
+}
+
+export function getChain(id: number | string): Promise<ChainDetail> {
+  return get<ChainDetail>(`/api/v1/chains/${id}`);
+}
+
+export async function updateChain(id: number | string, body: {
+  name: string; system: string;
+  steps: Array<{ skill_id: number | null; chain_id?: number | null;
+    overrides?: Record<string, string>; enabled?: boolean;
+    setup?: boolean; row_anchor_from?: number | null }>;
+}): Promise<ChainDetail> {
+  const resp = await authedFetch(`/api/v1/chains/${id}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new ApiError(resp.status, `PUT chains -> ${resp.status}`);
+  return resp.json() as Promise<ChainDetail>;
+}

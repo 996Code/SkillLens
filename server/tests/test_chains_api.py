@@ -182,3 +182,45 @@ async def test_chain_step_row_anchor_from(chain_client):
         assert r2.status_code == 422
     finally:
         db.close()
+
+
+async def test_update_chain(chain_client):
+    """AQ4：场景可编辑——PUT /chains/{id}（改名/改 steps：启停/换参/
+    重排）。引用校验与 POST 同源（悬空拒绝）。"""
+    db = SessionLocal()
+    try:
+        sid = await _mk_skill(db, name="AQ 编辑技能")
+        r = await chain_client.post("/api/v1/chains", json={
+            "name": "AQ 场景", "system": "JeecG 表单",
+            "steps": [{"skill_id": sid, "overrides": {}}],
+        })
+        assert r.status_code == 201, r.text
+        cid = r.json()["id"]
+
+        # 更新：改名+步骤禁用+换参+重排（单步场景改参数即可验证）
+        r2 = await chain_client.put(f"/api/v1/chains/{cid}", json={
+            "name": "AQ 场景 v2", "system": "JeecG 表单",
+            "steps": [{"skill_id": sid, "overrides": {"name": "新值"},
+                       "enabled": False}],
+        })
+        assert r2.status_code == 200, r2.text
+        body = r2.json()
+        assert body["name"] == "AQ 场景 v2"
+        assert body["steps"][0]["enabled"] is False
+        assert body["steps"][0]["overrides"] == {"name": "新值"}
+
+        # 悬空引用拒绝（与 POST 同语义）
+        r3 = await chain_client.put(f"/api/v1/chains/{cid}", json={
+            "name": "x", "system": "s",
+            "steps": [{"skill_id": 999999, "overrides": {}}],
+        })
+        assert r3.status_code == 422
+
+        # 404
+        r4 = await chain_client.put("/api/v1/chains/999999", json={
+            "name": "x", "system": "s",
+            "steps": [{"skill_id": sid, "overrides": {}}],
+        })
+        assert r4.status_code == 404
+    finally:
+        db.close()

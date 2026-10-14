@@ -3,7 +3,8 @@
 // 消费（"功能设计了但没用起来"体检首例），本页接上：指标卡带 + 14 天
 // 趋势 + 系统健康（trends）+ 最近运行 + 流水线图。假节点色条预览墙移除。
 import { computed, onMounted, ref } from "vue";
-import { getSkills, listSuites, getDashboard, getSystemTrends } from "../../api";
+import { getSkills, listSuites, getDashboard, getSystemTrends, listChains } from "../../api";
+import type { ChainListItem } from "../../api";
 import type { SkillListItem, SuiteItem, DashboardPayload, SystemTrend } from "../../api";
 import { systemColor } from "../../system-group";
 
@@ -11,6 +12,8 @@ const suites = ref<SuiteItem[]>([]);
 const skills = ref<SkillListItem[]>([]);
 const dash = ref<DashboardPayload | null>(null);
 const trends = ref<SystemTrend[]>([]);
+// AQ3：场景卡（替代流水线区）
+const chains = ref<ChainListItem[]>([]);
 // S43-2：流水线卡片"批量测试"节点的子图展开态
 const expanded = ref<Record<number, boolean>>({});
 const loading = ref(true);
@@ -54,13 +57,14 @@ function fmtAgo(ts: string): string {
 
 onMounted(async () => {
   try {
-    const [s, sk, d, t] = await Promise.all([
-      listSuites(), getSkills(), getDashboard(), getSystemTrends(),
+    const [s, sk, d, t, c] = await Promise.all([
+      listSuites(), getSkills(), getDashboard(), getSystemTrends(), listChains(),
     ]);
     suites.value = s;
     skills.value = sk;
     dash.value = d;
     trends.value = t;
+    chains.value = c;
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -177,68 +181,25 @@ onMounted(async () => {
         </table>
       </div>
 
-      <!-- 流水线：内嵌 SVG 流程图（保留） -->
-      <div class="block" data-testid="overview-pipelines">
-        <h2>流水线（{{ suites.length }}）</h2>
-        <p v-if="!suites.length" class="muted">
-          暂无流水线，去
-          <RouterLink to="/graph/suites">分组管理</RouterLink> 创建
+      <!-- AQ3：测试场景（用户工作层——替代流水线区） -->
+      <div class="block" data-testid="overview-scenarios">
+        <h2>测试场景（{{ chains.length }}）</h2>
+        <p v-if="!chains.length" class="muted">
+          暂无场景，去
+          <RouterLink to="/graph/scenarios">测试场景</RouterLink> 查看
         </p>
-        <div v-else class="pipe-grid">
-          <div v-for="s in suites" :key="s.id" class="pipe-card"
-               :data-testid="`pipe-${s.id}`">
-            <div class="pipe-head">
-              <span class="pipe-name">{{ s.name }}</span>
-              <RouterLink to="/graph/suites" class="btn btn-sm">管理</RouterLink>
-            </div>
-            <div class="pipe-flow-svg">
-              <svg viewBox="0 0 300 60" class="pipe-svg">
-                <rect x="10" y="15" width="70" height="30" rx="6"
-                      fill="var(--color-primary-soft)" stroke="var(--color-primary)" stroke-width="1.5"/>
-                <text x="45" y="35" text-anchor="middle" font-size="10" fill="var(--color-primary)">
-                  流程×{{ s.skills.length }}
-                </text>
-                <line x1="80" y1="30" x2="110" y2="30" stroke="var(--color-gray-4)" stroke-width="1.5"
-                      marker-end="url(#arrow)"/>
-                <!-- S43-2：点"批量测试"展开流程子图（图内下钻，不跳分组页） -->
-                <g class="pipe-batch" :data-testid="`pipe-batch-${s.id}`"
-                   @click="expanded[s.id] = !expanded[s.id]">
-                  <rect x="115" y="15" width="70" height="30" rx="6"
-                        fill="var(--color-warning-soft)" stroke="var(--color-warning)" stroke-width="1.5"/>
-                  <text x="150" y="35" text-anchor="middle" font-size="10" fill="var(--color-warning)">
-                    批量测试{{ expanded[s.id] ? " ▾" : " ▸" }}
-                  </text>
-                </g>
-                <line x1="185" y1="30" x2="215" y2="30" stroke="var(--color-gray-4)" stroke-width="1.5"
-                      marker-end="url(#arrow)"/>
-                <rect x="220" y="15" width="70" height="30" rx="6"
-                      fill="var(--color-gray-2)" stroke="var(--color-gray-5)" stroke-width="1.5"/>
-                <text x="255" y="35" text-anchor="middle" font-size="10" fill="var(--color-gray-7)">
-                  汇总
-                </text>
-                <defs>
-                  <marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-                    <path d="M0,0 L8,3 L0,6" fill="var(--color-gray-4)"/>
-                  </marker>
-                </defs>
-              </svg>
-            </div>
-            <!-- 展开的流程子图（子技能清单） -->
-            <div v-if="expanded[s.id]" class="pipe-subflow" :data-testid="`pipe-subflow-${s.id}`">
-              <RouterLink v-for="sk in s.skills" :key="sk.id"
-                          :to="`/graph/skill/${sk.id}`" class="pipe-sub-leaf">
-                <span class="dot" :class="`dot-${sk.status === 'learned' ? 'pass' : 'fail'}`"></span>
-                #{{ sk.id }} {{ sk.name }}
-                <span class="chip">{{ sk.system }}</span>
-              </RouterLink>
-            </div>
-            <div class="pipe-meta">
-              <span v-for="sk in s.skills.slice(0, 3)" :key="sk.id" class="chip">
-                {{ sk.system }}
-              </span>
-              <span v-if="s.skills.length > 3" class="muted">+{{ s.skills.length - 3 }}</span>
-            </div>
-          </div>
+        <div v-else class="scenario-grid">
+          <RouterLink v-for="c in chains.slice(0, 12)" :key="c.id"
+                      :to="`/graph/scenario/${c.id}`"
+                      class="overview-scenario-card"
+                      :data-testid="`overview-scenario-${c.id}`">
+            <span class="overview-scenario-name">{{ c.name }}</span>
+            <span class="muted overview-scenario-meta">{{ c.system }} · {{ c.steps.length }} 步</span>
+          </RouterLink>
+          <RouterLink v-if="chains.length > 12" to="/graph/scenarios"
+                      class="overview-scenario-card overview-scenario-more">
+            查看全部 {{ chains.length }} 个场景 →
+          </RouterLink>
         </div>
       </div>
     </template>
@@ -256,19 +217,44 @@ onMounted(async () => {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  padding: var(--space-3) var(--space-4);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-4) var(--space-5);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  position: relative;
+  overflow: hidden;
+  transition: box-shadow var(--dur-mid) var(--ease-out),
+    transform var(--dur-mid) var(--ease-out);
+}
+.metric-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+.metric-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--color-primary),
+    var(--color-primary-border));
+  opacity: 0.85;
 }
 .metric-label {
-  font-size: 12px;
-  color: var(--color-gray-6);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-gray-5);
 }
 .metric-value {
-  font-size: 28px;
-  font-weight: 700;
+  font-size: 30px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+  line-height: 1.15;
 }
 .metric-value.tone-pass { color: var(--color-success, #16a34a); }
 .metric-value.tone-warn { color: var(--color-warning, #d97706); }
@@ -437,3 +423,42 @@ onMounted(async () => {
   text-decoration: underline;
 }
 </style>
+
+/* AQ3：总览场景卡 */
+.scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-2);
+}
+.overview-scenario-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease;
+}
+.overview-scenario-card:hover {
+  border-color: var(--color-primary-border);
+  box-shadow: var(--shadow-sm);
+  text-decoration: none;
+}
+.overview-scenario-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.overview-scenario-meta {
+  font-size: 11.5px;
+}
+.overview-scenario-more {
+  justify-content: center;
+  align-items: center;
+  color: var(--color-primary);
+  font-weight: 600;
+}

@@ -1,50 +1,63 @@
 /* ============================================================
-   SkillLens 工作台全局样式（S16 块 Q UI 升级）
-   手写最小设计系统（按计划：不引 UI 库、零新依赖）：
+   SkillLens 工作台全局样式 v2（UI 视觉升级批）
+   手写设计系统（按计划：不引 UI 库、零新依赖）：
    ① 设计令牌（:root CSS 变量）② 统一组件类（tbl/badge/card/empty/btn）
    各视图 scoped 样式只保留布局差异，颜色/圆角/阴影一律走令牌。
+
+   v2 升级（对标 Linear/Stripe/Katalon 观感，全站 13/15 页共享组件
+   类——改这里即换脸）：
+   - 字体：Inter 优先（退化系统栈）；数字 tabular；标题紧字距
+   - 色板：indigo→violet 主色提亮；背景分层（画布灰/表面白/浮层）
+   - 卡片：去重边框、柔和双层阴影、hover 微浮
+   - 表格：去横线噪声、表头大写字距、行距放宽
+   - badge：彩色左边条式（状态一眼可辨）
+   - 按钮：实心主色带 focus ring；幽灵次级
+   - 全局过渡曲线统一（150/250ms）
    ============================================================ */
 
 /* ---------- ① 设计令牌 ---------- */
 :root {
-  /* 主色（indigo 系）*/
-  --color-primary: #4f46e5;
-  --color-primary-hover: #4338ca;
-  --color-primary-active: #3730a3;
-  --color-primary-soft: #eef2ff;
-  --color-primary-border: #c7d2fe;
+  /* 主色（violet-indigo——比 v1 indigo 更亮更现代）*/
+  --color-primary: #6d5ae6;
+  --color-primary-hover: #5b48d6;
+  --color-primary-active: #4c3bc2;
+  --color-primary-soft: #f0edfd;
+  --color-primary-border: #d4cdfa;
 
-  /* 功能色 */
-  --color-success: #16a34a;
-  --color-success-soft: #f0fdf4;
-  --color-success-border: #bbf7d0;
-  --color-warning: #d97706;
-  --color-warning-soft: #fffbeb;
-  --color-warning-border: #fde68a;
-  --color-danger: #dc2626;
-  --color-danger-soft: #fef2f2;
-  --color-danger-border: #fecaca;
+  /* 功能色（饱和度校准）*/
+  --color-success: #0e9f5d;
+  --color-success-soft: #e8f8f0;
+  --color-success-border: #b5e8d0;
+  --color-warning: #dd8f08;
+  --color-warning-soft: #fdf5e3;
+  --color-warning-border: #f7dfa8;
+  --color-danger: #e5484d;
+  --color-danger-soft: #fdeeee;
+  --color-danger-border: #f8c8c8;
 
-  /* 中性灰阶 8 档 */
+  /* 中性灰阶 8 档（冷调 slate）*/
   --color-gray-0: #ffffff;
-  --color-gray-1: #f9fafb;
-  --color-gray-2: #f3f4f6;
-  --color-gray-3: #e5e7eb;
-  --color-gray-4: #d1d5db;
-  --color-gray-5: #9ca3af;
-  --color-gray-6: #6b7280;
-  --color-gray-7: #374151;
-  --color-gray-8: #111827;
+  --color-gray-1: #f8f9fb;
+  --color-gray-2: #f1f2f6;
+  --color-gray-3: #e4e6ec;
+  --color-gray-4: #d1d4dd;
+  --color-gray-5: #9ba1ad;
+  --color-gray-6: #6d7380;
+  --color-gray-7: #3d434e;
+  --color-gray-8: #181b23;
 
-  /* 侧栏（深色）*/
-  --color-sidebar: #1e293b;
-  --color-sidebar-hover: #334155;
-  --color-sidebar-text: #cbd5e1;
+  /* 侧栏（深色 slate——现代平台标配深色导航）*/
+  --color-sidebar: #14161d;
+  --color-sidebar-hover: #1f222c;
+  --color-sidebar-active: #262a37;
+  --color-sidebar-text: #a8aebc;
+  --color-sidebar-text-active: #ffffff;
+  --color-sidebar-accent: #8b7bf3;
 
   /* 语义别名 */
   --color-text: var(--color-gray-8);
   --color-text-secondary: var(--color-gray-6);
-  --color-bg: var(--color-gray-2);
+  --color-bg: var(--color-gray-1);
   --color-surface: var(--color-gray-0);
   --color-border: var(--color-gray-3);
 
@@ -56,19 +69,31 @@
   --space-6: 24px;
   --space-8: 32px;
 
-  /* 圆角（4/8/12）*/
+  /* 圆角（4/8/12/16——卡片加大圆角）*/
   --radius-sm: 4px;
   --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
 
-  /* 阴影（2 档）*/
-  --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.06), 0 1px 3px rgba(17, 24, 39, 0.08);
-  --shadow-md: 0 4px 12px rgba(17, 24, 39, 0.12);
+  /* 阴影（3 档——柔和双层）*/
+  --shadow-xs: 0 1px 2px rgba(24, 27, 35, 0.04);
+  --shadow-sm: 0 1px 2px rgba(24, 27, 35, 0.04),
+    0 2px 8px rgba(24, 27, 35, 0.05);
+  --shadow-md: 0 2px 6px rgba(24, 27, 35, 0.06),
+    0 8px 24px rgba(24, 27, 35, 0.09);
+  --shadow-lg: 0 4px 12px rgba(24, 27, 35, 0.08),
+    0 16px 40px rgba(24, 27, 35, 0.12);
 
-  /* 字体（系统栈 + 等宽技术数据）*/
-  --font-sans: system-ui, -apple-system, "Segoe UI", "PingFang SC",
-    "Microsoft YaHei", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace;
+  /* 动效 */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 130ms;
+  --dur-mid: 220ms;
+
+  /* 字体（Inter 优先 + 中文回退）*/
+  --font-sans: "Inter", "SF Pro Text", system-ui, -apple-system,
+    "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas,
+    "Courier New", monospace;
 }
 
 /* ---------- 基础 ---------- */
@@ -78,20 +103,53 @@
 body {
   margin: 0;
   font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 13.5px;
+  line-height: 1.55;
   color: var(--color-text);
   background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+/* 数字统一等宽（指标/耗时/计数）*/
+body {
+  font-variant-numeric: tabular-nums;
 }
 a {
   color: var(--color-primary);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
 }
 h1 {
-  font-size: 22px;
+  font-size: 21px;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   margin: 0 0 var(--space-2);
   color: var(--color-gray-8);
+}
+::selection {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-active);
+}
+/* 滚动条细化（Webkit）*/
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-gray-4);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gray-5);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* ---------- ② 统一组件类 ---------- */
@@ -108,6 +166,7 @@ h1 {
 }
 .mono {
   font-family: var(--font-mono);
+  font-size: 0.95em;
   word-break: break-all;
 }
 .page-desc {
@@ -116,7 +175,7 @@ h1 {
   color: var(--color-text-secondary);
 }
 
-/* 卡片：白底 / 圆角 / 阴影；链接卡 hover 提升 */
+/* 卡片：白底 / 大圆角 / 柔和阴影 / hover 微浮 */
 .card {
   display: block;
   background: var(--color-surface);
@@ -127,8 +186,9 @@ h1 {
 }
 a.card,
 .card-hoverable {
-  transition: box-shadow 0.15s ease, transform 0.15s ease,
-    border-color 0.15s ease;
+  transition: box-shadow var(--dur-mid) var(--ease-out),
+    transform var(--dur-mid) var(--ease-out),
+    border-color var(--dur-mid) var(--ease-out);
 }
 a.card:hover,
 .card-hoverable:hover {
@@ -147,37 +207,45 @@ a.card:hover,
   margin-top: var(--space-6);
 }
 .block h2 {
-  font-size: 15px;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
   margin: 0 0 var(--space-3);
   padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--color-gray-3);
+  border-bottom: 1px solid var(--color-gray-2);
   color: var(--color-gray-8);
 }
 .block h3 {
-  font-size: 14px;
+  font-size: 13.5px;
   margin: var(--space-4) 0 var(--space-2);
   color: var(--color-gray-7);
 }
 
-/* 表格：表头浅灰底 / 行 hover / 斑马纹可选（.tbl.zebra）*/
+/* 表格：安静——去竖线噪声、表头微大写字距、行距放宽 */
 .tbl {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
 }
 .tbl th {
-  background: var(--color-gray-2);
-  color: var(--color-gray-7);
+  background: transparent;
+  color: var(--color-gray-5);
   font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   text-align: left;
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--color-border);
   white-space: nowrap;
 }
 .tbl td {
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--color-gray-3);
+  padding: 10px var(--space-3);
+  border-bottom: 1px solid var(--color-gray-2);
   vertical-align: top;
+}
+.tbl tbody tr {
+  transition: background var(--dur-fast) ease;
 }
 .tbl tbody tr:last-child td {
   border-bottom: none;
@@ -189,16 +257,18 @@ a.card:hover,
   background: var(--color-gray-1);
 }
 
-/* 徽标体系：status（learned/candidate/pass/fail/shadow/error）、
-   decision（approved/rejected/changes_requested）、source（demo/real）等 */
+/* 徽标体系：胶囊式（软底+彩字——状态一眼可辨）*/
 .badge {
-  display: inline-block;
-  font-size: 12px;
-  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
   line-height: 18px;
-  padding: 1px var(--space-2);
+  padding: 1px 9px;
   border-radius: 999px;
   white-space: nowrap;
+  letter-spacing: 0.01em;
 }
 /* 成功态 */
 .badge-learned,
@@ -206,6 +276,7 @@ a.card:hover,
 .badge-kept,
 .badge-approved,
 .badge-success,
+.badge-pass,
 .c2-met {
   color: var(--color-success);
   background: var(--color-success-soft);
@@ -214,7 +285,7 @@ a.card:hover,
 .badge-candidate,
 .badge-demo,
 .badge-shadow {
-  color: var(--color-gray-7);
+  color: var(--color-gray-6);
   background: var(--color-gray-2);
 }
 /* 危险态 */
@@ -227,7 +298,8 @@ a.card:hover,
 }
 /* 警告态 */
 .badge-changes_requested,
-.badge-error {
+.badge-error,
+.badge-flaky {
   color: var(--color-warning);
   background: var(--color-warning-soft);
 }
@@ -252,12 +324,14 @@ a.card:hover,
 /* chip：内联技术值标签 */
 .chip {
   display: inline-block;
-  background: var(--color-gray-2);
+  background: var(--color-gray-1);
   border: 1px solid var(--color-gray-3);
-  border-radius: var(--radius-sm);
-  padding: 0 6px;
+  border-radius: 999px;
+  padding: 0 9px;
   margin: 0 6px 2px 0;
-  font-size: 12px;
+  font-size: 11.5px;
+  color: var(--color-gray-7);
+  line-height: 20px;
 }
 .chip-kind,
 .chip-type {
@@ -290,39 +364,52 @@ a.card:hover,
   color: var(--color-gray-5);
 }
 
-/* 按钮：primary / secondary / danger 三态 */
+/* 按钮：primary 实心带 focus ring / secondary 幽灵 / danger */
 .btn {
-  display: inline-block;
-  padding: 6px var(--space-4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 16px;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   font-family: inherit;
   font-size: 13px;
+  font-weight: 550;
   line-height: 1.5;
   cursor: pointer;
-  text-decoration: none;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  text-decoration: none !important;
+  transition: background var(--dur-fast) ease,
+    border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease,
+    color var(--dur-fast) ease;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--color-primary-border);
+  outline-offset: 2px;
 }
 .btn-primary {
   background: var(--color-primary);
   border-color: var(--color-primary);
   color: #fff;
+  box-shadow: var(--shadow-xs);
 }
 .btn-primary:hover {
   background: var(--color-primary-hover);
   border-color: var(--color-primary-hover);
+  box-shadow: var(--shadow-sm);
 }
 .btn-primary:active {
   background: var(--color-primary-active);
 }
 .btn-secondary {
   background: var(--color-surface);
-  border-color: var(--color-gray-4);
+  border-color: var(--color-gray-3);
   color: var(--color-gray-7);
 }
 .btn-secondary:hover {
-  border-color: var(--color-primary);
+  border-color: var(--color-primary-border);
   color: var(--color-primary);
+  background: var(--color-primary-soft);
 }
 .btn-danger {
   background: var(--color-danger);
@@ -330,12 +417,13 @@ a.card:hover,
   color: #fff;
 }
 .btn-danger:hover {
-  background: #b91c1c;
-  border-color: #b91c1c;
+  background: #c5383d;
+  border-color: #c5383d;
 }
 .btn:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 /* 等宽代码/摘要块 */
@@ -345,7 +433,7 @@ a.card:hover,
   border-radius: var(--radius-md);
   padding: 10px var(--space-3);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12.5px;
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
@@ -363,38 +451,53 @@ a.card:hover,
 }
 .dot-pass {
   background: var(--color-success);
+  box-shadow: 0 0 0 3px var(--color-success-soft);
 }
 .dot-fail {
   background: var(--color-danger);
+  box-shadow: 0 0 0 3px var(--color-danger-soft);
 }
 .dot-shadow {
   background: var(--color-gray-5);
 }
 .dot-error {
   background: var(--color-warning);
+  box-shadow: 0 0 0 3px var(--color-warning-soft);
 }
 .dot-none {
   background: transparent;
   border: 1px solid var(--color-gray-4);
 }
 
-/* 表单控件基础（令牌化边框/圆角）*/
+/* 表单控件基础（令牌化边框/圆角/focus ring）*/
 input[type="text"],
+input[type="password"],
 input[type="number"],
 select,
 textarea {
   font-family: inherit;
-  border: 1px solid var(--color-gray-4);
+  border: 1px solid var(--color-gray-3);
   border-radius: var(--radius-md);
-  padding: 6px 10px;
+  padding: 7px 11px;
   font-size: 13px;
   background: var(--color-surface);
   color: var(--color-text);
+  transition: border-color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease;
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-gray-5);
+}
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: var(--color-gray-4);
 }
 input:focus,
 select:focus,
 textarea:focus {
-  outline: 2px solid var(--color-primary-border);
-  outline-offset: 0;
+  outline: none;
   border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
 }

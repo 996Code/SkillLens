@@ -4,7 +4,7 @@
 // 顶部搜索框实时过滤。
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { getSkills, listSuites, logout } from "../../api";
+import { getSkills, listChains, listSuites, logout } from "../../api";
 import type { SkillListItem, SuiteItem } from "../../api";
 import { groupBySystem } from "../../system-group";
 import { useToasts } from "../../toast";
@@ -16,10 +16,14 @@ const toasts = useToasts();
 const route = useRoute();
 const router = useRouter();
 const suites = ref<SuiteItem[]>([]);
+// AQ2：场景计数（导航一级入口）
+const chainCount = ref(0);
 const skills = ref<SkillListItem[]>([]);
 const loading = ref(true);
 const search = ref("");
 const collapsed = ref<Set<string>>(new Set());
+// AQ2：步骤库默认收起（技术层降级）
+const libraryCollapsed = ref(true);
 const error = ref("");
 
 const currentSkillId = computed(() =>
@@ -47,6 +51,7 @@ async function load(): Promise<void> {
   error.value = "";
   try {
     [suites.value, skills.value] = await Promise.all([listSuites(), getSkills()]);
+    try { chainCount.value = (await listChains()).length; } catch { /* 计数 fail-open */ }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -82,15 +87,27 @@ async function doLogout(): Promise<void> {
         ◈ 系统总览
       </RouterLink>
 
-      <!-- 流水线 -->
-      <div class="gw-tree-group">流水线（{{ suites.length }}）</div>
-      <RouterLink to="/graph/suites" class="gw-tree-leaf">▤ 分组管理</RouterLink>
+      <!-- AQ2 四区导航：①测试场景（用户工作层——一等入口） -->
+      <div class="gw-tree-group">测试场景</div>
+      <RouterLink to="/graph/scenarios" class="gw-tree-leaf gw-nav-scenario"
+                  data-testid="gw-scenarios-link">
+        ⚡ 全部场景（{{ chainCount }}）
+      </RouterLink>
 
-      <!-- 自动化流程：按系统分组可折叠 -->
-      <div class="gw-tree-group">
-        自动化流程（{{ skills.length }}）
-      </div>
-      <div class="gw-tree-scroll">
+      <!-- ②运行历史 -->
+      <div class="gw-tree-group">运行历史</div>
+      <RouterLink to="/graph/timeline" class="gw-tree-leaf">⌇ 时间线</RouterLink>
+      <RouterLink to="/graph/failures" class="gw-tree-leaf">⚠ 失败分析</RouterLink>
+
+      <!-- ③步骤库（技术层降级——默认收起） -->
+      <div class="gw-tree-group">步骤库（{{ skills.length }}）</div>
+      <button class="gw-group-head gw-lib-toggle" data-testid="gw-lib-toggle"
+              @click="libraryCollapsed = !libraryCollapsed">
+        <span class="gw-toggle">{{ libraryCollapsed ? "▸" : "▾" }}</span>
+        <span class="gw-group-name">按系统浏览</span>
+        <span class="gw-group-count">{{ skills.length }}</span>
+      </button>
+      <div v-show="!libraryCollapsed" class="gw-tree-scroll">
         <div v-for="[sys, list] in grouped" :key="sys" class="gw-group">
           <button class="gw-group-head" @click="toggleGroup(sys)">
             <span class="gw-toggle">{{ isCollapsed(sys) ? "▸" : "▾" }}</span>
@@ -113,20 +130,19 @@ async function doLogout(): Promise<void> {
         <p v-if="grouped.length === 0 && !loading" class="gw-empty">无匹配流程</p>
       </div>
 
-      <!-- 测试活动 -->
-      <div class="gw-tree-group">测试活动</div>
-      <RouterLink to="/graph/timeline" class="gw-tree-leaf">⌇ 时间线</RouterLink>
-      <RouterLink to="/graph/failures" class="gw-tree-leaf">⚠ 失败分析</RouterLink>
-      <RouterLink to="/graph/learning" class="gw-tree-leaf">↗ 学习图</RouterLink>
+      <!-- ④系统与环境 -->
+      <div class="gw-tree-group">系统与环境</div>
+      <RouterLink to="/graph/adapters" class="gw-tree-leaf">⚙ 系统接入</RouterLink>
+      <RouterLink to="/graph/suites" class="gw-tree-leaf">▤ 流水线分组</RouterLink>
 
-      <!-- 工具 -->
-      <div class="gw-tree-group">工具</div>
+      <!-- 高级工具 -->
+      <div class="gw-tree-group">高级工具</div>
+      <RouterLink to="/graph/learning" class="gw-tree-leaf">↗ 学习图</RouterLink>
       <RouterLink to="/graph/canvas" class="gw-tree-leaf">✎ 编排画布</RouterLink>
       <RouterLink to="/graph/audit" class="gw-tree-leaf">⬡ 审计</RouterLink>
       <RouterLink to="/graph/reports" class="gw-tree-leaf">⌕ 报告</RouterLink>
       <RouterLink to="/graph/reviews-portal" class="gw-tree-leaf">✓ 评审</RouterLink>
       <RouterLink to="/graph/field-types" class="gw-tree-leaf">⌗ 字段类型</RouterLink>
-      <RouterLink to="/graph/adapters" class="gw-tree-leaf">⚙ 系统接入</RouterLink>
 
       <div class="gw-tree-foot">
         <button class="logout-btn" data-testid="logout-btn" @click="doLogout">
@@ -169,56 +185,83 @@ async function doLogout(): Promise<void> {
   overflow: hidden;
 }
 .gw-tree {
-  width: 240px;
+  width: 244px;
   flex-shrink: 0;
-  border-right: 1px solid var(--color-border);
-  background: var(--color-gray-1);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--color-sidebar);
   overflow-y: auto;
-  padding: var(--space-2) var(--space-2);
+  padding: var(--space-3) var(--space-2) var(--space-2);
   display: flex;
   flex-direction: column;
 }
 .gw-brand {
-  font-weight: 700;
+  font-weight: 800;
   font-size: 16px;
-  color: var(--color-gray-8);
-  padding: var(--space-2) var(--space-2) var(--space-2);
-  border-bottom: 1px solid var(--color-gray-3);
-  margin-bottom: var(--space-1);
+  letter-spacing: -0.01em;
+  color: #fff;
+  padding: var(--space-2) var(--space-2) var(--space-3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gw-brand::before {
+  content: "";
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--color-primary) 0%,
+    var(--color-sidebar-accent) 100%);
+  box-shadow: 0 2px 8px rgba(109, 90, 230, 0.45);
+  flex: none;
 }
 .gw-search {
   padding: var(--space-1) var(--space-1) var(--space-2);
 }
 .gw-search input {
   width: 100%;
-  padding: 5px 10px;
-  border: 1px solid var(--color-gray-3);
+  padding: 6px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-md);
   font-size: 13px;
-  background: var(--color-surface);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+.gw-search input::placeholder {
+  color: var(--color-sidebar-text);
 }
 .gw-search input:focus {
-  outline: 2px solid var(--color-primary-border);
-  border-color: var(--color-primary);
+  outline: none;
+  border-color: var(--color-sidebar-accent);
+  box-shadow: 0 0 0 3px rgba(139, 123, 243, 0.18);
 }
 .gw-tree-root {
   display: block;
   padding: 7px var(--space-2);
   border-radius: var(--radius-md);
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
-  color: var(--color-gray-8);
+  color: #fff;
+  text-decoration: none;
+}
+.gw-tree-root:hover {
+  background: var(--color-sidebar-hover);
   text-decoration: none;
 }
 .gw-tree-root.router-link-active {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
+  background: var(--color-sidebar-active);
+  box-shadow: inset 2px 0 0 var(--color-sidebar-accent);
+  color: #fff;
 }
 .gw-tree-group {
-  font-size: 11px;
-  color: var(--color-gray-5);
-  padding: var(--space-2) var(--space-2) var(--space-1);
-  font-weight: 600;
+  font-size: 10.5px;
+  color: var(--color-sidebar-text);
+  opacity: 0.7;
+  padding: var(--space-3) var(--space-2) var(--space-1);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 .gw-tree-scroll {
   flex: 1;
@@ -239,11 +282,12 @@ async function doLogout(): Promise<void> {
   border-radius: var(--radius-sm);
   font-size: 12px;
   font-weight: 600;
-  color: var(--color-gray-7);
+  color: var(--color-sidebar-text);
   cursor: pointer;
 }
 .gw-group-head:hover {
-  background: var(--color-gray-2);
+  background: var(--color-sidebar-hover);
+  color: #fff;
 }
 .gw-toggle {
   width: 14px;
@@ -256,8 +300,8 @@ async function doLogout(): Promise<void> {
 }
 .gw-group-count {
   font-size: 10px;
-  color: var(--color-gray-5);
-  background: var(--color-gray-2);
+  color: var(--color-sidebar-text);
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 999px;
   padding: 1px 6px;
 }
@@ -269,49 +313,57 @@ async function doLogout(): Promise<void> {
   padding: 4px var(--space-2);
   border-radius: var(--radius-sm);
   font-size: 12px;
-  color: var(--color-gray-7);
+  color: var(--color-sidebar-text);
   text-decoration: none;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 .gw-tree-leaf:hover {
-  background: var(--color-gray-2);
+  background: var(--color-sidebar-hover);
+  color: #fff;
+  text-decoration: none;
 }
 .gw-tree-leaf.active,
 .gw-tree-leaf.router-link-active {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
+  background: var(--color-sidebar-active);
+  color: var(--color-sidebar-text-active);
   font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--color-sidebar-accent);
 }
 .gw-empty {
   font-size: 12px;
-  color: var(--color-gray-5);
+  color: var(--color-sidebar-text);
+  opacity: 0.6;
   padding: var(--space-2);
   text-align: center;
 }
 .gw-tree-foot {
   margin-top: auto;
   padding: var(--space-2);
-  border-top: 1px solid var(--color-gray-3);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 .logout-btn {
   width: 100%;
   padding: 5px 0;
   background: transparent;
-  color: var(--color-gray-5);
-  border: 1px solid var(--color-gray-4);
+  color: var(--color-sidebar-text);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
+  transition: all var(--dur-fast) ease;
 }
 .logout-btn:hover {
-  color: var(--color-danger);
-  border-color: var(--color-danger);
+  color: #ff8f93;
+  border-color: rgba(229, 72, 77, 0.5);
+  background: rgba(229, 72, 77, 0.08);
 }
 .tagline {
   font-size: 10px;
-  color: var(--color-gray-5);
+  color: var(--color-sidebar-text);
+  opacity: 0.5;
   text-align: center;
   margin-top: var(--space-1);
 }
@@ -370,4 +422,22 @@ async function doLogout(): Promise<void> {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
+}
+
+/* AQ2：场景一级入口强调 */
+.gw-nav-scenario {
+  font-weight: 650;
+  color: var(--color-sidebar-text-active);
+  background: rgba(139, 123, 243, 0.14);
+  border: 1px solid rgba(139, 123, 243, 0.25);
+  margin: 0 var(--space-1) var(--space-2);
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-md);
+}
+.gw-nav-scenario:hover {
+  background: rgba(139, 123, 243, 0.22);
+}
+.gw-lib-toggle {
+  margin: 0 var(--space-1) var(--space-1);
+  width: calc(100% - 8px);
 }

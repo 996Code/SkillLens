@@ -4,6 +4,8 @@ import GraphOverview from "./views/graph/GraphOverview.vue";
 import SkillGraphView from "./views/graph/SkillGraphView.vue";
 import ReportsList from "./views/graph/ReportsList.vue";
 import FailuresView from "./views/graph/FailuresView.vue";
+import ScenarioList from "./views/graph/ScenarioList.vue";
+import ScenarioDetail from "./views/graph/ScenarioDetail.vue";
 import LearningGraphView from "./views/graph/LearningGraphView.vue";
 import SuitesView from "./views/SuitesView.vue";
 import TimelineView from "./views/TimelineView.vue";
@@ -38,6 +40,8 @@ const router = createRouter({
         { path: "replay/:skillId", name: "replay-launch", component: ReplayLaunch },
         { path: "audit", name: "audit", component: AuditView },
         { path: "canvas", name: "canvas", component: CanvasView },
+        { path: "scenarios", name: "scenarios", component: ScenarioList },
+        { path: "scenario/:scenarioId", name: "scenario-detail", component: ScenarioDetail },
         { path: "failures", name: "failures", component: FailuresView },
         { path: "reports", name: "reports-list", component: ReportsList },
         { path: "reports/:deltaId", name: "delta-report", component: DeltaReport },
