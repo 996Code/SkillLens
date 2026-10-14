@@ -17,6 +17,7 @@ import {
   rejectLocateProposal,
   resetVisualBaseline,
 } from "../../api";
+import { toastOk, toastErr } from "../../toast";
 import type {
   FlowGraphDTO,
   LocateProposalItem,
@@ -355,7 +356,9 @@ onMounted(() => void load());
           自动测试此流程
         </RouterLink>
         <button class="btn" data-testid="export-playwright-btn"
-          @click="exportSkillPlaywright(card.id).catch(() => {})">
+          @click="exportSkillPlaywright(card.id)
+            .then(() => toastOk('Playwright 脚本已导出'))
+            .catch((e) => toastErr(`导出失败：${e?.message ?? e}`))">
           导出 Playwright 脚本
         </button>
       </footer>

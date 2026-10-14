@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import GraphWorkspace from "./views/graph/GraphWorkspace.vue";
 import GraphOverview from "./views/graph/GraphOverview.vue";
 import SkillGraphView from "./views/graph/SkillGraphView.vue";
+import ReportsList from "./views/graph/ReportsList.vue";
 import LearningGraphView from "./views/graph/LearningGraphView.vue";
 import SuitesView from "./views/SuitesView.vue";
 import TimelineView from "./views/TimelineView.vue";
@@ -36,6 +37,7 @@ const router = createRouter({
         { path: "replay/:skillId", name: "replay-launch", component: ReplayLaunch },
         { path: "audit", name: "audit", component: AuditView },
         { path: "canvas", name: "canvas", component: CanvasView },
+        { path: "reports", name: "reports-list", component: ReportsList },
         { path: "reports/:deltaId", name: "delta-report", component: DeltaReport },
         { path: "reviews-portal", name: "reviews-portal", component: ReviewPortal },
         { path: "field-types", name: "field-types", component: FieldTypesView },

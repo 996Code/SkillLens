@@ -45,3 +45,19 @@ async def test_report_full_fields(client):
 
 async def test_report_404(client):
     assert (await client.get("/api/v1/reports/99999")).status_code == 404
+
+
+async def test_reports_list_endpoint(client):
+    """UI 优化批1：报告列表端点——侧栏"报告"写死 id=1 是 404 死胡同
+    （当前库 0 份报告），列表页需要轻量行（计数 SQL 端算，不加载大 JSON）。"""
+    _ = _add_report(expected_delta_id=7, observed_delta_id=8)
+    resp = await client.get("/api/v1/reports")
+    assert resp.status_code == 200
+    rows = resp.json()
+    assert isinstance(rows, list) and rows
+    last = rows[-1]
+    assert {"id", "expected_delta_id", "observed_delta_id", "created_at",
+            "expected_count", "missing_count", "unexpected_count",
+            "drift_count"} <= set(last)
+    assert last["expected_count"] == 1 and last["missing_count"] == 1
+    assert last["unexpected_count"] == 1 and last["drift_count"] == 1

@@ -7,6 +7,9 @@ import { useRoute, useRouter } from "vue-router";
 import { getSkills, listSuites, logout } from "../../api";
 import type { SkillListItem, SuiteItem } from "../../api";
 import { groupBySystem } from "../../system-group";
+import { useToasts } from "../../toast";
+
+const toasts = useToasts();
 
 const route = useRoute();
 const router = useRouter();
@@ -117,7 +120,7 @@ async function doLogout(): Promise<void> {
       <div class="gw-tree-group">工具</div>
       <RouterLink to="/graph/canvas" class="gw-tree-leaf">✎ 编排画布</RouterLink>
       <RouterLink to="/graph/audit" class="gw-tree-leaf">⬡ 审计</RouterLink>
-      <RouterLink to="/graph/reports/1" class="gw-tree-leaf">⌕ 报告</RouterLink>
+      <RouterLink to="/graph/reports" class="gw-tree-leaf">⌕ 报告</RouterLink>
       <RouterLink to="/graph/reviews-portal" class="gw-tree-leaf">✓ 评审</RouterLink>
       <RouterLink to="/graph/field-types" class="gw-tree-leaf">⌗ 字段类型</RouterLink>
       <RouterLink to="/graph/adapters" class="gw-tree-leaf">⚙ 系统接入</RouterLink>
@@ -135,6 +138,13 @@ async function doLogout(): Promise<void> {
       <p v-if="error" class="error">左树加载失败：{{ error }}</p>
       <RouterView @graph-changed="load" />
     </main>
+  </div>
+
+  <!-- 全局 toast（UI 批1）：成功/失败可见——静默吞错终结 -->
+  <div class="sl-toasts" data-testid="global-toasts">
+    <div v-for="t in toasts" :key="t.id" class="sl-toast" :class="`sl-toast-${t.kind}`">
+      {{ t.text }}
+    </div>
   </div>
 </template>
 
@@ -298,3 +308,25 @@ async function doLogout(): Promise<void> {
   padding: var(--space-4) var(--space-6);
 }
 </style>
+
+/* 全局 toast（UI 批1） */
+.sl-toasts {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  z-index: 1000;
+}
+.sl-toast {
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0,0,0,.12));
+  background: var(--color-surface);
+  border-left: 3px solid var(--color-gray-4);
+  max-width: 380px;
+}
+.sl-toast-ok { border-left-color: var(--color-success, #16a34a); }
+.sl-toast-err { border-left-color: var(--color-danger, #dc2626); }

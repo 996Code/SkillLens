@@ -23,6 +23,25 @@ def get_db():
         db.close()
 
 
+@router.get("/reports")
+async def list_reports(db: Session = Depends(get_db)) -> list[dict]:
+    """UI 优化批1：报告列表——行轻量化（json_array_length SQL 端计数，
+    不加载 expected/missing/unexpected/drift 大 JSON），created_at 倒序。"""
+    from sqlalchemy import func as _f
+    rows = db.query(
+        DeltaReport.id, DeltaReport.expected_delta_id,
+        DeltaReport.observed_delta_id, DeltaReport.created_at,
+        _f.ifnull(_f.json_array_length(DeltaReport.expected), 0),
+        _f.ifnull(_f.json_array_length(DeltaReport.missing), 0),
+        _f.ifnull(_f.json_array_length(DeltaReport.unexpected), 0),
+        _f.ifnull(_f.json_array_length(DeltaReport.drift), 0),
+    ).order_by(DeltaReport.created_at.desc()).all()
+    return [{"id": r[0], "expected_delta_id": r[1],
+             "observed_delta_id": r[2], "created_at": r[3].isoformat(),
+             "expected_count": r[4], "missing_count": r[5],
+             "unexpected_count": r[6], "drift_count": r[7]} for r in rows]
+
+
 @router.get("/reports/{report_id}")
 async def get_report(report_id: int, db: Session = Depends(get_db)) -> dict:
     row = db.get(DeltaReport, report_id)

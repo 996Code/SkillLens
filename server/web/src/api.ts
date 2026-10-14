@@ -1032,3 +1032,14 @@ export interface SystemTrend {
 export function getSystemTrends(): Promise<SystemTrend[]> {
   return get<SystemTrend[]>("/api/v1/skills/trends");
 }
+
+export interface ReportListItem {
+  id: number; expected_delta_id: number; observed_delta_id: number;
+  created_at: string;
+  expected_count: number; missing_count: number;
+  unexpected_count: number; drift_count: number;
+}
+
+export function listReports(): Promise<ReportListItem[]> {
+  return get<ReportListItem[]>("/api/v1/reports");
+}
