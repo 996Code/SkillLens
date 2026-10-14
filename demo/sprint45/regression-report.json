@@ -3,6 +3,18 @@
  "matrix": [],
  "chains": [
   {
+   "chain": 19,
+   "verdict": "done",
+   "summary": "链执行结束：3/3 步通过（pass） | ",
+   "name": "Snipe 生命周期完整版（v2 语料+全绑定）"
+  },
+  {
+   "chain": 21,
+   "verdict": "done",
+   "summary": "链执行结束：1/1 步通过（pass） | ",
+   "name": "Odoo 报价链（完整语料）"
+  },
+  {
    "chain": 2,
    "verdict": "done",
    "summary": "链执行结束：2/2 步通过（pass） | ",
@@ -13,42 +25,6 @@
    "verdict": "done",
    "summary": "链执行结束：2/2 步通过（pass） | ",
    "name": "AI2跨步验证v2：建表→字典绑表名"
-  },
-  {
-   "chain": 7,
-   "verdict": "done",
-   "summary": "链执行结束：2/2 步通过（pass） | ",
-   "name": "禅道Bug流：草稿→模板"
-  },
-  {
-   "chain": 11,
-   "verdict": "done",
-   "summary": "链执行结束：2/2 步通过（pass） | ",
-   "name": "JeecG字典流：查询→创建条目"
-  },
-  {
-   "chain": 17,
-   "verdict": "done",
-   "summary": "链执行结束：4/4 步通过（pass） | ",
-   "name": "Dolibarr订单全链：第三方→订单→确认→发票"
-  },
-  {
-   "chain": 19,
-   "verdict": "done",
-   "summary": "链执行结束：3/3 步通过（pass） | ",
-   "name": "Snipe 生命周期完整版（v2 语料+全绑定）"
-  },
-  {
-   "chain": 20,
-   "verdict": "done",
-   "summary": "链执行结束：2/2 步通过（pass） | ",
-   "name": "AN验收2：查找点行→行内Update（318 干净语料）"
-  },
-  {
-   "chain": 21,
-   "verdict": "done",
-   "summary": "链执行结束：1/1 步通过（pass） | ",
-   "name": "Odoo 报价链（完整语料）"
   }
  ]
 }
