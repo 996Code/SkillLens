@@ -56,12 +56,21 @@ async function create(): Promise<void> {
 }
 
 async function changeRole(u: AuthUser, role: AuthUser["role"]): Promise<void> {
+  // 审查 C 批：角色直改风险——加确认（尤其自我降权）
+  const warn = u.id === me?.id
+    ? `将你自己的角色改为「${ROLE_LABEL[role]}」。${role === "viewer" ? "降为只读后将无法再管理用户！" : ""}确定？`
+    : `将 ${u.username} 的角色改为「${ROLE_LABEL[role]}」，确定？`;
+  if (!(await askConfirm(warn))) {
+    await load();  // 恢复下拉显示值
+    return;
+  }
   try {
     await updateUser(u.id, { role });
     toastOk(`${u.username} 角色已改为 ${ROLE_LABEL[role]}`);
     await load();
   } catch (e) {
     toastErr(`改角色失败：${e instanceof Error ? e.message : e}`);
+    await load();
   }
 }
 
@@ -143,8 +152,12 @@ onMounted(() => { if (isAdmin.value) void load(); });
                 </select>
               </td>
               <td class="um-actions">
-                <button class="btn btn-sm" @click="resetPassword(u)">重置密码</button>
-                <button v-if="u.id !== me?.id" class="btn btn-sm btn-danger"
+                <button class="btn btn-sm" title="设置新密码（旧会话立即失效）"
+                        @click="resetPassword(u)">重置密码</button>
+                <button v-if="u.id === me?.id" class="btn btn-sm" disabled
+                        title="不能删除自己">删除</button>
+                <button v-else class="btn btn-sm btn-danger"
+                        title="删除该账号（不可恢复）"
                         @click="remove(u)">删除</button>
               </td>
             </tr>
@@ -168,6 +181,6 @@ onMounted(() => { if (isAdmin.value) void load(); });
 }
 .um-actions {
   display: flex;
-  gap: var(--space-1);
+  gap: var(--space-2);  /* 审查：误点防线——8px → 12px */
 }
 </style>

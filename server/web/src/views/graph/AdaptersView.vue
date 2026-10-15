@@ -10,15 +10,24 @@
           <div class="row">
             <span class="name">{{ a.label }}</span>
             <span class="badge" :class="a.lints.length ? 'warn' : 'ok'">
-              {{ a.lints.length ? '有警告' : '合规' }}
+              {{ a.lints.length ? `${a.lints.length} 项提示` : '合规' }}
             </span>
           </div>
-          <div class="meta">{{ a.base_url }}</div>
-          <div class="meta small">
-            探针 {{ a.probe_count }} · 流程 {{ a.flow_count }} · 链 {{ a.chain_count }}
-            · {{ a.has_login ? '已配登录' : '无登录' }}
+          <div class="meta">
+            <span class="mono">{{ hostOf(a.base_url) }}</span><b class="port">:{{ portOf(a.base_url) }}</b>
           </div>
-          <div v-for="l in a.lints" :key="l" class="lint">⚠ {{ l }}</div>
+          <div class="meta small">
+            <span class="chip">探针 {{ a.probe_count }}</span>
+            <span class="chip">流程 {{ a.flow_count }}</span>
+            <span class="chip">业务链 {{ a.chain_count }}</span>
+            <span class="chip" :class="a.has_login ? 'ok-chip' : 'warn-chip'">
+              {{ a.has_login ? '已配登录' : '未配登录' }}
+            </span>
+          </div>
+          <!-- 审查 C 批：警告去噪——全部同文案时不逐条重复，一条汇总+tooltip -->
+          <div v-if="a.lints.length" class="lint" :title="a.lints.join('\n')">
+            ⚠ {{ lintSummary(a) }}
+          </div>
         </div>
       </div>
 
@@ -108,6 +117,20 @@ async function load(): Promise<void> {
   }
 }
 
+// 审查 C 批：URL 拆解——端口高亮（8 个地址仅端口不同）
+function hostOf(url: string): string {
+  try { return new URL(url).host; } catch { return url; }
+}
+function portOf(url: string): string {
+  try { return new URL(url).port || "80"; } catch { return ""; }
+}
+// 警告去噪：同文案去重为一条；不同文案只显示第一条+计数
+function lintSummary(a: AdapterSummary): string {
+  const uniq = [...new Set(a.lints.map(l => l.replace(/password_literal.*/, "凭据为明文字面量")))];
+  if (uniq.length === 1) return uniq[0];
+  return `${uniq[0]}（共 ${a.lints.length} 项）`;
+}
+
 async function select(a: AdapterSummary): Promise<void> {
   selected.value = a;
   feedback.value = null;
@@ -181,6 +204,27 @@ onMounted(load);
 .badge.ok { background: var(--color-success-soft); color: var(--color-success, #15803d); }
 .badge.warn { background: var(--color-warning-soft); color: var(--color-warning, #b45309); }
 .meta { color: var(--color-gray-6); font-size: 12px; margin-top: 4px; }
+.meta .port {
+  color: var(--color-primary);
+  font-weight: 700;
+  font-size: 12px;
+}
+.meta .chip {
+  display: inline-block;
+  border: 1px solid var(--color-gray-3);
+  border-radius: 4px;
+  padding: 0 5px;
+  margin: 1px 4px 1px 0;
+  font-size: 11px;
+}
+.meta .ok-chip {
+  color: var(--color-success);
+  border-color: var(--color-success-border);
+}
+.meta .warn-chip {
+  color: var(--color-warning);
+  border-color: var(--color-warning-border);
+}
 .meta.small { font-size: 11px; }
 .lint { color: var(--color-warning, #b45309); font-size: 11px; margin-top: 4px; }
 .editor { margin-top: 20px; }

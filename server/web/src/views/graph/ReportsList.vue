@@ -32,13 +32,19 @@ onMounted(async () => {
 
 <template>
   <section>
-    <h1>四分类报告</h1>
-    <p class="muted page-desc">期望-观测对照的变更智能报告。</p>
+    <h1>旧版四分类报告</h1>
+    <p class="muted page-desc">
+      手工触发的期望-观测对照报告（历史入口）。新链路请用
+      <RouterLink to="/graph/scenario-reports">场景报告</RouterLink>——运行终态自动生成。
+    </p>
 
     <p v-if="loading" class="muted">加载中…</p>
     <p v-else-if="error" class="error">加载失败：{{ error }}</p>
     <div v-else-if="!rows.length" class="empty block" data-testid="reports-empty">
-      暂无报告。回放触发「对照观测」并生成差异报告后，会出现在这里。
+      <span class="empty-icon">⌕</span>
+      <p class="empty-title">暂无旧版报告</p>
+      <p class="empty-sub">场景报告已接管自动生成——去
+        <RouterLink to="/graph/scenario-reports">报告与评审</RouterLink> 查看</p>
     </div>
     <table v-else class="tbl" data-testid="reports-list">
       <thead>

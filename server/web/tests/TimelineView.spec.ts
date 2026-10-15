@@ -104,12 +104,13 @@ describe("TimelineView", () => {
     const list = root.querySelector("[data-testid='timeline-list']");
     expect(list).not.toBeNull();
     expect(root.querySelectorAll(".tl-item").length).toBe(2);
-    // 类型徽标 + 标题 + 摘要
-    expect(root.textContent).toContain("自动测试 · SaveForm");
-    expect(root.textContent).toContain("录制学习 · 时间线会话");
+    // 类型徽标 + 标题（审查 D 批：标题去与徽章同词的前缀）+ 摘要
+    expect(root.textContent).toContain("SaveForm");
+    expect(root.textContent).toContain("时间线会话");
     expect(root.textContent).toContain("学到 1 个操作流程");
-    // 时间格式化（T → 空格）
-    expect(root.textContent).toContain("2026-09-28 12:33");
+    // 相对时间（hover title 带全量）
+    expect(root.querySelector(".tl-time")?.getAttribute("title"))
+      .toContain("2026-09-28");
     // 过滤 chip 带计数
     expect(root.textContent).toContain("全部 2");
     expect(root.textContent).toContain("自动测试 1");
@@ -126,8 +127,8 @@ describe("TimelineView", () => {
     (root.querySelector("[data-testid='filter-test_run']") as HTMLElement).click();
     await flush();
     expect(root.querySelectorAll(".tl-item").length).toBe(1);
-    expect(root.textContent).toContain("自动测试 · SaveForm");
-    expect(root.textContent).not.toContain("录制学习 · 时间线会话");
+    expect(root.textContent).toContain("SaveForm");
+    expect(root.textContent).not.toContain("时间线会话");
 
     // 再点一次取消过滤
     (root.querySelector("[data-testid='filter-test_run']") as HTMLElement).click();

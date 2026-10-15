@@ -53,7 +53,7 @@ onMounted(load);
     <h1>测试场景</h1>
     <p class="muted page-desc">按业务流程组织的自动化测试——点场景查看步骤、运行或编辑。</p>
 
-    <p v-if="loading" class="muted">加载中…</p>
+    <div v-if="loading" class="loading-skeleton"><div class="skeleton skeleton-line" style="width: 40%"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line" style="width: 70%"></div></div>
     <p v-else-if="error" class="error">加载失败：{{ error }}</p>
     <div v-else-if="!scenarios.length" class="empty block" data-testid="scenarios-empty">
       暂无测试场景。录制操作后，在浏览器插件的空间面板里组合技能即可创建场景。
@@ -112,18 +112,19 @@ onMounted(load);
 }
 .scenario-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--space-3);
+  /* 审查：1440 宽下 280px 最小列导致单卡独占——收窄列宽提高密度 */
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-2);
 }
 .scenario-card {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-1);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-2) var(--space-3);
   text-decoration: none;
   color: inherit;
   transition: box-shadow var(--dur-mid) var(--ease-out),

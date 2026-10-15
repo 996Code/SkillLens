@@ -47,6 +47,19 @@ function nodeColor(n: FlowNode): string {
   return STATUS_COLOR[n.status] ?? TYPE_COLOR[n.type] ?? "#64748b";
 }
 
+// 审查 D 批：图例只显示实际出现的类型
+const legendKinds = computed(() => {
+  const kinds = new Set<string>();
+  for (const n of props.nodes) {
+    if (n.status === "ok" || n.status === "pass") kinds.add("pass");
+    else if (n.status === "fail") kinds.add("fail");
+    else if (n.status === "skipped" || n.status === "shadow") kinds.add("skip");
+    else if (n.type === "page" || n.type === "skill_source") kinds.add("page");
+    else if (n.type === "state") kinds.add("state");
+  }
+  return kinds;
+});
+
 const NODE_W = 190;
 const NODE_H = 54;
 
@@ -145,13 +158,13 @@ onBeforeUnmount(() => {
            class="code fg-io">{{ JSON.stringify(selected.io, null, 2) }}</pre>
     </div>
 
-    <!-- 图例 -->
-    <div class="fg-legend">
-      <span><i style="background:#16a34a"></i>通过</span>
-      <span><i style="background:#dc2626"></i>失败</span>
-      <span><i style="background:#9ca3af"></i>跳过/预演</span>
-      <span><i style="background:#3b82f6"></i>页面</span>
-      <span><i style="background:#8b5cf6"></i>业务状态</span>
+    <!-- 图例（审查 D 批：只显示图中实际出现的类型——空挂图例是模板占位感来源） -->
+    <div class="fg-legend" v-if="legendKinds.size">
+      <span v-if="legendKinds.has('pass')"><i style="background:#16a34a"></i>通过</span>
+      <span v-if="legendKinds.has('fail')"><i style="background:#dc2626"></i>失败</span>
+      <span v-if="legendKinds.has('skip')"><i style="background:#9ca3af"></i>跳过/预演</span>
+      <span v-if="legendKinds.has('page')"><i style="background:#3b82f6"></i>页面</span>
+      <span v-if="legendKinds.has('state')"><i style="background:#8b5cf6"></i>业务状态</span>
     </div>
   </div>
 </template>

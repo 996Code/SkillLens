@@ -23,6 +23,25 @@ const toneOf = (cls: string) =>
   cls === "e1_env" || cls === "e2_infra" ? "muted" :
   cls === "e3_drift" ? "warn" : cls === "e4_assert" ? "fail" : "";
 
+import { computed } from "vue";
+
+// 审查 D 批：占比可视化（1700/1768≈96% 不再需要心算）
+function barWidth(count: number): string {
+  if (!data.value?.total) return "0%";
+  return `${Math.round((count / data.value.total) * 100)}%`;
+}
+const topClass = computed(() => {
+  if (!data.value?.by_class) return null;
+  let best: [string, number, string] | null = null;
+  for (const [cls, agg] of Object.entries(data.value.by_class)) {
+    if (!best || agg.count > best[1]) best = [cls, agg.count, agg.label];
+  }
+  return best;
+});
+const topRate = computed(() =>
+  topClass.value ? barWidth(topClass.value[1]).replace("%", "") : null);
+const topLabel = computed(() => topClass.value?.[2] ?? "");
+
 function fmtAgo(ts: string): string {
   const m = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
   if (m < 60) return `${Math.max(m, 1)} 分钟前`;
@@ -58,19 +77,26 @@ onMounted(load);
     </div>
     <p class="muted page-desc">按失败分类聚合（E1 环境/E2 基础设施不进通过率分母；E3 漂移/E4 断言是真失败信号）。</p>
 
-    <p v-if="loading" class="muted">加载中…</p>
+    <div v-if="loading" class="loading-skeleton"><div class="skeleton skeleton-line" style="width: 40%"></div><div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line" style="width: 70%"></div></div>
     <p v-else-if="error" class="error">加载失败：{{ error }}</p>
     <div v-else-if="!data || !data.total" class="empty block" data-testid="failures-empty">
       所选窗口内没有失败运行。
     </div>
 
     <template v-else>
-      <p class="muted" data-testid="failures-total">
-        共 {{ data.total }} 次 fail/error
-        <template v-if="data.unclassified">
-          · 未分类 {{ data.unclassified }}
-        </template>
-      </p>
+      <div class="page-toolbar">
+        <span class="summary" data-testid="failures-total">
+          共 <b>{{ data.total }}</b> 次失败/异常
+          <template v-if="data.unclassified">
+            · 未分类 {{ data.unclassified }}
+          </template>
+        </span>
+        <span class="spacer"></span>
+        <span class="summary" v-if="topRate !== null"
+              :title="'占比最高的一类失败'">
+          {{ topLabel }} 占 {{ topRate }}%
+        </span>
+      </div>
       <div v-for="[cls, agg] in Object.entries(data.by_class)" :key="cls"
            class="block fail-class-card" :data-testid="`failures-${cls}`">
         <div class="fail-class-head" role="button" tabindex="0"
@@ -82,8 +108,12 @@ onMounted(load);
             {{ agg.label }}
           </span>
           <span class="fail-count">{{ agg.count }}</span>
+          <span class="fail-bar" :title="`${agg.count} / ${data.total}`">
+            <i :style="{ width: barWidth(agg.count) }"></i>
+          </span>
+          <span class="muted fail-pct">{{ barWidth(agg.count) }}</span>
           <span class="muted fail-desc">{{ CLASS_DESC[cls] ?? cls }}</span>
-          <span class="fail-toggle">{{ open[cls] ? "收起 ▴" : "下钻 ▾" }}</span>
+          <span class="fail-toggle">{{ open[cls] ? "收起 ▴" : "明细 ▾" }}</span>
         </div>
         <table v-if="open[cls]" class="tbl">
           <thead>
@@ -138,6 +168,28 @@ onMounted(load);
   font-size: 20px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  min-width: 52px;
+  text-align: right;
+}
+.fail-bar {
+  width: 120px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-gray-2);
+  overflow: hidden;
+  flex: none;
+}
+.fail-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--color-primary);
+}
+.fail-pct {
+  font-size: 12px;
+  width: 40px;
+  font-variant-numeric: tabular-nums;
+  flex: none;
 }
 .fail-desc {
   flex: 1;

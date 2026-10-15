@@ -33,6 +33,10 @@ const error = ref("");
 const currentSkillId = computed(() =>
   route.name === "graph-skill" ? String(route.params.skillId) : "");
 
+// 审查 C 批：深链页侧栏高亮错位（/graph 下前缀匹配劫持了总览高亮）
+const isScenarioRunDeep = computed(() =>
+  route.name === "scenario-run-detail");
+
 // 按系统分组 + 搜索过滤（分组排序共享 system-group——双源漂移已消除）
 const grouped = computed(() => {
   const q = search.value.trim().toLowerCase();
@@ -101,6 +105,7 @@ async function doLogout(): Promise<void> {
       <!-- ②运行与问题 -->
       <div class="gw-tree-group">运行与问题</div>
       <RouterLink to="/graph/scenario-runs" class="gw-tree-leaf"
+                  :class="{ 'section-active': isScenarioRunDeep }"
                   data-testid="gw-scenario-runs-link">▶ 场景运行</RouterLink>
       <RouterLink to="/graph/timeline" class="gw-tree-leaf">⌇ 时间线</RouterLink>
       <RouterLink to="/graph/failures" class="gw-tree-leaf">⚠ 失败分析</RouterLink>
@@ -268,7 +273,7 @@ async function doLogout(): Promise<void> {
   background: var(--color-sidebar-hover);
   text-decoration: none;
 }
-.gw-tree-root.router-link-active {
+.gw-tree-root.router-link-exact-active {
   background: var(--color-sidebar-active);
   box-shadow: inset 2px 0 0 var(--color-sidebar-accent);
   color: #fff;
@@ -345,7 +350,8 @@ async function doLogout(): Promise<void> {
   text-decoration: none;
 }
 .gw-tree-leaf.active,
-.gw-tree-leaf.router-link-active {
+.gw-tree-leaf.router-link-active,
+.gw-tree-leaf.section-active {
   background: var(--color-sidebar-active);
   color: var(--color-sidebar-text-active);
   font-weight: 600;

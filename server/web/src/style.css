@@ -197,27 +197,29 @@ a.card:hover,
   transform: translateY(-2px);
 }
 
-/* 分区块卡片：页面内每个功能区一张卡 */
+/* 分区块卡片：页面内每个功能区一张卡
+   密度收紧（视觉审查 A 批）：padding/margin/标题分隔线同步缩——
+   单行数据的区块不再撑起大片空白 */
 .block {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  padding: var(--space-4) var(--space-6);
-  margin-top: var(--space-6);
+  padding: var(--space-3) var(--space-4);
+  margin-top: var(--space-4);
 }
 .block h2 {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 650;
   letter-spacing: 0.01em;
-  margin: 0 0 var(--space-3);
-  padding-bottom: var(--space-2);
+  margin: 0 0 var(--space-2);
+  padding-bottom: var(--space-1);
   border-bottom: 1px solid var(--color-gray-2);
   color: var(--color-gray-8);
 }
 .block h3 {
-  font-size: 13.5px;
-  margin: var(--space-4) 0 var(--space-2);
+  font-size: 13px;
+  margin: var(--space-3) 0 var(--space-2);
   color: var(--color-gray-7);
 }
 
@@ -240,7 +242,7 @@ a.card:hover,
   white-space: nowrap;
 }
 .tbl td {
-  padding: 10px var(--space-3);
+  padding: 6px var(--space-3);
   border-bottom: 1px solid var(--color-gray-2);
   vertical-align: top;
 }
@@ -307,8 +309,7 @@ a.card:hover,
 .badge-has-review,
 .badge-info {
   color: var(--color-primary);
-  background: var(--color-primary-soft);
-}
+  background: var(--color-primary-soft);}
 /* 技术标识（kind/type/purpose）：等宽小徽标 */
 .badge-kind {
   font-family: var(--font-mono);
@@ -500,4 +501,82 @@ textarea:focus {
   outline: none;
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-primary-soft);
+}
+
+/* ---------- 视觉审查 A/B 批：统一图例与运行状态组件 ---------- */
+
+/* 运行状态徽标（中英统一：queued/running/aborted 一套语言） */
+.badge-queued,
+.badge-running {
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+.badge-aborted {
+  color: var(--color-gray-6);
+  background: var(--color-gray-2);
+}
+
+/* 四分类图例（报告/失败分析共用——E期望 M缺失 U意外 D漂移） */
+.quad-legend {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-2);
+}
+.quad-legend b {
+  font-weight: 650;
+}
+.quad-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.quad-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+  flex: none;
+}
+.quad-dot.expected { background: var(--color-primary); }
+.quad-dot.missing { background: var(--color-danger); }
+.quad-dot.unexpected { background: var(--color-warning); }
+.quad-dot.drift { background: var(--color-gray-5); }
+
+/* 页头工具行（筛选器+汇总数字同排——列表页标配） */
+.page-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin: var(--space-2) 0;
+  min-height: 30px;
+}
+.page-toolbar .spacer {
+  flex: 1;
+}
+.page-toolbar .summary {
+  font-size: 12.5px;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 骨架屏（加载态——"加载中…"三字的替代） */
+.skeleton {
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, var(--color-gray-2) 25%,
+    var(--color-gray-1) 50%, var(--color-gray-2) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-wave 1.2s ease infinite;
+}
+@keyframes skeleton-wave {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.skeleton-line {
+  height: 14px;
+  margin-bottom: 10px;
 }

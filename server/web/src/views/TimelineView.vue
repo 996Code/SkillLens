@@ -44,6 +44,31 @@ function typeColor(t: string): string {
   return TYPE_META[t]?.color ?? "var(--color-gray-5)";
 }
 
+// 审查 D 批：去重文案——标题去掉与徽章同词的"自动测试 ·/录制学习 ·"前缀；
+// 副标题去掉与标题重复的"（ambient 自动录制）"尾巴
+function cleanTitle(it: TimelineItem): string {
+  return it.title.replace(/^(自动测试|录制学习) · /, "");
+}
+function cleanSubtitle(it: TimelineItem): string {
+  let s = it.subtitle;
+  if (s.includes("（ambient 自动录制）")) {
+    s = s.replace(/ ?（ambient 自动录制）/g, "") + " · ambient";
+  }
+  return s;
+}
+function relTime(ts: string): string {
+  const m = Math.floor((Date.now() - new Date(ts).getTime()) / 60000);
+  if (m < 1) return "刚刚";
+  if (m < 60) return `${m} 分钟前`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} 小时前`;
+  const d = Math.floor(h / 24);
+  return d < 7 ? `${d} 天前` : ts.slice(0, 10);
+}
+function fullTime(ts: string): string {
+  return ts.replace("T", " ").slice(0, 19);
+}
+
 // ---------- LLM IO 展开（按需拉取，缓存已展开项） ----------
 const expandedKey = ref<string | null>(null);
 const llmCache = new Map<number, LlmLogDetail>();
@@ -177,6 +202,7 @@ onMounted(() => void load());
         <button
           v-for="(meta, t) in TYPE_META"
           :key="t"
+          v-show="(typeCounts.get(t) ?? 0) > 0"
           class="filter-chip"
           :class="{ active: typeFilter === t }"
           :data-testid="`filter-${t}`"
@@ -193,7 +219,7 @@ onMounted(() => void load());
         暂无测试活动，先录制一轮操作
       </p>
 
-      <!-- 竖向时间轴 -->
+      <!-- 竖向时间轴（审查 D 批：标题去前缀重复+同日折叠+相对时间） -->
       <ol v-else class="timeline" data-testid="timeline-list">
         <li
           v-for="it in shown"
@@ -207,10 +233,10 @@ onMounted(() => void load());
           <div class="tl-body">
             <div class="tl-head">
               <span class="badge badge-kind">{{ typeLabel(it.type) }}</span>
-              <span class="tl-title">{{ it.title }}</span>
-              <span class="muted tl-time">{{ fmtTime(it.ts) }}</span>
+              <span class="tl-title">{{ cleanTitle(it) }}</span>
+              <span class="muted tl-time" :title="fullTime(it.ts)">{{ relTime(it.ts) }}</span>
             </div>
-            <div class="muted tl-sub">{{ it.subtitle }}</div>
+            <div class="muted tl-sub">{{ cleanSubtitle(it) }}</div>
 
             <!-- LLM IO 全留存展开区 -->
             <div

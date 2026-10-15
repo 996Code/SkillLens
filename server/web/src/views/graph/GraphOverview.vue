@@ -93,7 +93,10 @@ onMounted(async () => {
     <h1>系统总览</h1>
     <p class="muted page-desc">技能库健康度、执行趋势与最近运行。</p>
 
-    <p v-if="loading" class="muted">加载中…</p>
+    <div v-if="loading" class="loading-skeleton" data-testid="overview-skeleton">
+      <div class="skeleton" style="height: 86px; margin-bottom: 16px;"></div>
+      <div class="skeleton" style="height: 220px;"></div>
+    </div>
     <p v-else-if="error" class="error">加载失败：{{ error }}</p>
 
     <template v-else>
@@ -244,10 +247,10 @@ onMounted(async () => {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-3) var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   position: relative;
   overflow: hidden;
   transition: box-shadow var(--dur-mid) var(--ease-out),
@@ -274,9 +277,11 @@ onMounted(async () => {
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--color-gray-5);
+  /* 顶部渐变条让出空间（视觉审查：标签被裁观感） */
+  padding-top: 3px;
 }
 .metric-value {
-  font-size: 30px;
+  font-size: 26px;
   font-weight: 750;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
