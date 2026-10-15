@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api import auth
 from app.api.auth import WRITE_GUARD
 from app.db import SessionLocal
 from app.models import Alignment, RawEvent, Scenario, Skill, utcnow
@@ -279,3 +280,79 @@ async def run_scenario(
     if result.get("status") != "pass":
         raise HTTPException(409, result)
     return result
+
+
+class ScenarioRunIn(BaseModel):
+    executor: str = Field(default="server", pattern="^(server|extension)$")
+    confirm_side_effect: bool = True
+    # 测试通道用：直接落终态（跳过执行）——生产路径不传
+    status: str | None = Field(default=None, pattern="^(pass|fail|error|shadow|aborted)$")
+
+
+@router.post("/scenarios/{scenario_id}/runs", status_code=201, dependencies=WRITE_GUARD)
+async def create_scenario_run(
+    scenario_id: int,
+    body: ScenarioRunIn,
+    db: Session = Depends(get_db),
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+    user=Depends(auth.require_user),
+) -> dict:
+    """AR2 场景运行创建：幂等（同键同指纹返原行/异指纹 409）。
+
+    server executor：创建后内联执行至终态（同步语义，与既有 /run 一致）。
+    extension executor：返回 execution_url 由插件执行（AR3 接管 finish）。
+    """
+    from app.scenario import service
+
+    scenario = db.get(Scenario, scenario_id)
+    if not scenario:
+        raise HTTPException(404, "scenario not found")
+    fingerprint = service.request_fingerprint(
+        scenario_id, scenario.definition_version, body.executor,
+        body.confirm_side_effect, "api", user.id)
+    try:
+        run, created = service.create_scenario_run(
+            db, scenario, executor=body.executor,
+            confirm_side_effect=body.confirm_side_effect, trigger="api",
+            idempotency_key=idempotency_key, fingerprint=fingerprint,
+            requested_by=user.id, auto_status=body.status)
+    except service.ConflictError as e:
+        raise HTTPException(409, str(e))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+    if created and run.status == "queued" and body.executor == "server":
+        run = await service.execute_scenario_run(db, run)
+
+    out = _run_summary(run)
+    out["has_writes"] = service._skill_writes(
+        db, run.definition_snapshot["steps"])
+    if body.executor == "extension" and run.status == "queued":
+        out["execution_url"] = f"/executor.html?scenario={scenario_id}&scenario_run={run.id}"
+    return out
+
+
+def _run_summary(run) -> dict:
+    return {
+        "id": run.id,
+        "scenario_id": run.scenario_id,
+        "definition_version": run.definition_version,
+        "definition_snapshot": run.definition_snapshot,
+        "expectation_snapshot": run.expectation_snapshot or [],
+        "trigger": run.trigger,
+        "executor": run.executor,
+        "mode": run.mode,
+        "status": run.status,
+        "source_track": run.source_track,
+        "confirm_side_effect": run.confirm_side_effect,
+        "pass_count": run.pass_count,
+        "fail_count": run.fail_count,
+        "error_count": run.error_count,
+        "shadow_count": run.shadow_count,
+        "blocked_count": run.blocked_count,
+        "total_count": run.total_count,
+        "failure_summary": run.failure_summary,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "created_at": run.created_at.isoformat(),
+    }

@@ -329,10 +329,49 @@ class ReplayRun(Base):
     flaky: Mapped[bool] = mapped_column(default=False)
     # AG1：执行后端标记（server|extension）——插件执行端 run 可区分
     executor: Mapped[str] = mapped_column(String(20), default="server")
+    # AR2：场景运行归属（闭包展开后的有序步号；历史无法确定者为空）
+    scenario_run_id: Mapped[int | None] = mapped_column(nullable=True, index=True)
+    execution_index: Mapped[int | None] = mapped_column(nullable=True)
+    attempt: Mapped[int] = mapped_column(default=1)
+    scope_kind: Mapped[str] = mapped_column(String(20), default="scenario")
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     # 健壮性体检🟡：收割判据落列（原在 plan.executor_state.last_step_at
     # ——收割须整行反序列化 MB 级 JSON；列化后索引直查）
     last_step_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class ScenarioRun(Base):
+    """AR2 场景级聚合运行：一次场景执行 = 递归闭包快照 + 有序子 ReplayRun。
+
+    状态机 queued→running→pass|fail|error|shadow|aborted（终态不可变）。
+    C1 定格在 confirm_side_effect；C2 source_track 服务端推导（客户端不可写）。
+    """
+    __tablename__ = "scenario_run"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    scenario_id: Mapped[int] = mapped_column(index=True)
+    definition_version: Mapped[int] = mapped_column()
+    definition_snapshot: Mapped[dict] = mapped_column(JSON)
+    # AR4 前置：期望绑定随运行定格（无绑定时空列表）
+    expectation_snapshot: Mapped[list] = mapped_column(JSON, default=list)
+    trigger: Mapped[str] = mapped_column(String(20), default="api")
+    executor: Mapped[str] = mapped_column(String(20), default="server")
+    mode: Mapped[str] = mapped_column(String(10), default="execute")
+    status: Mapped[str] = mapped_column(String(12), default="queued", index=True)
+    source_track: Mapped[str] = mapped_column(String(20), default="demo")
+    confirm_side_effect: Mapped[bool | None] = mapped_column(nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128), unique=True)
+    request_fingerprint: Mapped[str] = mapped_column(String(64))
+    requested_by_user_id: Mapped[int | None] = mapped_column(nullable=True)
+    pass_count: Mapped[int] = mapped_column(default=0)
+    fail_count: Mapped[int] = mapped_column(default=0)
+    error_count: Mapped[int] = mapped_column(default=0)
+    shadow_count: Mapped[int] = mapped_column(default=0)
+    blocked_count: Mapped[int] = mapped_column(default=0)
+    total_count: Mapped[int] = mapped_column(default=0)
+    failure_summary: Mapped[dict] = mapped_column(JSON, default=dict)
+    started_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
 class ExpectedDelta(Base):

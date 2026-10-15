@@ -31,6 +31,7 @@ from app.api import (
     locate_proposals,
     replay,
     reports,
+    scenario_runs,
     scenarios,
     suites,
     reviews,
@@ -132,6 +133,7 @@ app.include_router(dashboard.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(timeline.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(suites.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(scenarios.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(scenario_runs.router, prefix=API_PREFIX, dependencies=_GUARDED)
 
 
 @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
