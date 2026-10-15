@@ -132,6 +132,10 @@ async function injectFrames(tabId: number): Promise<void> {
 // MV3 规则：事件监听器必须在顶层同步注册。
 // 收到 CS 转发的事件后写入 SW 侧 IndexedDB（idb.ts 在 SW 上下文运行，DB 归扩展源），
 // 再立即触发 flush；alarms 定时作为兜底。
+// AP1 常驻采集：tab 监听在顶层同步注册（SW 冷启动即生效）。
+import { initAmbient } from "./ambient";
+initAmbient();
+
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg?.type === EVENT_MSG) {
     void (async () => {

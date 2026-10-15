@@ -19,6 +19,17 @@ export async function startRecording(
   note: string,
   source: string = "real_traffic",
 ): Promise<{ id: string }> {
+  // AP1：用户显式开录时若 ambient 会话进行中——先 flush 旧 ambient 会话
+  // （缓冲事件不丢，AI1 待学标记照常落），再开新会话（显式优先）
+  const prev = await getRecordingState();
+  const prevAmbient = (await chrome.storage.local.get("sl_ambient"))
+    .sl_ambient === true;
+  if (prev.recording && prevAmbient && prev.sessionId && source !== "ambient") {
+    await finalFlushWithSession(prev.sessionId);
+    await chrome.storage.local.set({
+      sl_pending_learn: { sid: prev.sessionId, at: Date.now() },
+    });
+  }
   // popup 用户手动开录 = 真实用户流量（S10 C2 标记）；auto_record 经消息显式传 demo。
   // P2.5 自动隔离：当前活动页 URL → 服务端 url_matches 通配符配对
   // （油猴 @match 语义）——命中 adapter 即以该系统建会话；未命中回退 njmind
@@ -59,6 +70,9 @@ export async function startRecording(
     sl_session: session.session_id,
     sl_note: note,
     sl_start_trace: { at: Date.now(), sid: session.session_id },
+    // AP1：ambient 归属标记——ambient 自动开录=true（离开接管站时由
+    // ambient.ts 停录）；用户显式开录=false（ambient 不越权停止）
+    sl_ambient: source === "ambient",
   });
   return { id: session.session_id };
 }
@@ -77,7 +91,8 @@ export async function stopRecording(): Promise<void> {
     await chrome.storage.local.set({ sl_pending_learn: { sid: st.sessionId, at: Date.now() } });
   }
   await chrome.storage.local.remove(["sl_recording", "sl_session", "sl_note",
-                                      "sl_start_trace", "sl_stop_trace"]);
+                                      "sl_start_trace", "sl_stop_trace",
+                                      "sl_ambient"]);
 }
 
 export async function getRecordingState(): Promise<RecordingState> {

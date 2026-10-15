@@ -3,7 +3,7 @@ import { defineManifest } from "@crxjs/vite-plugin";
 export default defineManifest({
   manifest_version: 3,
   name: "SkillLens Sensor",
-  version: "0.2.0",
+  version: "0.3.0",
   // S42：<all_urls>——chrome.scripting.executeScript 注入子 frame 需要
   // 对应 host 权限（与 content_scripts 的 <all_urls> 匹配范围一致）
   host_permissions: ["http://127.0.0.1:8710/*", "<all_urls>"],

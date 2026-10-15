@@ -38,8 +38,9 @@ def _ingest_guard(x_skilllens_agent: str | None = Header(default=None)) -> None:
 class SessionCreate(BaseModel):
     target_system: str = ""
     note: str = ""
-    # S10 C2：来源标记——popup 用户开录 real_traffic；auto_record/旧客户端缺省 demo
-    source: Literal["demo", "real_traffic"] = "demo"
+    # S10 C2：来源标记——popup 用户开录 real_traffic；auto_record/旧客户端
+    # 缺省 demo；AP1 常驻采集 ambient（分轨——不污染 real_traffic 学习口径）
+    source: Literal["demo", "real_traffic", "ambient"] = "demo"
 
 
 @router.post("/sessions", dependencies=[Depends(_ingest_guard)])
