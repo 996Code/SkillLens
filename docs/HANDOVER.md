@@ -119,7 +119,7 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
   通道新鲜度闸+健壮性体检 🔴🟡 全清（39f4044+edb439b）——均已收口。
 
 下一步方向（按优先级）：
-0. **AR 管理平台闭环重构（AR1-AR6 全部落地，2026-10-15）**：规格 `docs/specs/2026-10-15-ar-management-closed-loop-redesign.md`。AR1 chain→scenario 一次性改名（16 ID 保留/版本锁/写端点 410）；AR2 ScenarioRun 服务端聚合（闭包快照/幂等/C1 场景闸+写 label 词表兜底/3115 历史行 legacy_unscoped 记账）；AR3 插件执行上下文（plan 三闸：快照归属/C1 父锁/终态父拒绝；executor.html 场景模式全链真机 pass；api() headers 合并修复）；AR4 自动报告+报告评审（expectation_snapshot 定格/无期望=no_expectation 不伪装/一 run 一报告/评审一评一报；真机闭环一次过）；AR5 Web 主路径（场景运行/报告评审页/导航五区——高级工具杂物筐退役，开发者工具默认收起/总览指标换场景运行分母）；AR6 失败分类回填（1573 未分类→仅 37 真无证据保留，未分类率 89%→2.1%）。**新主链已贯通：场景→ScenarioRun→自动报告→评审。** 下一步候选：场景详情页接期望绑定 UI+运行按钮直连 ScenarioRun 创建；AP 零仪式录制（设计已入库）。
+0. **AR 管理平台闭环重构（AR1-AR6+收尾全部落地，2026-10-15）**：规格 `docs/specs/2026-10-15-ar-management-closed-loop-redesign.md`。AR1 chain→scenario 一次性改名（16 ID 保留/版本锁/写端点 410）；AR2 ScenarioRun 服务端聚合（闭包快照/幂等/C1 场景闸+写 label 词表兜底/3115 历史行 legacy_unscoped 记账）；AR3 插件执行上下文（plan 三闸：快照归属/C1 父锁/终态父拒绝；executor.html 场景模式全链真机 pass；api() headers 合并修复）；AR4 自动报告+报告评审（expectation_snapshot 定格/无期望=no_expectation 不伪装/一 run 一报告/评审一评一报；真机闭环一次过）；AR5 Web 主路径（场景运行/报告评审页/导航五区——高级工具杂物筐退役，开发者工具默认收起/总览指标换场景运行分母）；AR6 失败分类回填（1573 未分类→仅 37 真无证据保留，未分类率 89%→2.1%）；收尾批（场景详情期望绑定 UI+运行历史区+列表徽章换 ScenarioRun 真数据+陈旧报告收割 lazy 触发）。**新主链全贯通：场景→ScenarioRun→自动报告→评审。** 全量基线 server 763/web 75/ext 147。下一步候选：AP 零仪式录制（设计已入库 docs/specs/2026-10-14-ap-*，产出进"待发现"复用 Scenario origin=learned）；多账号并发与生产部署。
 1. **AJ2 已全闭环**（9865f2b）：插件端登录态自动恢复落地（守卫触发→
    服务端跑适配器登录例程→cookie 注入常驻浏览器→重试当前步）——
    禅道容器重启丢态场景端到端验证（session_recovered=true→pass）。
