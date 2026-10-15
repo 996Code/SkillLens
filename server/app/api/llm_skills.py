@@ -180,7 +180,8 @@ async def skill_runs_history(skill_id: int, db: Session = Depends(get_db)) -> li
         ReplayRun.id, ReplayRun.skill_id, ReplayRun.status, ReplayRun.mode,
         ReplayRun.flaky, ReplayRun.failure_class, ReplayRun.duration_ms,
         ReplayRun.created_at,
-        _f.ifnull(_f.json_array_length(ReplayRun.executed), 0),
+        # 步数取 plan.$.steps：插件 run 的 executed 恒空（replay.py AM3 同源结论）
+        _f.ifnull(_f.json_array_length(ReplayRun.plan, "$.steps"), 0),
     ).filter(ReplayRun.skill_id == skill_id
     ).order_by(ReplayRun.created_at.desc()).limit(50).all()
     return [{"id": r[0], "skill_id": r[1], "status": r[2], "mode": r[3],

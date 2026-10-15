@@ -127,6 +127,9 @@ async def test_timeline_test_activity_view(client, monkeypatch):
     try:
         db.add(ReplayRun(skill_id=skill["id"], mode="execute", status="pass",
                          plan={"url": "http://t/f", "steps": []}, executed=[]))
+        db.add(ReplayRun(skill_id=skill["id"], mode="execute", status="pass",
+                         plan={"url": "http://t/f",
+                               "steps": [{"kind": "goto"}, {"kind": "click"}]}))
         db.commit()
     finally:
         db.close()
@@ -137,6 +140,9 @@ async def test_timeline_test_activity_view(client, monkeypatch):
     # 主行只有测试活动
     assert types <= {"test_run", "recording"}, types
     assert "test_run" in types and "recording" in types
+    # 步数取 plan.$.steps（executed 对插件 run 恒空，曾全显 0 步）
+    tr = next(r for r in rows if r["type"] == "test_run")
+    assert "2 步" in tr["subtitle"], tr["subtitle"]
     # 内部事件默认不出现
     assert "llm" not in types and "alignment" not in types and "session" not in types
     # include_internal 附带
@@ -218,7 +224,8 @@ async def test_skill_runs_history(client):
                        confidence=0.5, evidence_count=0, notes="")
             db.add(sk)
             db.flush()
-        db.add(ReplayRun(skill_id=sk.id, mode="execute", status="pass", plan={}))
+        db.add(ReplayRun(skill_id=sk.id, mode="execute", status="pass",
+                         plan={"steps": [{"kind": "goto"}, {"kind": "click"}]}))
         db.commit()
         sid = sk.id
     finally:
@@ -230,3 +237,5 @@ async def test_skill_runs_history(client):
     assert isinstance(rows, list) and rows
     assert {"id", "skill_id", "status", "mode", "created_at"} <= set(rows[0])
     assert all(r["skill_id"] == sid for r in rows)
+    # 步数取 plan.$.steps（executed 对插件 run 恒空，曾全显 0 步）
+    assert rows[0]["steps"] == 2

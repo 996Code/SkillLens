@@ -3,13 +3,13 @@
 AJ1 分类学（E1-E4）数据早已落列，此前无任何聚合 UI——"数据在库里、
 洞察不可见"。口径与 pass_rate 同源（E1/E2 透明可见不进分母）。
 """
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
-from app.models import ReplayRun, Skill
+from app.models import ReplayRun, Skill, utcnow
 from app.system import skill_systems
 
 router = APIRouter()
@@ -38,7 +38,7 @@ async def failures_summary(
 ) -> dict:
     """近 N 天 fail/error run 按 failure_class 聚合；每类带最近 run
     轻量行（列选择——plan 列不加载，UI 批1 性能纪律）。"""
-    since = datetime.utcnow() - timedelta(days=days)
+    since = utcnow() - timedelta(days=days)
     rows = db.query(
         ReplayRun.id, ReplayRun.skill_id, ReplayRun.status,
         ReplayRun.failure_class, ReplayRun.created_at,

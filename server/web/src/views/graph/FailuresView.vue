@@ -73,7 +73,11 @@ onMounted(load);
       </p>
       <div v-for="[cls, agg] in Object.entries(data.by_class)" :key="cls"
            class="block fail-class-card" :data-testid="`failures-${cls}`">
-        <div class="fail-class-head" @click="open[cls] = !open[cls]">
+        <div class="fail-class-head" role="button" tabindex="0"
+             :aria-expanded="!!open[cls]"
+             @click="open[cls] = !open[cls]"
+             @keydown.enter.prevent="open[cls] = !open[cls]"
+             @keydown.space.prevent="open[cls] = !open[cls]">
           <span class="badge" :class="toneOf(cls) ? `badge-${toneOf(cls) === 'muted' ? '' : cls}` : ''">
             {{ agg.label }}
           </span>
@@ -121,6 +125,11 @@ onMounted(load);
   gap: var(--space-3);
   cursor: pointer;
   user-select: none;
+}
+.fail-class-head:focus-visible {
+  outline: 2px solid var(--color-primary-border);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 .fail-class-head:hover .fail-toggle {
   color: var(--color-primary);

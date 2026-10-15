@@ -54,7 +54,8 @@ async def get_timeline(
     run_rows = db.query(
         ReplayRun.id, ReplayRun.skill_id, ReplayRun.status, ReplayRun.mode,
         ReplayRun.duration_ms, ReplayRun.created_at,
-        _f.ifnull(_f.json_array_length(ReplayRun.executed), 0).label("steps"),
+        # 步数取 plan.$.steps：插件 run 的 executed 恒空（replay.py AM3 同源结论）
+        _f.ifnull(_f.json_array_length(ReplayRun.plan, "$.steps"), 0).label("steps"),
     ).order_by(ReplayRun.created_at.desc()).limit(limit).all()
     systems = skill_systems(db, [r.skill_id for r in run_rows])  # S38：目标系统维度
     _names = {sid: name for sid, name in db.query(Skill.id, Skill.name).filter(

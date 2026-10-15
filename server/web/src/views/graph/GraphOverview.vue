@@ -37,6 +37,9 @@ const trendView = computed(() => {
   }));
 });
 
+// trends API 的 rate 是 0-1 小数，展示层换算为百分数
+const pct = (r: number) => Math.round(r * 100);
+
 const rateTone = (rate: number) =>
   rate >= 90 ? "pass" : rate >= 60 ? "warn" : "fail";
 
@@ -138,10 +141,10 @@ onMounted(async () => {
               <span class="sys-dot" :style="{ background: systemColor(t.system) }"></span>
               <span class="sys-health-name">{{ t.system }}</span>
               <div class="sys-health-bar">
-                <div class="sys-health-fill" :class="`tone-bg-${rateTone(t.rate)}`"
-                     :style="{ width: `${t.rate}%` }"></div>
+                <div class="sys-health-fill" :class="`tone-bg-${rateTone(pct(t.rate))}`"
+                     :style="{ width: `${pct(t.rate)}%` }"></div>
               </div>
-              <span class="sys-health-rate" :class="`tone-${rateTone(t.rate)}`">{{ t.rate }}%</span>
+              <span class="sys-health-rate" :class="`tone-${rateTone(pct(t.rate))}`">{{ pct(t.rate) }}%</span>
               <span class="muted sys-health-runs">{{ t.total }} 次</span>
               <span v-if="t.unverified_pass" class="chip warn"
                     :title="`${t.unverified_pass} 次 pass 无断言佐证`">
