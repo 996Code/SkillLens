@@ -1,7 +1,7 @@
 // AH2 链规则解释器（纯函数）：链=数据+规则的"规则"半边。
 // 服务端只存不解释（降耦合）；执行期在插件侧把规则字符串解析成真实值。
 // AI2：新增 ${stepN.字段} 跨步绑定——从上一步写请求证据提取真值注入本步。
-export interface ChainStep {
+export interface ScenarioStep {
   skill_id: number;
   overrides: Record<string, string>;
 }
@@ -134,7 +134,7 @@ export function resolveValue(
 }
 
 export function resolveStepOverrides(
-  step: ChainStep,
+  step: ScenarioStep,
   stepCtx?: StepEvidence[],
   now: number = Date.now(),
 ): Record<string, string> {
@@ -147,8 +147,8 @@ export function resolveStepOverrides(
 
 // 整链解析：同一时刻生成的 unique 值共享同一时间戳；跨步绑定按执行
 // 进度传 ctx（AI2：由 executor-page 在每步后 append 该步 observed）
-export function resolveChainSteps(
-  steps: ChainStep[],
+export function resolveScenarioSteps(
+  steps: ScenarioStep[],
   now: number = Date.now(),
 ): Array<{ skill_id: number; overrides: Record<string, string> }> {
   return steps.map((s) => ({ skill_id: s.skill_id, overrides: resolveStepOverrides(s, undefined, now) }));

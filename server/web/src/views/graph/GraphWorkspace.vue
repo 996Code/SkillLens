@@ -4,7 +4,7 @@
 // 顶部搜索框实时过滤。
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { getSkills, listChains, listSuites, logout } from "../../api";
+import { getSkills, listScenarios, listSuites, logout } from "../../api";
 import type { SkillListItem, SuiteItem } from "../../api";
 import { groupBySystem } from "../../system-group";
 import { useToasts } from "../../toast";
@@ -17,7 +17,7 @@ const route = useRoute();
 const router = useRouter();
 const suites = ref<SuiteItem[]>([]);
 // AQ2：场景计数（导航一级入口）
-const chainCount = ref(0);
+const scenarioCount = ref(0);
 const skills = ref<SkillListItem[]>([]);
 const loading = ref(true);
 const search = ref("");
@@ -51,7 +51,7 @@ async function load(): Promise<void> {
   error.value = "";
   try {
     [suites.value, skills.value] = await Promise.all([listSuites(), getSkills()]);
-    try { chainCount.value = (await listChains()).length; } catch { /* 计数 fail-open */ }
+    try { scenarioCount.value = (await listScenarios()).length; } catch { /* 计数 fail-open */ }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -91,7 +91,7 @@ async function doLogout(): Promise<void> {
       <div class="gw-tree-group">测试场景</div>
       <RouterLink to="/graph/scenarios" class="gw-tree-leaf gw-nav-scenario"
                   data-testid="gw-scenarios-link">
-        ⚡ 全部场景（{{ chainCount }}）
+        ⚡ 全部场景（{{ scenarioCount }}）
       </RouterLink>
 
       <!-- ②运行历史 -->

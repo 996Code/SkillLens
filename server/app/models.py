@@ -255,6 +255,11 @@ class TestSuite(Base):
     skill_ids: Mapped[list] = mapped_column(JSON)
     # S38 套件↔流水线合并：指向最新版本 canvas_dag（套件=线性流水线）
     canvas_id: Mapped[int | None] = mapped_column(nullable=True)
+    # AR1：legacy Suite 定义向 Scenario 的确定性迁移记账。混合/未知系统
+    # 不猜测转换，保留原因供开发者审计。
+    scenario_id: Mapped[int | None] = mapped_column(nullable=True, index=True)
+    migration_status: Mapped[str] = mapped_column(String(30), default="pending")
+    migration_reason: Mapped[str] = mapped_column(String(300), default="")
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
@@ -484,17 +489,19 @@ class FieldTypeHint(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
 
-class Chain(Base):
-    """AH1 链（v2.4 空间与链编排）：插件空间组链的纯数据存储。
+class Scenario(Base):
+    """AR1 测试场景：用户工作层的一等业务流程。
 
-    - steps: [{skill_id, overrides}]，overrides 值可含 ${unique:前缀} 规则
-      （执行期由插件侧 chain-rules 解释，服务端只存不解释——降耦合原则）
-    - system: 目标系统名（空间小窗按当前 tab 系统过滤）
-    - 执行不走服务端：executor.html?chain=<id> 逐 skill 调微指令协议
+    steps 保持 JSON，子场景引用使用 scenario_id。definition_version 保护
+    并发编辑；有历史的场景只归档，不物理删除。
     """
-    __tablename__ = "chain"
+    __tablename__ = "scenario"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100))
     system: Mapped[str] = mapped_column(String(40), index=True)
     steps: Mapped[list] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+    definition_version: Mapped[int] = mapped_column(default=1)
+    origin: Mapped[str] = mapped_column(String(30), default="manual")
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)

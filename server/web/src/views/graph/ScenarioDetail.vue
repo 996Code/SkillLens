@@ -1,17 +1,17 @@
 <script setup lang="ts">
 // AQ1/AQ4 场景详情：步骤时间线（用户可读——技能 description 主文案+
-// 技术名副标题+参数）+ 运行入口（executor.html 链模式）+ 编辑模式
-// （改名/启停步/换参/重排——PUT /chains）。技术下钻不断：步名链接
-// 技能详情（Katalon Manual/Script 双视图语义）。
+// 技术名副标题+参数）+ 运行入口（executor.html 场景模式）+ 编辑模式
+// （改名/启停步/换参/重排——PATCH /scenarios 带 If-Match 版本锁）。
+// 技术下钻不断：步名链接技能详情（Katalon Manual/Script 双视图语义）。
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
-import { getChain, updateChain } from "../../api";
-import type { ChainDetail } from "../../api";
+import { getScenario, updateScenario } from "../../api";
+import type { ScenarioDetail } from "../../api";
 import { toastOk, toastErr } from "../../toast";
 import { askConfirm } from "../../confirm";
 
 const route = useRoute();
-const chain = ref<ChainDetail | null>(null);
+const scenario = ref<ScenarioDetail | null>(null);
 const loading = ref(true);
 const error = ref("");
 const editing = ref(false);
@@ -20,13 +20,13 @@ const editName = ref("");
 
 const EXT_EXECUTOR = "chrome-extension://iifhfcajmahbdbjljhmfknfnachpcpgl/executor.html";
 
-const chainId = computed(() => String(route.params.scenarioId));
+const scenarioId = computed(() => String(route.params.scenarioId));
 
 async function load(): Promise<void> {
   loading.value = true;
   try {
-    chain.value = await getChain(chainId.value);
-    editName.value = chain.value.name;
+    scenario.value = await getScenario(scenarioId.value);
+    editName.value = scenario.value.name;
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -35,21 +35,22 @@ async function load(): Promise<void> {
 }
 
 function startEdit(): void {
-  if (!chain.value) return;
+  if (!scenario.value) return;
   editing.value = true;
-  editName.value = chain.value.name;
+  editName.value = scenario.value.name;
 }
 
 async function save(): Promise<void> {
-  if (!chain.value) return;
+  if (!scenario.value) return;
   saving.value = true;
   try {
-    chain.value = await updateChain(chain.value.id, {
-      name: editName.value.trim() || chain.value.name,
-      system: chain.value.system,
-      steps: chain.value.steps.map((s) => ({
+    const versionBeforeSave = scenario.value.definition_version;
+    scenario.value = await updateScenario(scenario.value.id, versionBeforeSave, {
+      name: editName.value.trim() || scenario.value.name,
+      system: scenario.value.system,
+      steps: scenario.value.steps.map((s) => ({
         skill_id: s.skill_id,
-        chain_id: s.chain_id,
+        scenario_id: s.scenario_id,
         overrides: s.overrides,
         enabled: s.enabled,
         setup: s.setup,
@@ -60,18 +61,20 @@ async function save(): Promise<void> {
     toastOk("场景已保存");
   } catch (e) {
     toastErr(`保存失败：${e instanceof Error ? e.message : e}`);
+    // 版本冲突时重载拿最新定义，避免继续编辑过期快照
+    if (e instanceof Error && e.message.includes("409")) await load();
   } finally {
     saving.value = false;
   }
 }
 
 function toggleStep(i: number): void {
-  const st = chain.value?.steps[i];
+  const st = scenario.value?.steps[i];
   if (st) st.enabled = !st.enabled;
 }
 
 function moveStep(i: number, dir: -1 | 1): void {
-  const steps = chain.value?.steps;
+  const steps = scenario.value?.steps;
   if (!steps) return;
   const j = i + dir;
   if (j < 0 || j >= steps.length) return;
@@ -79,7 +82,7 @@ function moveStep(i: number, dir: -1 | 1): void {
 }
 
 async function removeStep(i: number): Promise<void> {
-  const steps = chain.value?.steps;
+  const steps = scenario.value?.steps;
   if (!steps || steps.length <= 1) {
     toastErr("场景至少保留一个步骤");
     return;
@@ -89,7 +92,7 @@ async function removeStep(i: number): Promise<void> {
 }
 
 function runScenario(): void {
-  window.open(`${EXT_EXECUTOR}?chain=${chain.value!.id}&auto=1`, "_blank");
+  window.open(`${EXT_EXECUTOR}?scenario=${scenario.value!.id}&auto=1`, "_blank");
 }
 
 function overrideEntries(st: { overrides: Record<string, string> }): Array<[string, string]> {
@@ -108,16 +111,16 @@ onMounted(load);
     <p v-if="loading" class="muted">加载中…</p>
     <p v-else-if="error" class="error">加载失败：{{ error }}</p>
 
-    <template v-else-if="chain">
+    <template v-else-if="scenario">
       <!-- 场景头 -->
       <div class="scenario-hero">
         <div class="scenario-hero-main">
-          <h1 v-if="!editing">{{ chain.name }}</h1>
+          <h1 v-if="!editing">{{ scenario.name }}</h1>
           <input v-else v-model="editName" class="scenario-name-input"
                  aria-label="场景名称" data-testid="scenario-name-input" />
           <p class="muted page-desc">
-            {{ chain.system }} · {{ chain.steps.length }} 步
-            · 创建于 {{ chain.created_at.slice(0, 10) }}
+            {{ scenario.system }} · {{ scenario.steps.length }} 步
+            · 创建于 {{ scenario.created_at.slice(0, 10) }}
           </p>
         </div>
         <div class="scenario-hero-actions">
@@ -143,9 +146,9 @@ onMounted(load);
 
       <!-- 步骤时间线 -->
       <div class="block steps-block" data-testid="scenario-steps">
-        <h2>步骤（{{ chain.steps.length }}）</h2>
+        <h2>步骤（{{ scenario.steps.length }}）</h2>
         <div class="step-timeline">
-          <div v-for="(st, i) in chain.steps" :key="i"
+          <div v-for="(st, i) in scenario.steps" :key="i"
                class="step-node" :class="{ disabled: !st.enabled }"
                :data-testid="`scenario-step-${i}`">
             <div class="step-index">
@@ -157,7 +160,7 @@ onMounted(load);
             <div class="step-body">
               <!-- 主文案：技能自然语言描述（95% 技能有 LLM 描述） -->
               <div class="step-desc">
-                {{ st.skill?.description || st.skill?.name || (st.chain_id ? `子场景 #${st.chain_id}` : "（未知步骤）") }}
+                {{ st.skill?.description || st.skill?.name || (st.scenario_id ? `子场景 #${st.scenario_id}` : "（未知步骤）") }}
               </div>
               <!-- 副标题：技术名（下钻入口——双视图语义） -->
               <div class="step-tech">
@@ -196,7 +199,7 @@ onMounted(load);
               <button class="btn btn-sm" title="上移" :disabled="i === 0"
                       @click="moveStep(i, -1)">↑</button>
               <button class="btn btn-sm" title="下移"
-                      :disabled="i === chain.steps.length - 1"
+                      :disabled="i === scenario.steps.length - 1"
                       @click="moveStep(i, 1)">↓</button>
               <button class="btn btn-sm step-del" title="移除"
                       @click="removeStep(i)">×</button>

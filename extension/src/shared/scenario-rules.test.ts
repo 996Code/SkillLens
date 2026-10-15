@@ -2,11 +2,11 @@
 // AI2：${stepN.字段} 跨步绑定（写请求体 JSON/urlencoded 提取）。
 import { describe, expect, it } from "vitest";
 import {
-  extractField, extractStepValue, resolveChainSteps, resolveRowAnchor,
+  extractField, extractStepValue, resolveScenarioSteps, resolveRowAnchor,
   resolveRule, resolveStepOverrides, resolveValue,
-} from "./chain-rules";
+} from "./scenario-rules";
 
-describe("chain-rules 规则解释器", () => {
+describe("scenario-rules 规则解释器", () => {
   it("${unique:前缀} → 前缀+时间戳 base36", () => {
     const v = resolveRule("${unique:sl_form_}", 1730000000000);
     expect(v).toBe(`sl_form_${(1730000000000).toString(36)}`);
@@ -35,8 +35,8 @@ describe("chain-rules 规则解释器", () => {
       { skill_id: 269, overrides: { a: "${unique:x_}" } },
       { skill_id: 118, overrides: { b: "${unique:y_}" } },
     ];
-    const r1 = resolveChainSteps(steps, 1000);
-    const r2 = resolveChainSteps(steps, 2000);
+    const r1 = resolveScenarioSteps(steps, 1000);
+    const r2 = resolveScenarioSteps(steps, 2000);
     expect(r1[0].overrides.a).toBe(`x_${(1000).toString(36)}`);
     expect(r1[1].overrides.b).toBe(`y_${(1000).toString(36)}`); // 同轮同戳
     expect(r1[0].overrides.a).not.toBe(r2[0].overrides.a);       // 跨轮不同

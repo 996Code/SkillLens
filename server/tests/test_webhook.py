@@ -121,7 +121,5 @@ async def test_report_generation_triggers_webhook(client, monkeypatch):
 
     resp = await client.post(f"/api/v1/expected-deltas/{delta['id']}/report",
                              json={"observed_delta_id": obs_id})
-    assert resp.status_code == 201
-    assert len(sent) == 1
-    assert "报告" in sent[0]["title"]
-    assert str(resp.json()["id"]) in sent[0]["body"]
+    assert resp.status_code == 410
+    assert sent == []  # AR1 冻结旧写入，AR4 自动报告恢复推送

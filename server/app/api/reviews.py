@@ -62,20 +62,10 @@ def _review_item(db: Session, row: Review) -> dict:
 @router.post("/reviews", status_code=201)
 async def create_review(body: ReviewIn, db: Session = Depends(get_db),
                         user: User = Depends(require_role("reviewer", "admin"))) -> dict:
-    run = db.get(AgentRun, body.agent_run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="agent_run not found")
-    dup = db.query(Review).filter(Review.agent_run_id == body.agent_run_id).first()
-    if dup:
-        raise HTTPException(status_code=409,
-                            detail=f"agent_run {body.agent_run_id} 已评审（review #{dup.id}）")
-    # S21 块 S：评审人从登录态取（reviewer 字符串保留展示，user_id 关联账号）
-    row = Review(agent_run_id=body.agent_run_id, reviewer=user.username,
-                 user_id=user.id, decision=body.decision, comment=body.comment)
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    return _review_item(db, row)
+    raise HTTPException(
+        status_code=410,
+        detail="旧 AgentRun 评审写入已由 AR1 冻结；AR4 将评审对象统一为场景报告",
+    )
 
 
 @router.get("/reviews")

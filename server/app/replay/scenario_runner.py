@@ -1,8 +1,8 @@
 """AI3 服务端链执行：规则解释 + 顺序执行（CI 出口的执行体）。
 
-规则语义与 extension/src/shared/chain-rules.ts 逐字对齐（双端一致性由
+规则语义与 extension/src/shared/scenario-rules.ts 逐字对齐（双端一致性由
 两侧测试钉死；漂移=链在两端行为分叉）：
-- ${unique:前缀}：时间戳 base36（同轮共享——run_chain_server 单次执行
+- ${unique:前缀}：时间戳 base36（同轮共享——run_scenario_server 单次执行
   一个 ts）
 - ${stepN.字段}：从第 N 步（1 起）run 的 plan["observed"] 提取 reqBody
   字段（JSON 串值/数值 + urlencoded；末条优先=终态语义）
@@ -80,21 +80,21 @@ def resolve_step_overrides(step: dict, step_ctx: list | None,
     return out
 
 
-def expand_steps(steps: list, chains_by_id: dict, depth: int = 0,
+def expand_steps(steps: list, scenarios_by_id: dict, depth: int = 0,
                   inherit_setup: bool = False) -> list:
-    """链编排 v2：chain_id 步骤展开为子链步骤（递归，深度≤3 防环）。
+    """链编排 v2：scenario_id 步骤展开为子链步骤（递归，深度≤3 防环）。
     setup 标记传染：父步骤标记 setup → 子链全部步骤继承（登录链整体
     是前置——Playwright beforeEach 的声明式等价）。"""
     if depth > 3:
         raise ValueError(f"子链嵌套超过深度 3（疑似环）")
     out: list = []
     for st in steps:
-        if st.get("chain_id") is not None:
-            sub = chains_by_id.get(st["chain_id"])
+        if st.get("scenario_id") is not None:
+            sub = scenarios_by_id.get(st["scenario_id"])
             if sub is None:
                 continue  # 子链已被删——跳过（不致命）
             out.extend(expand_steps(
-                sub, chains_by_id, depth + 1,
+                sub, scenarios_by_id, depth + 1,
                 inherit_setup=inherit_setup or bool(st.get("setup"))))
         else:
             s = dict(st)
@@ -104,7 +104,7 @@ def expand_steps(steps: list, chains_by_id: dict, depth: int = 0,
     return out
 
 
-async def run_chain_server(db: Session, chain_id: int,
+async def run_scenario_server(db: Session, scenario_id: int,
                            confirm_side_effect: bool) -> dict:
     """服务端链执行（CI 出口执行体）：顺序 run_replay，fail 即停。
 
@@ -112,20 +112,20 @@ async def run_chain_server(db: Session, chain_id: int,
     shadow 短路（不启浏览器）——整链结果 shadow，与单技能语义一致。
     observed 从每步 run.plan["observed"] 取（runner 旁挂）供跨步绑定。
     """
-    from app.models import Chain
+    from app.models import Scenario
     from app.replay.runner import run_replay
 
-    chain = db.get(Chain, chain_id)
-    if not chain:
-        return {"status": "error", "error": "chain not found", "steps": []}
-    raw_steps = chain.steps or []
+    scenario = db.get(Scenario, scenario_id)
+    if not scenario:
+        return {"status": "error", "error": "scenario not found", "steps": []}
+    raw_steps = scenario.steps or []
     if not raw_steps:
-        return {"status": "error", "error": "empty chain", "steps": []}
+        return {"status": "error", "error": "empty scenario", "steps": []}
 
-    # v2：子链展开（chain_id → 子链步骤，setup 传染，深度守卫）
-    all_chains = {c.id: (c.steps or []) for c in db.query(Chain).all()}
+    # v2：子链展开（scenario_id → 子链步骤，setup 传染，深度守卫）
+    all_scenarios = {c.id: (c.steps or []) for c in db.query(Scenario).all()}
     try:
-        steps = expand_steps(raw_steps, all_chains)
+        steps = expand_steps(raw_steps, all_scenarios)
     except ValueError as e:
         return {"status": "error", "error": str(e), "steps": []}
     # AJ5 步骤启停（Katalon checkbox）：enabled=false 的步骤跳过
@@ -135,7 +135,7 @@ async def run_chain_server(db: Session, chain_id: int,
     # v2：适配器自动登录（幂等——已登录直过；根治 CI 多系统登录态）
     warnings: list[str] = []
     from app.system import SYSTEM_ADAPTER
-    aid = SYSTEM_ADAPTER.get(chain.system or "")
+    aid = SYSTEM_ADAPTER.get(scenario.system or "")
     if aid:
         try:
             ok = await _adapter_login(aid)

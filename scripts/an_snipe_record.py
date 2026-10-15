@@ -142,11 +142,11 @@ async def main() -> None:
         if not (sk_a and sk_b):
             sys.exit("学习失败")
         print(f"\n技能对就绪: A=#{sk_a} B=#{sk_b}")
-        print(f"建链: POST /chains steps=[A, B(row_anchor_from=1)]")
+        print(f"建链: POST /scenarios steps=[A, B(row_anchor_from=1)]")
         import httpx
         async with httpx.AsyncClient(timeout=15.0) as c:
             c.headers["Authorization"] = f"Bearer {token}"
-            r = await c.post(f"{SERVER}/chains", json={
+            r = await c.post(f"{SERVER}/scenarios", json={
                 "name": "AN验收2：查找点行→行内Update（行锚注入）",
                 "system": "Snipe 资产",
                 "steps": [

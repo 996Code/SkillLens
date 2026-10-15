@@ -1,12 +1,12 @@
 // AG3 执行页：独立 tab 内跑步循环（popup 生命周期关不住、SW 消息层
 // 不稳——十轮实证后终局架构：执行=专属页面，全程可见）
 // UX 评审整改：确认卡带技能名+目标页；完成结果卡+工作台回看链接
-// AH3 链模式：?chain=<id> 顺序执行多个技能（整链 C1 一次确认、步进报告、
-// fail 即停）——链=服务端纯数据，规则（${unique:}）在本页解释
+// AH3/AR1 场景模式：?scenario=<id> 顺序执行多个技能（整场景 C1 一次确认、
+// 步进报告、fail 即停）——场景=服务端纯数据，规则（${unique:}）在本页解释
 export {};
 
 import { listExecutorSkills, runSkill, setExecutorToken, api } from "./background/executor";
-import { resolveRowAnchor, resolveStepOverrides } from "./shared/chain-rules";
+import { resolveRowAnchor, resolveStepOverrides } from "./shared/scenario-rules";
 
 const logEl = document.getElementById("log")!;
 const go = document.getElementById("go") as HTMLButtonElement;
@@ -56,36 +56,37 @@ function showResultCard(status: string, runId: number | null): void {
   }
 }
 
+// AR1 场景模式数据：?scenario=<id>（与 ?skill= 互斥，场景优先）。
+// 声明在 token 块之前（旧代码先引用后声明，TDZ 隐患顺手修）。
+const scenarioId = Number(params.get("scenario") || 0);
+let scenarioData: any = null;
+
 if (tokenParam) {
   await setExecutorToken(tokenParam);
-  const keep = chainId ? `?chain=${chainId}` : (skillId ? `?skill=${skillId}` : "");
+  const keep = scenarioId ? `?scenario=${scenarioId}` : (skillId ? `?skill=${skillId}` : "");
   history.replaceState(null, "", location.pathname + keep);
 }
 
 let skillName = `#${skillId}`;
 let skillWrites = false;
 
-// AH3 链模式数据：?chain=<id>（与 ?skill= 互斥，链优先）
-const chainId = Number(params.get("chain") || 0);
-let chainData: any = null;
-
-if (chainId) {
-  // 链模式：拉链数据（含技能概要）——标题/确认卡/步进报告都有据
+if (scenarioId) {
+  // 场景模式：拉场景数据（含技能概要）——标题/确认卡/步进报告都有据
   try {
-    chainData = await api(`/chains/${chainId}`);
-    const names = (chainData.steps || [])
+    scenarioData = await api(`/scenarios/${scenarioId}`);
+    const names = (scenarioData.steps || [])
       .map((st: any) => `#${st.skill_id} ${st.skill?.name ?? ""}`).join(" → ");
-    title.textContent = `链执行 ${chainData.name}`;
-    meta.textContent = `${(chainData.steps || []).length} 个步骤：${names}`;
-    skillWrites = (chainData.steps || []).some((st: any) => st.skill?.requires_confirmation);
+    title.textContent = `场景执行 ${scenarioData.name}`;
+    meta.textContent = `${(scenarioData.steps || []).length} 个步骤：${names}`;
+    skillWrites = (scenarioData.steps || []).some((st: any) => st.skill?.requires_confirmation);
     if (skillWrites) meta.textContent += "（含写操作——点击开始后需授权）";
   } catch (e: any) {
-    log(`链加载失败：${e.message}`);
-    title.textContent = "链执行（加载失败）";
+    log(`场景加载失败：${e.message}`);
+    title.textContent = "场景执行（加载失败）";
   }
 } else if (!skillId) {
   title.textContent = "SkillLens 执行器（未指定技能）";
-  log("缺少 ?skill= 或 ?chain= 参数——从 popup/空间选择进入。");
+  log("缺少 ?skill= 或 ?scenario= 参数——从 popup/空间选择进入。");
 } else {
   meta.textContent = "点击【开始执行】开始。写操作技能会先请求授权（C1）。";
   // 技能元数据预取：标题带名字，确认卡有据
@@ -106,7 +107,7 @@ if (chainId) {
 let running = false;
 let stopRequested = false;
 go.addEventListener("click", async () => {
-  if (running || (!skillId && !chainData)) return;
+  if (running || (!skillId && !scenarioData)) return;
   running = true;
   stopRequested = false;
   go.disabled = true;
@@ -114,21 +115,21 @@ go.addEventListener("click", async () => {
   document.getElementById("result-card")!.style.display = "none";
   log("开始执行…");
   try {
-    if (chainData) {
-      // ---- AH3 链执行：整链 C1 一次确认 → 逐步执行 → fail 即停 ----
-      const steps = chainData.steps || [];
+    if (scenarioData) {
+      // ---- AH3 场景执行：整场景 C1 一次确认 → 逐步执行 → fail 即停 ----
+      const steps = scenarioData.steps || [];
       if (skillWrites && !autoConfirm) {
         const names = steps.map((st: any) =>
           `#${st.skill_id} ${st.skill?.name ?? ""}`).join("\n  ");
         const ok = confirm(
-          `链「${chainData.name}」含写操作，共 ${steps.length} 步：\n  ${names}\n` +
-          "点击确定=授权在本机浏览器执行全部步骤（C1，整链一次）。");
+          `场景「${scenarioData.name}」含写操作，共 ${steps.length} 步：\n  ${names}\n` +
+          "点击确定=授权在本机浏览器执行全部步骤（C1，整场景一次）。");
         if (!ok) { log("已取消（C1 未授权）"); running = false; go.disabled = false; stop.disabled = true; return; }
       } else if (skillWrites && autoConfirm) {
-        log("auto 模式：整链 C1 授权由调用方持有，跳过确认卡");
+        log("auto 模式：整场景 C1 授权由调用方持有，跳过确认卡");
       }
       // AI2 逐步解析：每步执行时带前序产出 ctx（${stepN.字段} 跨步绑定），
-      // unique 同轮共享时间戳。逐步而非整链预解析——绑定值依赖执行期证据。
+      // unique 同轮共享时间戳。逐步而非整场景预解析——绑定值依赖执行期证据。
       const runTs = Date.now();
       const stepCtx: any[][] = [];
       const results: Array<{ step: number; status: string; runId?: number }> = [];
@@ -155,7 +156,7 @@ go.addEventListener("click", async () => {
           results.push({ step: i + 1, status: r.status, runId: r.runId });
           log(`步骤 ${i + 1} 完成：${r.status}`);
           if (r.status !== "pass") {
-            log(`链在第 ${i + 1} 步未通过——停止后续步骤（已执行 ${i + 1}/${steps.length}）`);
+            log(`场景在第 ${i + 1} 步未通过——停止后续步骤（已执行 ${i + 1}/${steps.length}）`);
             break;
           }
         } catch (e: any) {
@@ -167,7 +168,7 @@ go.addEventListener("click", async () => {
       }
       const npass = results.filter((r) => r.status === "pass").length;
       const overall = npass === steps.length && steps.length > 0 ? "pass" : "fail";
-      log(`链执行结束：${npass}/${steps.length} 步通过（${overall}）`);
+      log(`场景执行结束：${npass}/${steps.length} 步通过（${overall}）`);
       showResultCard(overall, results.find((r) => r.runId)?.runId ?? null);
     } else {
       // ---- 单技能模式（原有路径） ----

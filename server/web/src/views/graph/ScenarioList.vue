@@ -3,33 +3,33 @@
 // 共识）——按系统分组卡片，业务名+步骤数+最近运行徽章。技术层（249
 // 技能）收进步骤库，此页不出现技术名。
 import { computed, onMounted, ref } from "vue";
-import { listChains, listSkillRuns } from "../../api";
-import type { ChainListItem, SkillRunRow } from "../../api";
+import { listScenarios, listSkillRuns } from "../../api";
+import type { ScenarioListItem, SkillRunRow } from "../../api";
 import { groupBySystem, systemColor } from "../../system-group";
 
-const chains = ref<ChainListItem[]>([]);
+const scenarios = ref<ScenarioListItem[]>([]);
 const loading = ref(true);
 const error = ref("");
 
 // 每条链的最近一次运行（链执行=逐 skill 产生 run——取链首 skill 最新
 // run 作为链级状态近似；准确链级聚合留后续批）
-const lastRunByChain = ref<Record<number, SkillRunRow | null>>({});
+const lastRunByScenario = ref<Record<number, SkillRunRow | null>>({});
 
-const grouped = computed(() => groupBySystem(chains.value));
+const grouped = computed(() => groupBySystem(scenarios.value));
 
 async function load(): Promise<void> {
   loading.value = true;
   try {
-    chains.value = await listChains();
+    scenarios.value = await listScenarios();
     // 链级最近 run（首 skill 近似）
-    await Promise.all(chains.value.slice(0, 20).map(async (c) => {
+    await Promise.all(scenarios.value.slice(0, 20).map(async (c) => {
       const first = c.steps.find((s) => s.skill_id);
       if (!first) return;
       try {
         const runs = await listSkillRuns(first.skill_id!);
-        lastRunByChain.value[c.id] = runs[0] ?? null;
+        lastRunByScenario.value[c.id] = runs[0] ?? null;
       } catch {
-        lastRunByChain.value[c.id] = null;
+        lastRunByScenario.value[c.id] = null;
       }
     }));
   } catch (e) {
@@ -56,7 +56,7 @@ onMounted(load);
 
     <p v-if="loading" class="muted">加载中…</p>
     <p v-else-if="error" class="error">加载失败：{{ error }}</p>
-    <div v-else-if="!chains.length" class="empty block" data-testid="scenarios-empty">
+    <div v-else-if="!scenarios.length" class="empty block" data-testid="scenarios-empty">
       暂无测试场景。录制操作后，在浏览器插件的空间面板里组合技能即可创建场景。
     </div>
 
@@ -75,12 +75,12 @@ onMounted(load);
             <div class="scenario-name">{{ c.name }}</div>
             <div class="scenario-meta">
               <span class="muted">{{ c.steps.length }} 步</span>
-              <span v-if="lastRunByChain[c.id]"
+              <span v-if="lastRunByScenario[c.id]"
                     class="badge"
-                    :class="`badge-${lastRunByChain[c.id]!.status}`">
-                {{ lastRunByChain[c.id]!.status }}
+                    :class="`badge-${lastRunByScenario[c.id]!.status}`">
+                {{ lastRunByScenario[c.id]!.status }}
                 <span class="muted scenario-ago">
-                  · {{ fmtAgo(lastRunByChain[c.id]!.created_at) }}
+                  · {{ fmtAgo(lastRunByScenario[c.id]!.created_at) }}
                 </span>
               </span>
               <span v-else class="badge">未运行</span>

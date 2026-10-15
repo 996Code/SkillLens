@@ -20,10 +20,10 @@ async def main():
     if not ext:
         print("[no ext sw] targets:", [(t.get("type"), (t.get("url") or "")[:40]) for t in _get(f"{CDP}/json")][:6])
         return
-    chain_id = open("D:/tmp/chain_ai2.txt").read().strip()
+    scenario_id = open("D:/tmp/chain_ai2.txt").read().strip()
     token = open("D:/tmp/sl_token").read().strip()
     ver = _get(f"{CDP}/json/version")
-    url = f"chrome-extension://{ext}/executor.html?chain={chain_id}&token={token}&auto=1"
+    url = f"chrome-extension://{ext}/executor.html?scenario={scenario_id}&token={token}&auto=1"
     async with websockets.connect(ver["webSocketDebuggerUrl"], max_size=10**7) as ws:
         await ws.send(json.dumps({"id": 1, "method": "Target.createTarget",
                                   "params": {"url": url}}))

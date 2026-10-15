@@ -6,7 +6,7 @@ export {};
 
 import { redactNetworkBody, redactNetworkUrl, redactValueAfter } from "../shared/redact";
 import { AGENT_URL as AGENT } from "../shared/types";
-import { resolveStepOverrides } from "../shared/chain-rules";
+import { resolveStepOverrides } from "../shared/scenario-rules";
 import { Budget } from "../shared/budget";
 import { describeFailure } from "../shared/failures";
 import { isLoginUrl, writeEffectFired, writeResponseCount } from "../shared/expectations";
@@ -1962,16 +1962,16 @@ function sleep(ms: number): Promise<void> {
 // sendResponse 竞争会互踩）——本模块只导出函数。
 
 
-// ---- AH6 页内链执行（SW 宿主：CDP 命令活动保活，MV3 不杀） ----
+// ---- AH6/AR1 页内场景执行（SW 宿主：CDP 命令活动保活，MV3 不杀） ----
 
-export async function runChain(
-  chainId: number,
+export async function runScenario(
+  scenarioId: number,
   onProgress: (msg: string) => void,
   shouldStop?: () => boolean,
   hostTab?: number,
 ): Promise<{ status: string; steps?: Array<{ step: number; status: string; runId?: number }> }> {
-  const chain = await api(`/chains/${chainId}`);
-  const steps = chain.steps || [];
+  const scenario = await api(`/scenarios/${scenarioId}`);
+  const steps = scenario.steps || [];
   if (!steps.length) return { status: "fail", steps: [] };
   const runTs = Date.now();
   const stepCtx: any[][] = [];
@@ -1986,7 +1986,7 @@ export async function runChain(
       results.push({ step: i + 1, status: r.status, runId: r.runId });
       onProgress(`步骤 ${i + 1} 完成：${r.status}`);
       if (r.status !== "pass") {
-        onProgress(`链在第 ${i + 1} 步未通过——停止（已执行 ${i + 1}/${steps.length}）`);
+        onProgress(`场景在第 ${i + 1} 步未通过——停止（已执行 ${i + 1}/${steps.length}）`);
         break;
       }
     } catch (e: any) {
@@ -1998,6 +1998,6 @@ export async function runChain(
   }
   const npass = results.filter((r) => r.status === "pass").length;
   const overall = npass === steps.length && steps.length > 0 ? "pass" : "fail";
-  onProgress(`链执行结束：${npass}/${steps.length} 步通过（${overall}）`);
+  onProgress(`场景执行结束：${npass}/${steps.length} 步通过（${overall}）`);
   return { status: overall, steps: results };
 }

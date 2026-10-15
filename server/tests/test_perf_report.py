@@ -80,17 +80,19 @@ async def test_perf_drift_into_report(client, monkeypatch):
     slow_run = _add_runs(skill_id, [5000])
     obs_id = _add_observed(delta_id, skill_id, slow_run, 5000)
 
-    resp = await client.post(f"/api/v1/expected-deltas/{delta_id}/report",
-                             json={"observed_delta_id": obs_id})
-    assert resp.status_code == 201
-    body = resp.json()
-    perf_items = [d for d in body["drift"] if d["type"] == "perf"]
+    from app.change.perf import perf_context
+    from app.db import SessionLocal
+    db = SessionLocal()
+    try:
+        perf, drifts = perf_context(db, skill_id, slow_run)
+    finally:
+        db.close()
+    perf_items = [d for d in drifts if d["type"] == "perf"]
     assert len(perf_items) == 1
     assert "1000ms" in perf_items[0]["value"] and "5000ms" in perf_items[0]["value"]
-    # perf 上下文
-    assert body["perf"]["baseline"]["median"] == 1000
-    assert body["perf"]["current_ms"] == 5000
-    assert body["perf"]["history_ms"] == [900, 1000, 1100]
+    assert perf["baseline"]["median"] == 1000
+    assert perf["current_ms"] == 5000
+    assert perf["history_ms"] == [900, 1000, 1100]
 
 
 async def test_perf_no_drift_insufficient_history(client, monkeypatch):
@@ -99,10 +101,14 @@ async def test_perf_no_drift_insufficient_history(client, monkeypatch):
     slow_run = _add_runs(skill_id, [99999])
     obs_id = _add_observed(delta_id, skill_id, slow_run, 99999)
 
-    resp = await client.post(f"/api/v1/expected-deltas/{delta_id}/report",
-                             json={"observed_delta_id": obs_id})
-    body = resp.json()
-    assert [d for d in body["drift"] if d["type"] == "perf"] == []
+    from app.change.perf import perf_context
+    from app.db import SessionLocal
+    db = SessionLocal()
+    try:
+        _, drifts = perf_context(db, skill_id, slow_run)
+    finally:
+        db.close()
+    assert [d for d in drifts if d["type"] == "perf"] == []
 
 
 async def test_api_latency_drift_into_report(client, monkeypatch):
@@ -113,10 +119,14 @@ async def test_api_latency_drift_into_report(client, monkeypatch):
                          latencies=[{"/a/{id}/save": 600}])
     obs_id = _add_observed(delta_id, skill_id, slow_run, 1000)
 
-    resp = await client.post(f"/api/v1/expected-deltas/{delta_id}/report",
-                             json={"observed_delta_id": obs_id})
-    body = resp.json()
-    perf_items = [d for d in body["drift"] if d["type"] == "perf"]
+    from app.change.perf import perf_context
+    from app.db import SessionLocal
+    db = SessionLocal()
+    try:
+        _, drifts = perf_context(db, skill_id, slow_run)
+    finally:
+        db.close()
+    perf_items = [d for d in drifts if d["type"] == "perf"]
     # 总耗时正常（1000 ≈ 中位 1000）无耗时漂移；API 延迟 110 → 600 = 5.5x 漂移
     assert len(perf_items) == 1
     assert "/a/{id}/save" in perf_items[0]["value"]
@@ -128,10 +138,20 @@ async def test_report_perf_endpoint(client, monkeypatch):
     _add_runs(skill_id, [900, 1000, 1100])
     slow_run = _add_runs(skill_id, [5000])
     obs_id = _add_observed(delta_id, skill_id, slow_run, 5000)
-    report = (await client.post(f"/api/v1/expected-deltas/{delta_id}/report",
-                                json={"observed_delta_id": obs_id})).json()
+    from app.db import SessionLocal
+    from app.models import DeltaReport
+    db = SessionLocal()
+    try:
+        row = DeltaReport(expected_delta_id=delta_id, observed_delta_id=obs_id,
+                          expected=[], missing=[], unexpected=[], drift=[])
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        report_id = row.id
+    finally:
+        db.close()
 
-    resp = await client.get(f"/api/v1/reports/{report['id']}/perf")
+    resp = await client.get(f"/api/v1/reports/{report_id}/perf")
     assert resp.status_code == 200
     perf = resp.json()
     assert perf["baseline"]["median"] == 1000

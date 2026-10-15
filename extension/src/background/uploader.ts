@@ -3,7 +3,7 @@ import { AGENT_URL, EVENT_MSG } from "../shared/types";
 import type { RawEvent } from "../shared/types";
 import { assignSession } from "../shared/assign-session";
 import { getRecordingState, startRecording, stopRecording } from "./session";
-import { listExecutorSkills, runChain, runSkill } from "./executor";
+import { listExecutorSkills, runScenario, runSkill } from "./executor";
 import { autoLearn } from "./learn";
 
 // S31 修复：录制状态已从 chrome.storage.session 改为 chrome.storage.local
@@ -190,11 +190,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
   // AH6 页内执行：面板发起（sender.tab 即业务页）——执行循环跑在 SW
   // （CDP 命令活动保活），attach 该页签直接驱动；进度经 tabs.sendMessage
-  // 回流面板显示。skill/chain 二选一。
+  // 回流面板显示。skill/scenario 二选一。
   if (msg?.type === "EXECUTOR_RUN_ON_TAB") {
     if (sender.tab?.id == null) { sendResponse({ error: "no tab" }); return true; }
     sendResponse({ started: true });
-    startRunOnTab(sender.tab.id, { skillId: msg.skillId, chainId: msg.chainId,
+    startRunOnTab(sender.tab.id, { skillId: msg.skillId, scenarioId: msg.scenarioId,
                                    overrides: msg.overrides });
     return true;
   }
@@ -202,7 +202,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 // content script→SW 的 runtime.sendMessage 实测不通，storage.onChanged 稳定）
 let execRunning = false;  // 执行互斥：同 tab 并发 attach 冲突（port 双发实锤）
 
-function startRunOnTab(tabId: number, req: { skillId?: number; chainId?: number; overrides?: Record<string, string> }): void {
+function startRunOnTab(tabId: number, req: { skillId?: number; scenarioId?: number; overrides?: Record<string, string> }): void {
   if (execRunning) {
     void chrome.tabs.sendMessage(tabId, { type: "SL_PROGRESS",
       msg: "已有执行进行中——请等当前执行结束" }).catch(() => {});
@@ -219,8 +219,8 @@ function startRunOnTab(tabId: number, req: { skillId?: number; chainId?: number;
   };
   void (async () => {
     try {
-      if (req.chainId != null) {
-        await runChain(Number(req.chainId), onProgress, undefined, tabId);
+      if (req.scenarioId != null) {
+        await runScenario(Number(req.scenarioId), onProgress, undefined, tabId);
       } else if (req.skillId != null) {
         await runSkill(Number(req.skillId), req.overrides || {}, onProgress, undefined, tabId);
       }
@@ -253,18 +253,18 @@ chrome.runtime.onConnect.addListener((port) => {
     const sender = port.sender;
     const tabId = sender?.tab?.id;
     if (tabId == null) { port.postMessage({ type: "SL_PROGRESS", msg: "无页签上下文" }); return; }
-    startRunOnTab(tabId, { skillId: msg.skillId, chainId: msg.chainId,
+    startRunOnTab(tabId, { skillId: msg.skillId, scenarioId: msg.scenarioId,
                            overrides: msg.overrides });
   });
 });
 
-// storage 事件入口：面板写 sl_exec_request={skillId|chainId}（+时间戳防重复
+// storage 事件入口：面板写 sl_exec_request={skillId|scenarioId}（+时间戳防重复
 // 与陈旧过滤）。tabId 由 SW 现取活动业务页（面板发起时其所在页即活动页
 // ——面板是 content script 无 chrome.tabs，不能自带）
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes.sl_exec_request?.newValue) return;
   const req = changes.sl_exec_request.newValue as {
-    at: number; skillId?: number; chainId?: number;
+    at: number; skillId?: number; scenarioId?: number;
     overrides?: Record<string, string> };
   if (Date.now() - (req.at || 0) > 10000) return;  // 陈旧请求忽略
   // SW 重启丢内存互斥的兜底：storage 持久锁（10 分钟过期防死锁）——

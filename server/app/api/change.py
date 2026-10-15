@@ -102,34 +102,10 @@ class ReportRequest(BaseModel):
 @router.post("/expected-deltas/{delta_id}/report", status_code=201, dependencies=WRITE_GUARD)
 async def report(delta_id: int, body: ReportRequest,
                  db: Session = Depends(get_db)) -> dict:
-    from app.change.classify import classify_delta
-    from app.change.perf import perf_context
-    from app.integrations.webhook import notify
-    from app.models import DeltaReport, ObservedDelta
-    delta = db.get(ExpectedDelta, delta_id)
-    obs = db.get(ObservedDelta, body.observed_delta_id)
-    if not delta or not obs:
-        raise HTTPException(404, "expected/observed delta not found")
-    if obs.expected_delta_id != delta_id:
-        raise HTTPException(409, "observed delta 不属于该 expected delta")
-    r = classify_delta(delta.changes, obs.items)
-
-    # S23 块 V：性能漂移判定（确定性，perf_context 与 /reports/{id}/perf 共用）
-    perf_ctx, perf_drifts = perf_context(db, obs.skill_id, obs.replay_run_id)
-    r["drift"].extend(perf_drifts)
-
-    row = DeltaReport(expected_delta_id=delta_id, observed_delta_id=obs.id,
-                      expected=r["expected"], missing=r["missing"],
-                      unexpected=r["unexpected"], drift=r["drift"])
-    db.add(row); db.commit(); db.refresh(row)
-    # S25 块 W2：报告生成推送（fire-and-forget，失败不阻塞）
-    await notify(
-        f"SkillLens 报告生成 #{row.id}",
-        f"需求 {delta.requirement_id}：expected {len(r['expected'])} / "
-        f"missing {len(r['missing'])} / unexpected {len(r['unexpected'])} / "
-        f"drift {len(r['drift'])}")
-    return {"id": row.id, "expected_delta_id": delta_id,
-            "observed_delta_id": obs.id, "perf": perf_ctx, **r}
+    raise HTTPException(
+        status_code=410,
+        detail="旧手工报告写入已由 AR1 冻结；AR4 将由 ScenarioRun 终态自动生成报告",
+    )
 
 
 @router.get("/expected-deltas")

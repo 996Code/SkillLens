@@ -753,12 +753,7 @@ export function getReviews(decision?: ReviewDecision): Promise<ReviewItem[]> {
   return get<ReviewItem[]>(`/api/v1/reviews${qs}`);
 }
 
-/** 提交评审。422 = decision 非法；404 = agent_run 不存在；409 = 同 run 重复评审。 */
-export function createReview(
-  body: CreateReviewRequest,
-): Promise<ReviewItem> {
-  return send<ReviewItem>("/api/v1/reviews", jsonInit("POST", body));
-}
+// AR1：POST /reviews 已冻结（410）。AR4 由场景报告评审恢复写入口。
 
 // ---------- S32：链路时间线 + LLM IO 全留存 ----------
 
@@ -871,6 +866,9 @@ export interface SuiteItem {
   name: string;
   skill_ids: number[];
   skills: SuiteSkillBrief[];
+  scenario_id: number | null;
+  migration_status: string;
+  migration_reason: string;
   created_at: string;
 }
 
@@ -896,45 +894,6 @@ export interface SuiteRunSummary {
 
 export function listSuites(): Promise<SuiteItem[]> {
   return get<SuiteItem[]>("/api/v1/suites");
-}
-
-export async function createSuite(
-  name: string,
-  skillIds: number[],
-): Promise<SuiteItem> {
-  const resp = await authedFetch("/api/v1/suites", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name: name, skill_ids: skillIds }),
-  });
-  if (!resp.ok) {
-    throw new ApiError(resp.status, `POST /suites -> ${resp.status}`);
-  }
-  return resp.json() as Promise<SuiteItem>;
-}
-
-export async function deleteSuite(id: number): Promise<{ ok: boolean }> {
-  const resp = await authedFetch(`/api/v1/suites/${id}`, { method: "DELETE" });
-  if (!resp.ok) {
-    throw new ApiError(resp.status, `DELETE /suites -> ${resp.status}`);
-  }
-  return resp.json() as Promise<{ ok: boolean }>;
-}
-
-/** 一键执行套件（confirm=false 各流程走预演门控；422=空套件）。 */
-export async function runSuite(
-  id: number,
-  confirmSideEffect: boolean,
-): Promise<SuiteRunSummary> {
-  const resp = await authedFetch(`/api/v1/suites/${id}/run`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ confirm_side_effect: confirmSideEffect }),
-  });
-  if (!resp.ok) {
-    throw new ApiError(resp.status, `POST /suites/run -> ${resp.status}`);
-  }
-  return resp.json() as Promise<SuiteRunSummary>;
 }
 
 export function listSuiteRuns(id: number): Promise<SuiteRunSummary[]> {
@@ -1078,11 +1037,11 @@ export function listConfirmedDeltas(): Promise<ConfirmedDeltaOption[]> {
   return get<ConfirmedDeltaOption[]>("/api/v1/expected-deltas?status=confirmed");
 }
 
-// ---------- AQ 信息架构：测试场景（链）一等公民 ----------
+// ---------- AR1：测试场景（Scenario）一等公民 ----------
 
-export interface ChainStepBrief {
+export interface ScenarioStepBrief {
   skill_id: number | null;
-  chain_id: number | null;
+  scenario_id: number | null;
   setup: boolean;
   enabled: boolean;
   overrides: Record<string, string>;
@@ -1093,36 +1052,46 @@ export interface ChainStepBrief {
             fill_fields?: Array<{ name: string; first_value: string }> } | null;
 }
 
-export interface ChainDetail {
+export interface ScenarioDetail {
   id: number; name: string; system: string;
-  steps: ChainStepBrief[]; created_at: string;
+  status: string; definition_version: number; origin: string;
+  steps: ScenarioStepBrief[]; created_at: string; updated_at: string;
 }
 
-export interface ChainListItem {
-  id: number; name: string; system: string;
+export interface ScenarioListItem {
+  id: number; name: string; system: string; status: string;
+  definition_version: number; origin: string;
   steps: Array<{ skill_id: number | null }>; created_at: string;
+  updated_at: string;
 }
 
-export function listChains(system?: string): Promise<ChainListItem[]> {
-  return get<ChainListItem[]>(
-    `/api/v1/chains${system ? `?system=${encodeURIComponent(system)}` : ""}`);
+export function listScenarios(system?: string,
+                              status?: string): Promise<ScenarioListItem[]> {
+  const params = new URLSearchParams();
+  if (system) params.set("system", system);
+  if (status) params.set("status", status);
+  const qs = params.toString();
+  return get<ScenarioListItem[]>(`/api/v1/scenarios${qs ? `?${qs}` : ""}`);
 }
 
-export function getChain(id: number | string): Promise<ChainDetail> {
-  return get<ChainDetail>(`/api/v1/chains/${id}`);
+export function getScenario(id: number | string): Promise<ScenarioDetail> {
+  return get<ScenarioDetail>(`/api/v1/scenarios/${id}`);
 }
 
-export async function updateChain(id: number | string, body: {
+export async function updateScenario(id: number | string,
+                                     definitionVersion: number,
+                                     body: {
   name: string; system: string;
-  steps: Array<{ skill_id: number | null; chain_id?: number | null;
+  steps: Array<{ skill_id: number | null; scenario_id?: number | null;
     overrides?: Record<string, string>; enabled?: boolean;
     setup?: boolean; row_anchor_from?: number | null }>;
-}): Promise<ChainDetail> {
-  const resp = await authedFetch(`/api/v1/chains/${id}`, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
+}): Promise<ScenarioDetail> {
+  const resp = await authedFetch(`/api/v1/scenarios/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json",
+               "If-Match": String(definitionVersion) },
     body: JSON.stringify(body),
   });
-  if (!resp.ok) throw new ApiError(resp.status, `PUT chains -> ${resp.status}`);
-  return resp.json() as Promise<ChainDetail>;
+  if (!resp.ok) throw new ApiError(resp.status, `PATCH scenarios -> ${resp.status}`);
+  return resp.json() as Promise<ScenarioDetail>;
 }

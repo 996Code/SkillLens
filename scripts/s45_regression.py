@@ -111,7 +111,7 @@ def run_matrix_cell(token: str, db, skill: int, note: str) -> dict:
 def run_chain(token: str, db, chain_id: int) -> dict:
     # 链执行产生多个 run——记起始 run id，轮询「链执行结束」
     tab = _executor_tab()
-    clicked = _open_and_start(f"{EXT}?chain={chain_id}&auto=1")
+    clicked = _open_and_start(f"{EXT}?scenario={chain_id}&auto=1")
     if clicked != "CLICKED":
         return {"chain": chain_id, "verdict": "error", "note": clicked}
     t0 = time.time()
@@ -153,7 +153,7 @@ def main() -> None:
 
     if phase in (None, "chains"):
         for cid in chains_filter(sys.argv):
-            row = db.execute("SELECT name FROM chain WHERE id=?", (cid,)).fetchone()
+            row = db.execute("SELECT name FROM scenario WHERE id=?", (cid,)).fetchone()
             if not row:
                 continue
             print(f"[chain {cid}] {row[0][:30]} …", flush=True)

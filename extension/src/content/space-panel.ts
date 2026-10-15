@@ -190,13 +190,13 @@ function mount(): void {
   let skills: any[] = [];
   let picked: any[] = [];
   // AI2 overrides 编辑态：picked[i].__ovr = Record<key, value>；
-  // __fills = 该技能 fill 候选（懒加载——点选时拉 /chains/fills/{id}）
+  // __fills = 该技能 fill 候选（懒加载——点选时拉 /skills/{id}）
   const fillsCache = new Map<number, Array<{ name: string; value: string }>>();
 
   async function loadFills(skillId: number): Promise<Array<{ name: string; value: string }>> {
     if (fillsCache.has(skillId)) return fillsCache.get(skillId)!;
     try {
-      const r = await api(`/chains/fills/${skillId}`);
+      const r = await api(`/skills/${skillId}/fills`);
       fillsCache.set(skillId, Array.isArray(r) ? r : []);
     } catch (e) {
       // AK6 批次3：fill 候选加载失败留痕（决策相关——静默空会让链换参
@@ -210,13 +210,13 @@ function mount(): void {
 
   // AH6b port 通道执行：connect 长连接（sendMessage/storage 在 CDP 环境
   // 均不可靠的第三替代）；进度双向走 port——面板即控制台，无跳板
-  function execViaPort(req: { skillId?: number; chainId?: number }): void {
+  function execViaPort(req: { skillId?: number; scenarioId?: number }): void {
     const pg = root.getElementById("pg")!;
     const pgt = root.getElementById("pgt")!;
     const pgl = root.getElementById("pgl")!;
     const fallbackUrl = () => chrome.runtime.getURL(req.skillId != null
       ? `executor.html?skill=${req.skillId}&auto=1`
-      : `executor.html?chain=${req.chainId}&auto=1`);
+      : `executor.html?scenario=${req.scenarioId}&auto=1`);
     try {
       const port = chrome.runtime.connect({ name: "skilllens-exec" });
       let alive = false;
@@ -226,7 +226,7 @@ function mount(): void {
         const line = `[${new Date().toTimeString().slice(0, 8)}] ${m.msg}`;
         pgl.textContent += line + "\n";
         pgl.scrollTop = pgl.scrollHeight;
-        if (String(m.msg).includes("链执行结束") || String(m.msg).includes("完成：")) {
+        if (String(m.msg).includes("场景执行结束") || String(m.msg).includes("完成：")) {
           const ok = String(m.msg).includes("pass");
           pgt.textContent = ok ? "执行完成（通过）" : "执行结束（未通过）";
           pgt.style.color = ok ? "#16a34a" : "#dc2626";
@@ -551,12 +551,12 @@ function mount(): void {
     const p = payload();
     if (!p) return;
     try {
-      await api("/chains", { method: "POST", body: JSON.stringify(p) });
+      await api("/scenarios", { method: "POST", body: JSON.stringify(p) });
       cnEl.value = ""; picked = [];
       renderPicked();
       render();
-      await loadChains();
-      note("链已保存", "ok");
+      await loadScenarios();
+      note("场景已保存", "ok");
     } catch (e: any) { note(`保存失败：${e.message}`, "err"); }
   });
 
@@ -564,16 +564,16 @@ function mount(): void {
     const p = payload();
     if (!p) return;
     try {
-      const r = await api("/chains", { method: "POST", body: JSON.stringify(p) });
+      const r = await api("/scenarios", { method: "POST", body: JSON.stringify(p) });
       void chrome.storage.local.remove("sl_exec_log");
       root.getElementById("pgl")!.textContent = "";
-      void execViaPort({ chainId: r.id });
+      void execViaPort({ scenarioId: r.id });
     } catch (e: any) { note(`失败：${e.message}`, "err"); }
   });
 
-  async function loadChains(): Promise<void> {
+  async function loadScenarios(): Promise<void> {
     try {
-      const arr = await api(`/chains${systemName ? `?system=${encodeURIComponent(systemName)}` : ""}`);
+      const arr = await api(`/scenarios${systemName ? `?system=${encodeURIComponent(systemName)}` : ""}`);
       chsEl.replaceChildren();
       if (!Array.isArray(arr) || !arr.length) {
         const d = document.createElement("div");
@@ -592,13 +592,13 @@ function mount(): void {
         run.className = "run"; run.textContent = "执行";
         run.addEventListener("click", () => {
           void chrome.storage.local.remove("sl_exec_log");
-          void execViaPort({ chainId: c.id });
+          void execViaPort({ scenarioId: c.id });
         });
         const del = document.createElement("button");
         del.className = "del"; del.textContent = "删";
         del.addEventListener("click", async () => {
-          try { await api(`/chains/${c.id}`, { method: "DELETE" }); await loadChains(); }
-          catch (e: any) { note(`删除失败：${e.message}`, "err"); }
+          try { await api(`/scenarios/${c.id}/archive`, { method: "POST" }); await loadScenarios(); }
+          catch (e: any) { note(`归档失败：${e.message}`, "err"); }
         });
         row.append(nm, m, run, del);
         chsEl.append(row);
@@ -607,7 +607,7 @@ function mount(): void {
       chsEl.replaceChildren();
       const d = document.createElement("div");
       d.className = "empty";
-      d.textContent = `链加载失败：${e.message}`;
+      d.textContent = `场景加载失败：${e.message}`;
       chsEl.append(d);
     }
   }
@@ -647,7 +647,7 @@ function mount(): void {
       const pgt = root.getElementById("pgt")!;
       const pgl = root.getElementById("pgl")!;
       pg.style.display = "block";
-      if (String(m.msg).includes("链执行结束") || String(m.msg).includes("完成：")) {
+      if (String(m.msg).includes("场景执行结束") || String(m.msg).includes("完成：")) {
         pgt.textContent = String(m.msg).includes("pass") ? "执行完成（通过）" : "执行结束";
         pgt.style.color = String(m.msg).includes("pass") ? "#16a34a" : "#dc2626";
       }
@@ -666,7 +666,7 @@ function mount(): void {
     }
   }).catch(() => {});
 
-  void detectSystem().then(loadSkills).then(loadChains);
+  void detectSystem().then(loadSkills).then(loadScenarios);
 }
 
 // 懒挂载：常驻注入（manifest CS）但只显示一个小徽标（低干扰）——点徽标

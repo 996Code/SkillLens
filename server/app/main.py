@@ -15,7 +15,6 @@ from app.api import (
     canvas,
     cards,
     change,
-    chains,
     discoveries,
     field_types,
     dev_plans,
@@ -32,6 +31,7 @@ from app.api import (
     locate_proposals,
     replay,
     reports,
+    scenarios,
     suites,
     reviews,
     timeline,
@@ -51,6 +51,10 @@ class SPAStaticFiles(StaticFiles):
     """
 
     async def get_response(self, path: str, scope):
+        # 已注册 API 在 mount 前命中；落到这里的 /api/* 一律是真 404，
+        # 不能被 html=True 或 SPA fallback 吞成 index.html 200。
+        if path.startswith("api/"):
+            raise HTTPException(status_code=404)
         try:
             resp = await super().get_response(path, scope)
         except HTTPException as exc:
@@ -127,7 +131,14 @@ app.include_router(adapters.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(dashboard.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(timeline.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(suites.router, prefix=API_PREFIX, dependencies=_GUARDED)
-app.include_router(chains.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(scenarios.router, prefix=API_PREFIX, dependencies=_GUARDED)
+
+
+@app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+               include_in_schema=False)
+async def unknown_api(path: str):
+    """未知 API 必须返回 JSON 404，禁止落入 SPA index.html 200。"""
+    raise HTTPException(status_code=404, detail="API route not found")
 
 # StaticFiles mount 在 "/" 会拦截一切路径——必须放在全部 include_router 之后，
 # FastAPI 按注册顺序匹配路由，/api/v1/* 先命中 API，其余落到静态托管（SPA fallback）。

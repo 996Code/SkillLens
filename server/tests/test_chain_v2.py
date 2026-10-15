@@ -1,6 +1,6 @@
 """链编排 v2：前置链（setup）+ 子链引用 + 适配器自动登录。
 
-- ChainStep 支持 skill_id | chain_id（子链递归展开，深度≤3）
+- ChainStep 支持 skill_id | scenario_id（子链递归展开，深度≤3）
 - setup=true 的步骤 fail 只记 warning 不判链失败（登录已有效时登录链
   自然 fail——Playwright storageState 复用的声明式等价：已登录则跳过）
 - 服务端执行前自动跑目标系统适配器登录例程（幂等——已登录直过）：
@@ -10,7 +10,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.db import SessionLocal
-from app.models import Alignment, Chain, Skill
+from app.models import Alignment, Scenario, Skill
 
 
 async def _mk(db, name):
@@ -28,52 +28,52 @@ async def _mk(db, name):
 
 class TestChainRef:
     async def test_chain_step_can_reference_chain(self, client: AsyncClient):
-        """步骤引用链（chain_id）——子链作为步骤（登录链被业务链引用）。"""
+        """步骤引用链（scenario_id）——子链作为步骤（登录链被业务链引用）。"""
         db = SessionLocal()
         try:
             sid = await _mk(db, "编排技能")
             # 子链（模拟登录链）
-            r1 = await client.post("/api/v1/chains", json={
+            r1 = await client.post("/api/v1/scenarios", json={
                 "name": "登录链", "system": "JeecG 表单",
                 "steps": [{"skill_id": sid, "overrides": {}, "setup": True}]})
             sub_id = r1.json()["id"]
             # 主链引用子链
-            r2 = await client.post("/api/v1/chains", json={
+            r2 = await client.post("/api/v1/scenarios", json={
                 "name": "业务链（引用登录链）", "system": "JeecG 表单",
-                "steps": [{"chain_id": sub_id}, {"skill_id": sid}]})
+                "steps": [{"scenario_id": sub_id}, {"skill_id": sid}]})
             assert r2.status_code == 201
             main_id = r2.json()["id"]
-            one = await client.get(f"/api/v1/chains/{main_id}")
+            one = await client.get(f"/api/v1/scenarios/{main_id}")
             steps = one.json()["steps"]
-            assert steps[0]["chain_id"] == sub_id
+            assert steps[0]["scenario_id"] == sub_id
             assert steps[1]["skill_id"] == sid
             # setup 标记持久化
-            sub = await client.get(f"/api/v1/chains/{sub_id}")
+            sub = await client.get(f"/api/v1/scenarios/{sub_id}")
             assert sub.json()["steps"][0]["setup"] is True
         finally:
-            db.query(Chain).delete()
+            db.query(Scenario).delete()
             db.query(Skill).filter(Skill.name == "编排技能").delete()
             db.commit()
             db.close()
 
     async def test_validation_exclusive_ids(self, client: AsyncClient):
-        """skill_id 与 chain_id 互斥（二选一）；都缺 422。"""
+        """skill_id 与 scenario_id 互斥（二选一）；都缺 422。"""
         db = SessionLocal()
         try:
             sid = await _mk(db, "互斥技能")
-            r1 = await client.post("/api/v1/chains", json={
+            r1 = await client.post("/api/v1/scenarios", json={
                 "name": "子链", "system": "x",
                 "steps": [{"skill_id": sid}]})
             cid = r1.json()["id"]
-            both = await client.post("/api/v1/chains", json={
+            both = await client.post("/api/v1/scenarios", json={
                 "name": "双 ID", "system": "x",
-                "steps": [{"skill_id": sid, "chain_id": cid}]})
+                "steps": [{"skill_id": sid, "scenario_id": cid}]})
             assert both.status_code == 422
-            neither = await client.post("/api/v1/chains", json={
+            neither = await client.post("/api/v1/scenarios", json={
                 "name": "无 ID", "system": "x", "steps": [{}]})
             assert neither.status_code == 422
         finally:
-            db.query(Chain).delete()
+            db.query(Scenario).delete()
             db.query(Skill).filter(Skill.name == "互斥技能").delete()
             db.commit()
             db.close()
@@ -81,11 +81,11 @@ class TestChainRef:
 
 class TestExpandChain:
     def test_expand_subchain_with_setup_semantics(self):
-        """子链展开：chain_id 步骤替换为子链的步骤（继承 setup 标记）；
+        """子链展开：scenario_id 步骤替换为子链的步骤（继承 setup 标记）；
         深度≤3 防环。"""
-        from app.replay.chain_runner import expand_steps
+        from app.replay.scenario_runner import expand_steps
         steps = [
-            {"chain_id": 1, "setup": True},
+            {"scenario_id": 1, "setup": True},
             {"skill_id": 42},
         ]
         sub = {1: [{"skill_id": 7}, {"skill_id": 8}]}
@@ -96,11 +96,11 @@ class TestExpandChain:
         assert not out[2].get("setup")
 
     def test_expand_depth_limit(self):
-        from app.replay.chain_runner import expand_steps
+        from app.replay.scenario_runner import expand_steps
         import pytest as _pytest
-        sub = {1: [{"chain_id": 1}]}  # 自引用环
+        sub = {1: [{"scenario_id": 1}]}  # 自引用环
         with _pytest.raises(ValueError, match="深度"):
-            expand_steps([{"chain_id": 1}], sub, depth=0)
+            expand_steps([{"scenario_id": 1}], sub, depth=0)
 
 
 class TestSetupSemantics:
@@ -109,12 +109,12 @@ class TestSetupSemantics:
         db = SessionLocal()
         try:
             sid = await _mk(db, "setup 语义技能")
-            cid = (await client.post("/api/v1/chains", json={
+            cid = (await client.post("/api/v1/scenarios", json={
                 "name": "setup 链", "system": "x",
                 "steps": [{"skill_id": sid, "setup": True},
                           {"skill_id": sid}]})).json()["id"]
 
-            import app.replay.chain_runner as cr
+            import app.replay.scenario_runner as cr
             import app.replay.runner as runner_mod
             calls = []
 
@@ -128,13 +128,13 @@ class TestSetupSemantics:
                 return run
             monkeypatch.setattr(runner_mod, "run_replay", fake_replay)
 
-            result = await cr.run_chain_server(db, cid, True)
+            result = await cr.run_scenario_server(db, cid, True)
             # setup 第一步 fail（登录已有效场景）但链整体 pass
             assert result["status"] == "pass"
             assert len(calls) == 2
             assert result.get("warnings"), "setup fail 应记 warning"
         finally:
-            db.query(Chain).delete()
+            db.query(Scenario).delete()
             db.query(Skill).filter(Skill.name == "setup 语义技能").delete()
             db.commit()
             db.close()
@@ -146,15 +146,15 @@ class TestAJ5:
         db = SessionLocal()
         try:
             sid = await _mk(db, "启停技能")
-            r = await client.post("/api/v1/chains", json={
+            r = await client.post("/api/v1/scenarios", json={
                 "name": "启停链", "system": "x",
                 "steps": [{"skill_id": sid, "enabled": False},
                           {"skill_id": sid}]})
             cid = r.json()["id"]
-            one = await client.get(f"/api/v1/chains/{cid}")
+            one = await client.get(f"/api/v1/scenarios/{cid}")
             assert one.json()["steps"][0]["enabled"] is False
             # 执行侧：禁用步被跳过（monkeypatch 验证只跑 1 步）
-            import app.replay.chain_runner as cr
+            import app.replay.scenario_runner as cr
             import app.replay.runner as runner_mod
             calls = []
             async def fake(db_, skill_id, ovr, confirm, system=None):
@@ -167,15 +167,15 @@ class TestAJ5:
             orig_login = cr._adapter_login
             cr._adapter_login = no_login
             try:
-                result = await cr.run_chain_server(db, cid, True)
+                result = await cr.run_scenario_server(db, cid, True)
                 assert len(calls) == 1  # 禁用步没跑
                 assert result["status"] == "pass"
             finally:
                 runner_mod.run_replay = monkeypatch_local
                 cr._adapter_login = orig_login
         finally:
-            from app.models import Chain
-            db.query(Chain).delete()
+            from app.models import Scenario
+            db.query(Scenario).delete()
             db.query(Skill).filter(Skill.name == "启停技能").delete()
             db.commit(); db.close()
 
@@ -184,18 +184,18 @@ class TestAJ5:
         db = SessionLocal()
         try:
             sid = await _mk(db, "引用技能")
-            await client.post("/api/v1/chains", json={
+            await client.post("/api/v1/scenarios", json={
                 "name": "引用链 A", "system": "x",
                 "steps": [{"skill_id": sid}]})
-            await client.post("/api/v1/chains", json={
+            await client.post("/api/v1/scenarios", json={
                 "name": "引用链 B", "system": "x",
                 "steps": [{"skill_id": sid, "setup": True}]})
-            r = await client.get(f"/api/v1/chains/references/{sid}")
+            r = await client.get(f"/api/v1/skills/{sid}/scenario-references")
             assert r.status_code == 200
-            names = {x["chain_name"] for x in r.json()}
+            names = {x["scenario_name"] for x in r.json()}
             assert names == {"引用链 A", "引用链 B"}
         finally:
-            from app.models import Chain
-            db.query(Chain).delete()
+            from app.models import Scenario
+            db.query(Scenario).delete()
             db.query(Skill).filter(Skill.name == "引用技能").delete()
             db.commit(); db.close()

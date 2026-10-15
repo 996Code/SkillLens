@@ -21,7 +21,7 @@ async def main():
     ver = _get(f"{CDP}/json/version")
     async with websockets.connect(ver["webSocketDebuggerUrl"], max_size=10**7) as ws:
         await ws.send(json.dumps({"id": 1, "method": "Target.createTarget", "params": {
-            "url": f"chrome-extension://{ext}/executor.html?chain=3&auto=1"}}))
+            "url": f"chrome-extension://{ext}/executor.html?scenario=3&auto=1"}}))
         while True:
             m = json.loads(await asyncio.wait_for(ws.recv(), 15))
             if m.get("id") == 1:
@@ -42,7 +42,7 @@ async def main():
                     return d.get("result", {}).get("value")
         # ① 链数据拉取正确性（页面视角）
         r1 = await ev(2, """(async()=>{
-          const t = await (await fetch('http://127.0.0.1:8710/api/v1/chains/3', {
+          const t = await (await fetch('http://127.0.0.1:8710/api/v1/scenarios/3', {
             headers: {Authorization: 'Bearer ' + (await chrome.storage.local.get('sl_executor_token')).sl_executor_token}
           })).json();
           return JSON.stringify(t.steps.map(s=>({id:s.skill_id, ov:s.overrides})));

@@ -70,9 +70,8 @@ class TestBlockedChainSteps:
                        input_variables=[], confidence=0.9, evidence_count=1)
             db.add_all([s1, s2]); db.commit()
 
-            from app.api.chains import Chain  # noqa
-            from app.models import Chain
-            r = await client.post("/api/v1/chains", json={
+            from app.models import Scenario
+            r = await client.post("/api/v1/scenarios", json={
                 "name": "blocked 语义链", "system": "JeecG 表单",
                 "steps": [{"skill_id": s1.id}, {"skill_id": s2.id}]})
             cid = r.json()["id"]
@@ -85,12 +84,12 @@ class TestBlockedChainSteps:
                                        plan={"observed": []})
             monkeypatch.setattr(runner_mod, "run_replay", fake_replay)
 
-            import app.replay.chain_runner as cr
+            import app.replay.scenario_runner as cr
             # 屏蔽自动登录（无网络依赖）
             async def no_login(aid): return True
             monkeypatch.setattr(cr, "_adapter_login", no_login)
 
-            result = await cr.run_chain_server(db, cid, True)
+            result = await cr.run_scenario_server(db, cid, True)
             assert result["status"] == "fail"
             assert result["steps"][0]["status"] == "fail"
             # 后续步骤标 blocked（不是缺失也不是 fail）
@@ -98,7 +97,7 @@ class TestBlockedChainSteps:
             # 分母：只有执行了的步骤（blocked 不进）
             assert result["total"] == 1
         finally:
-            from app.models import Chain as C
+            from app.models import Scenario as C
             db.query(C).delete()
             db.query(Skill).filter(Skill.name.in_(["会败步骤", "被阻塞步骤"])).delete()
             db.query(Alignment).filter(Alignment.id == al.id).delete()

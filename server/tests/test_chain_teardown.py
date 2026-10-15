@@ -9,7 +9,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.db import SessionLocal
-from app.models import Alignment, Chain, Skill
+from app.models import Alignment, Scenario, Skill
 
 
 async def _mk(db, name, fills=None):
@@ -31,7 +31,7 @@ class TestTeardown:
         db = SessionLocal()
         try:
             sid = await _mk(db, "teardown 技能")
-            r = await client.post("/api/v1/chains", json={
+            r = await client.post("/api/v1/scenarios", json={
                 "name": "teardown 链", "system": "x",
                 "steps": [{
                     "skill_id": sid, "overrides": {},
@@ -39,11 +39,11 @@ class TestTeardown:
                                            "shell": "echo cleanup"}}}]})
             assert r.status_code == 201
             cid = r.json()["id"]
-            one = await client.get(f"/api/v1/chains/{cid}")
+            one = await client.get(f"/api/v1/scenarios/{cid}")
             step = one.json()["steps"][0]
             assert step["cleanup"]["docker"]["container"] == "jeecg-boot-mysql"
         finally:
-            db.query(Chain).delete()
+            db.query(Scenario).delete()
             db.query(Skill).filter(Skill.name == "teardown 技能").delete()
             db.commit()
             db.close()
@@ -53,7 +53,7 @@ class TestRecommend:
     async def test_recommend_unique_fields(self, client: AsyncClient):
         """唯一字段推荐：原值匹配 sl_ 前缀/长数字/时间戳形态的字段推荐
         ${unique:原前缀}。"""
-        from app.replay.chain_runner import recommend_unique_overrides
+        from app.replay.scenario_runner import recommend_unique_overrides
         fills = [
             {"name": "*表名", "value": "sl_form_a26513"},
             {"name": "*表描述", "value": "SL表单x"},

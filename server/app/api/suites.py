@@ -73,6 +73,9 @@ def _suite_item(db: Session, s: TestSuite, systems: dict[int, str] | None = None
                     "system": systems.get(sk.id, "未知系统")}
                    for sk in skills if sk is not None],
         "canvas_id": s.canvas_id,
+        "scenario_id": s.scenario_id,
+        "migration_status": s.migration_status,
+        "migration_reason": s.migration_reason,
         "created_at": s.created_at.isoformat(),
     }
 
@@ -100,19 +103,10 @@ def _summary_from_agent_run(db: Session, run: AgentRun) -> dict:
 
 @router.post("/suites", dependencies=WRITE_GUARD)
 async def create_suite(body: SuiteIn, db: Session = Depends(get_db)) -> dict:
-    for sid in body.skill_ids:
-        if db.get(Skill, sid) is None:
-            raise HTTPException(status_code=422, detail=f"skill {sid} 不存在")
-    # S38 合并：套件 = 线性流水线（预演定格，C1 编译期语义）
-    canvas = CanvasDag(name=f"套件 · {body.name}", dag=_suite_dag(body.skill_ids, False))
-    db.add(canvas)
-    db.commit()
-    db.refresh(canvas)
-    row = TestSuite(name=body.name, skill_ids=body.skill_ids, canvas_id=canvas.id)
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    return _suite_item(db, row)
+    raise HTTPException(
+        status_code=410,
+        detail="Suite 写入已由 AR1 冻结；请在测试场景中创建业务流程",
+    )
 
 
 @router.get("/suites")
@@ -134,52 +128,19 @@ async def get_suite(suite_id: int, db: Session = Depends(get_db)) -> dict:
 
 @router.delete("/suites/{suite_id}", dependencies=WRITE_GUARD)
 async def delete_suite(suite_id: int, db: Session = Depends(get_db)) -> dict:
-    row = db.get(TestSuite, suite_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="suite not found")
-    db.delete(row)
-    db.commit()
-    return {"ok": True}
+    raise HTTPException(
+        status_code=410,
+        detail="Suite 写入已由 AR1 冻结；legacy 套件仅供只读审计",
+    )
 
 
 @router.post("/suites/{suite_id}/run", dependencies=WRITE_GUARD)
 async def run_suite(suite_id: int, body: SuiteRunIn,
                     db: Session = Depends(get_db)) -> dict:
-    suite = db.get(TestSuite, suite_id)
-    if not suite:
-        raise HTTPException(status_code=404, detail="suite not found")
-    if not (suite.skill_ids or []):
-        raise HTTPException(status_code=422, detail="套件为空")
-    canvas = db.get(CanvasDag, suite.canvas_id) if suite.canvas_id else None
-    if canvas is None:
-        raise HTTPException(status_code=409, detail="套件流水线缺失，请重建套件")
-    # C1：confirm 与定格值不同 → 版本化新 canvas_dag（编译期定格语义保持）
-    if _dag_confirm(canvas.dag) != body.confirm_side_effect:
-        canvas = CanvasDag(name=canvas.name,
-                           dag=_suite_dag(suite.skill_ids, body.confirm_side_effect))
-        db.add(canvas)
-        db.commit()
-        db.refresh(canvas)
-        suite.canvas_id = canvas.id
-        db.commit()
-    agent_run = await compile_and_run(db, canvas)
-    summary = _summary_from_agent_run(db, agent_run)
-    counts = summary["counts"]
-    row = SuiteRun(suite_id=suite_id, results=summary["results"],
-                   total=counts.get("total", len(summary["results"])),
-                   pass_count=counts.get("pass", 0),
-                   fail_count=counts.get("fail", 0),
-                   error_count=counts.get("error", 0),
-                   shadow_count=counts.get("shadow", 0),
-                   agent_run_id=agent_run.id)
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    return {"id": row.id, "suite_id": suite_id, "total": row.total,
-            "pass_count": row.pass_count, "fail_count": row.fail_count,
-            "error_count": row.error_count, "shadow_count": row.shadow_count,
-            "results": summary["results"], "agent_run_id": agent_run.id,
-            "created_at": row.created_at.isoformat()}
+    raise HTTPException(
+        status_code=410,
+        detail="Suite 执行已由 AR1 冻结；AR2 将统一为 ScenarioRun",
+    )
 
 
 @router.get("/suites/{suite_id}/runs")

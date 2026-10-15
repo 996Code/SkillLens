@@ -25,6 +25,12 @@ EXEMPT = {
     # ——匿名入口是设计本身（内部部署；默认关=公网零暴露）。角色门无意义：
     # 换到的就是 admin，不存在"viewer 越权"面（不开 PLUGIN_TRUST 时 403）。
     ("POST", "/auth/plugin-session"),
+    # AR1：未知 API JSON 404 兜底（main.py catch-all）——只 raise 404，
+    # 不是业务写端点；不豁免会让守卫扫描永久红。
+    ("POST", "/api/{path:path}"),
+    ("PUT", "/api/{path:path}"),
+    ("PATCH", "/api/{path:path}"),
+    ("DELETE", "/api/{path:path}"),
 }
 
 

@@ -36,7 +36,7 @@ STORAGE_STATE = os.environ.get("REPLAY_STORAGE_STATE", "")
 async def _session_guard_recover(system: str) -> bool:
     """AJ2 登录守卫恢复：独立浏览器跑适配器登录例程（幂等），成功后写
     artifacts/states/<适配器>.json——_open_context(system=) 已会注入该文件，
-    守卫重跑的 attempt 即带新登录态（与 chain_runner._adapter_login 同构，
+    守卫重跑的 attempt 即带新登录态（与 scenario_runner._adapter_login 同构，
     两个入口一份语义）。"""
     from pathlib import Path as _P
     from app.system import SYSTEM_ADAPTER
@@ -113,7 +113,7 @@ async def _open_context(browser, system: str | None = None):
     """CDP 模式复用常驻 profile（带登录态与插件）；否则新开 context 注入登录态。
 
     链编排 v2 多系统登录态：system 给定时优先用 artifacts/states/<适配器>.json
-    （chain_runner 的 _adapter_login 按系统生成）；无则回落 env
+    （scenario_runner 的 _adapter_login 按系统生成）；无则回落 env
     REPLAY_STORAGE_STATE（单文件全局态——兼容旧行为）。"""
     if _cdp_url() and browser.contexts:
         return browser.contexts[0]

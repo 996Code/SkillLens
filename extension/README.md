@@ -48,9 +48,9 @@ shared/
                      attach 冲突=fatal 不重试+白话直达）
   expectations.ts    AM1/AM2 期望判定（写响应水位/登录页 URL 词表同源）+
                      expect_write 证据派生∪词表兜底
-  chain-rules.ts     链规则解释器（${unique:}/${stepN.字段}/${stepN.row}
+  scenario-rules.ts   场景规则解释器（${unique:}/${stepN.字段}/${stepN.row}
                      pickedRow 句柄/resolveRowAnchor——AN 跨步状态传递）
-executor-page.ts     AG3 执行页（单技能/链模式；row_anchor_from 注入；
+executor-page.ts     AG3 执行页（单技能/场景模式 ?scenario=；row_anchor_from 注入；
                      failedSteps 假 pass 收口——miss 未救回如实判 fail）
 ```
 

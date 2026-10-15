@@ -1,31 +1,10 @@
 <script setup lang="ts">
-// S15 Task 3 块 I：评审门户——夜间运行（agent_run）的 PR 式评审页。
-// 与 Reports（/reports/:deltaId，发版四分类）区分：本页评审的是夜间运行记录。
-// 结构：①评审队列（pending 列表，行点击展开 review_output 摘要 + 评审表单）
-//      ②已评审列表（decision 徽标 + 评语）。C3：评审决策落库可审计。
-import { computed, onMounted, ref } from "vue";
-import { createReview, currentUser, getPendingRuns, getReviews } from "../api";
+// AR1：评审门户冻结为只读（AgentRun 评审写入已 410）。AR4 将评审对象
+// 统一为场景报告；本页保留历史评审与待评运行审计视图。
+import { onMounted, ref } from "vue";
+import { getPendingRuns, getReviews } from "../api";
 import type { PendingRun, ReviewDecision, ReviewItem } from "../api";
 import { fmtTime } from "../run-format";
-
-// S21 块 S：评审人从登录态取（后端强制 reviewer/admin；viewer 只读——表单隐藏）
-const user = currentUser();
-const canReview = computed(() => user?.role === "admin" || user?.role === "reviewer");
-
-const pending = ref<PendingRun[]>([]);
-const reviews = ref<ReviewItem[]>([]);
-const loading = ref(true);
-const error = ref("");
-
-// 展开的队列行（同屏只展开一条：评审一次针对一个 run）
-const expandedId = ref<number | null>(null);
-
-// 评审表单状态（S21：reviewer 从登录态取，不再手填）
-const decision = ref<ReviewDecision | "">("");
-const comment = ref("");
-const submitting = ref(false);
-const submitError = ref("");
-const submitHint = ref("");
 
 const DECISION_META: Record<ReviewDecision, { label: string; cls: string }> = {
   approved: { label: "通过", cls: "badge-approved" },
@@ -33,11 +12,12 @@ const DECISION_META: Record<ReviewDecision, { label: string; cls: string }> = {
   changes_requested: { label: "打回", cls: "badge-changes_requested" },
 };
 
-const DECISION_OPTIONS: { value: ReviewDecision; label: string }[] = [
-  { value: "approved", label: "通过" },
-  { value: "rejected", label: "驳回" },
-  { value: "changes_requested", label: "打回" },
-];
+const pending = ref<PendingRun[]>([]);
+const reviews = ref<ReviewItem[]>([]);
+const loading = ref(true);
+const error = ref("");
+
+const expandedId = ref<number | null>(null);
 
 /** 评审摘要 markdown（无则 null）。夜间图节点名是 review_output；
  * 画布节点 id 是 n1..n5——统一按"output 含 review 字符串键"提取。 */
@@ -49,19 +29,10 @@ function reviewMarkdown(run: PendingRun): string | null {
 }
 
 function toggleRun(run: PendingRun): void {
-  if (expandedId.value === run.id) {
-    expandedId.value = null;
-    return;
-  }
-  expandedId.value = run.id;
-  // 换行重置表单：不同 run 的评审互不残留
-  decision.value = "";
-  comment.value = "";
-  submitError.value = "";
+  expandedId.value = expandedId.value === run.id ? null : run.id;
 }
 
 async function loadAll(): Promise<void> {
-  // 队列与已评审独立拉取：任一失败只降级自身区块
   try {
     pending.value = await getPendingRuns();
   } catch (e) {
@@ -71,30 +42,6 @@ async function loadAll(): Promise<void> {
     reviews.value = await getReviews();
   } catch {
     /* 已评审列表失败容忍：队列仍可用 */
-  }
-}
-
-async function submitReview(run: PendingRun): Promise<void> {
-  if (!decision.value) {
-    submitError.value = "请选择决策";
-    return;
-  }
-  submitting.value = true;
-  submitError.value = "";
-  submitHint.value = "";  // 上一次的成功提示不带入本次提交（评审）
-  try {
-    await createReview({
-      agent_run_id: run.id,
-      decision: decision.value,
-      comment: comment.value.trim() || undefined,
-    });
-    submitHint.value = `已提交评审（run #${run.id}）`;
-    expandedId.value = null;
-    await loadAll(); // 队列刷新（已评运行消失）+ 已评审列表刷新
-  } catch (e) {
-    submitError.value = e instanceof Error ? e.message : String(e);
-  } finally {
-    submitting.value = false;
   }
 }
 
@@ -108,8 +55,8 @@ onMounted(async () => {
   <section>
     <h1>评审</h1>
     <p class="muted page-desc">
-      晨间评审门户：对夜间运行（agent_run）做 PR 式评审——通过 / 驳回 / 打回 + 评语。
-      区别于 Reports（发版四分类报告），本页评审的是夜间流水线运行记录。
+      历史评审审计视图（AR1 起只读）：夜间运行记录与既往评审决策可查；
+      场景运行报告评审将在 AR4 上线。
     </p>
 
     <!-- ① 评审队列 -->
@@ -161,60 +108,15 @@ onMounted(async () => {
                   class="code"
                   data-testid="review-markdown"
                 >{{ reviewMarkdown(run) }}</pre>
-                <form
-                  v-if="canReview"
-                  class="review-form"
-                  data-testid="review-form"
-                  @submit.prevent="submitReview(run)"
-                >
-                <div class="form-row reviewer-line" data-testid="reviewer-line">
-                  评审人：<b>{{ user?.username }}</b>
-                </div>
-                  <div class="form-row decision-row" role="radiogroup" aria-label="评审决策">
-                    <span class="decision-label">决策</span>
-                    <label
-                      v-for="opt in DECISION_OPTIONS"
-                      :key="opt.value"
-                      class="decision-option"
-                    >
-                      <input
-                        v-model="decision"
-                        type="radio"
-                        name="decision"
-                        :value="opt.value"
-                        :data-testid="`decision-${opt.value}`"
-                      />
-                      {{ opt.label }}
-                    </label>
-                  </div>
-                  <label class="form-row">
-                    评语
-                    <textarea
-                      v-model="comment"
-                      rows="3"
-                      placeholder="可选：说明通过/驳回/打回的理由"
-                      data-testid="comment-input"
-                    ></textarea>
-                  </label>
-                  <button
-                    type="submit"
-                    class="btn btn-primary"
-                    :disabled="submitting"
-                    data-testid="submit-btn"
-                  >
-                    {{ submitting ? "提交中…" : "提交评审" }}
-                  </button>
-                  <p v-if="submitError" class="error">{{ submitError }}</p>
-                </form>
-                <p v-else class="hint" data-testid="viewer-hint">
-                  当前账号为只读（viewer），无评审权限
+                <p class="hint" data-testid="frozen-hint">
+                  AgentRun 评审写入已冻结（AR1）；AR4 起评审对象为场景报告
                 </p>
               </td>
             </tr>
           </template>
         </tbody>
       </table>
-      <p v-if="pending.length" class="muted hint">点击行展开评审摘要与评审表单。</p>
+      <p v-if="pending.length" class="muted hint">点击行展开评审摘要。</p>
     </div>
 
     <!-- ② 已评审 -->
@@ -250,7 +152,6 @@ onMounted(async () => {
       </table>
     </div>
 
-    <p v-if="submitHint" class="ok" data-testid="submit-hint">{{ submitHint }}</p>
   </section>
 </template>
 

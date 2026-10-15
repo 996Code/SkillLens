@@ -1,8 +1,8 @@
-"""AI3 服务端链执行：规则解释（unique/stepN）+ run_chain_server + CI 端点。
+"""AI3 服务端链执行：规则解释（unique/stepN）+ run_scenario_server + CI 端点。
 
 - resolve_value：${unique:前缀}（时间戳 base36）+ ${stepN.字段}（从上一步
   observed 的 reqBody 提取——与插件端 chain-rules.ts 同语义）
-- run_chain_server：顺序 run_replay（C1 shadow 门控保留——链含写技能且
+- run_scenario_server：顺序 run_replay（C1 shadow 门控保留——链含写技能且
   confirm=False 时整链 shadow 短路），fail 即停，observed 旁挂供绑定
 - POST /chains/{id}/run?wait=1：同步执行，响应含每步 status+run_id；
   HTTP 200=整体 pass / 409=有步骤 fail（CI 退出码语义）
@@ -14,19 +14,19 @@ from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 from app.db import SessionLocal
-from app.models import Alignment, Chain, Skill
+from app.models import Alignment, Scenario, Skill
 
 
 def _resolve_value(value: str, step_ctx: list | None = None,
                    now: int | None = None) -> str:
     """AI3 规则解释（服务端）：与 extension/src/shared/chain-rules.ts 同语义。
     单独 import 测试（不依赖浏览器）。"""
-    from app.replay.chain_runner import resolve_value as rv
+    from app.replay.scenario_runner import resolve_value as rv
     return rv(value, step_ctx, now)
 
 
 def _extract_field(req_body: str | None, key: str) -> str | None:
-    from app.replay.chain_runner import extract_field
+    from app.replay.scenario_runner import extract_field
     return extract_field(req_body, key)
 
 
@@ -74,43 +74,43 @@ class TestRuleResolve:
 
 class TestChainRunEndpoint:
     async def test_run_404_and_role(self, client: AsyncClient):
-        r = await client.post("/api/v1/chains/99999/run")
+        r = await client.post("/api/v1/scenarios/99999/run")
         assert r.status_code == 404
 
     async def test_run_sync_shape(self, client: AsyncClient, monkeypatch):
-        """同步执行：monkeypatch run_chain_server 返回固定结果（不起浏览器
+        """同步执行：monkeypatch run_scenario_server 返回固定结果（不起浏览器
         ——端点契约测试：响应结构/退出码语义/步骤明细）。"""
         db = SessionLocal()
         try:
             sid = await _mk_chain_skill(db, "CI 契约技能")
-            r = await client.post("/api/v1/chains", json={
+            r = await client.post("/api/v1/scenarios", json={
                 "name": "CI 契约链", "system": "x",
                 "steps": [{"skill_id": sid, "overrides": {}}]})
             cid = r.json()["id"]
 
-            import app.replay.chain_runner as chain_runner_mod
-            async def fake_run(db_, chain_id, confirm):
+            import app.replay.scenario_runner as scenario_runner_mod
+            async def fake_run(db_, scenario_id, confirm):
                 return {"status": "pass", "steps": [
                     {"step": 1, "status": "pass", "run_id": 777,
                      "skill_id": sid, "skill_name": "CI 契约技能"}]}
-            monkeypatch.setattr(chain_runner_mod, "run_chain_server", fake_run)
+            monkeypatch.setattr(scenario_runner_mod, "run_scenario_server", fake_run)
 
-            resp = await client.post(f"/api/v1/chains/{cid}/run?wait=1")
+            resp = await client.post(f"/api/v1/scenarios/{cid}/run?wait=1")
             assert resp.status_code == 200
             body = resp.json()
             assert body["status"] == "pass"
             assert body["steps"][0]["run_id"] == 777
 
-            async def fake_fail(db_, chain_id, confirm):
+            async def fake_fail(db_, scenario_id, confirm):
                 return {"status": "fail", "steps": [
                     {"step": 1, "status": "fail", "run_id": 778,
                      "skill_id": sid, "skill_name": "CI 契约技能"}]}
-            monkeypatch.setattr(chain_runner_mod, "run_chain_server", fake_fail)
-            resp2 = await client.post(f"/api/v1/chains/{cid}/run?wait=1")
+            monkeypatch.setattr(scenario_runner_mod, "run_scenario_server", fake_fail)
+            resp2 = await client.post(f"/api/v1/scenarios/{cid}/run?wait=1")
             assert resp2.status_code == 409  # CI 退出码语义：fail≠200
             assert resp2.json()["detail"]["status"] == "fail"  # HTTPException detail 包装
         finally:
-            db.query(Chain).delete()
+            db.query(Scenario).delete()
             db.query(Skill).filter(Skill.name == "CI 契约技能").delete()
             db.commit()
             db.close()
@@ -121,11 +121,12 @@ class TestChainRunEndpoint:
         from app.models import User, AuthToken
         import secrets
         import hashlib
-        from datetime import datetime, timedelta
+        from datetime import timedelta
+        from app.models import utcnow
         db = SessionLocal()
         try:
             sid = await _mk_chain_skill(db, "角色技能")
-            r = await client.post("/api/v1/chains", json={
+            r = await client.post("/api/v1/scenarios", json={
                 "name": "角色链", "system": "x",
                 "steps": [{"skill_id": sid, "overrides": {}}]})
             cid = r.json()["id"]
@@ -136,13 +137,13 @@ class TestChainRunEndpoint:
             raw = secrets.token_urlsafe(24)
             db.add(AuthToken(user_id=u.id,
                              token_hash=hashlib.sha256(raw.encode()).hexdigest(),
-                             expires_at=datetime.utcnow() + timedelta(days=1)))
+                             expires_at=utcnow() + timedelta(days=1)))
             db.commit()
             hdr = {"Authorization": f"Bearer {raw}"}
-            resp = await client.post(f"/api/v1/chains/{cid}/run", headers=hdr)
+            resp = await client.post(f"/api/v1/scenarios/{cid}/run", headers=hdr)
             assert resp.status_code == 403
         finally:
-            db.query(Chain).delete()
+            db.query(Scenario).delete()
             db.query(User).filter(User.username == "ci_viewer").delete()
             db.query(Skill).filter(Skill.name == "角色技能").delete()
             db.commit()

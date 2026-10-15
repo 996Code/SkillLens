@@ -3,8 +3,8 @@
 // 消费（"功能设计了但没用起来"体检首例），本页接上：指标卡带 + 14 天
 // 趋势 + 系统健康（trends）+ 最近运行 + 流水线图。假节点色条预览墙移除。
 import { computed, onMounted, ref } from "vue";
-import { getSkills, listSuites, getDashboard, getSystemTrends, listChains } from "../../api";
-import type { ChainListItem } from "../../api";
+import { getSkills, listSuites, getDashboard, getSystemTrends, listScenarios } from "../../api";
+import type { ScenarioListItem } from "../../api";
 import type { SkillListItem, SuiteItem, DashboardPayload, SystemTrend } from "../../api";
 import { systemColor } from "../../system-group";
 
@@ -13,7 +13,7 @@ const skills = ref<SkillListItem[]>([]);
 const dash = ref<DashboardPayload | null>(null);
 const trends = ref<SystemTrend[]>([]);
 // AQ3：场景卡（替代流水线区）
-const chains = ref<ChainListItem[]>([]);
+const scenarios = ref<ScenarioListItem[]>([]);
 // S43-2：流水线卡片"批量测试"节点的子图展开态
 const expanded = ref<Record<number, boolean>>({});
 const loading = ref(true);
@@ -61,13 +61,13 @@ function fmtAgo(ts: string): string {
 onMounted(async () => {
   try {
     const [s, sk, d, t, c] = await Promise.all([
-      listSuites(), getSkills(), getDashboard(), getSystemTrends(), listChains(),
+      listSuites(), getSkills(), getDashboard(), getSystemTrends(), listScenarios(),
     ]);
     suites.value = s;
     skills.value = sk;
     dash.value = d;
     trends.value = t;
-    chains.value = c;
+    scenarios.value = c;
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -186,22 +186,22 @@ onMounted(async () => {
 
       <!-- AQ3：测试场景（用户工作层——替代流水线区） -->
       <div class="block" data-testid="overview-scenarios">
-        <h2>测试场景（{{ chains.length }}）</h2>
-        <p v-if="!chains.length" class="muted">
+        <h2>测试场景（{{ scenarios.length }}）</h2>
+        <p v-if="!scenarios.length" class="muted">
           暂无场景，去
           <RouterLink to="/graph/scenarios">测试场景</RouterLink> 查看
         </p>
         <div v-else class="scenario-grid">
-          <RouterLink v-for="c in chains.slice(0, 12)" :key="c.id"
+          <RouterLink v-for="c in scenarios.slice(0, 12)" :key="c.id"
                       :to="`/graph/scenario/${c.id}`"
                       class="overview-scenario-card"
                       :data-testid="`overview-scenario-${c.id}`">
             <span class="overview-scenario-name">{{ c.name }}</span>
             <span class="muted overview-scenario-meta">{{ c.system }} · {{ c.steps.length }} 步</span>
           </RouterLink>
-          <RouterLink v-if="chains.length > 12" to="/graph/scenarios"
+          <RouterLink v-if="scenarios.length > 12" to="/graph/scenarios"
                       class="overview-scenario-card overview-scenario-more">
-            查看全部 {{ chains.length }} 个场景 →
+            查看全部 {{ scenarios.length }} 个场景 →
           </RouterLink>
         </div>
       </div>
