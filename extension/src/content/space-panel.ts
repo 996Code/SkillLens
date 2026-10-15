@@ -694,6 +694,12 @@ function mount(): void {
     } catch { /* 发现流加载失败不阻塞面板 */ }
   }
   void loadDiscovered();
+  // AP4：切分完成实时刷新发现卡（storage 事件——SW 停录自动切分后触发）
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes.sl_flows_updated) {
+      void loadDiscovered();
+    }
+  });
 
   // 恢复历史执行进度（goto 导航销毁页面后，面板重开仍可见全程日志）
   void chrome.storage.local.get("sl_exec_log").then(({ sl_exec_log: log }) => {

@@ -7,7 +7,7 @@
 // 语义：录制跟随**活动 tab**（单会话模型——sl_recording 全局单旗）。
 // 信任边界：仅在已声明接管的系统域录（/adapters/match 白名单）。
 import { AGENT_URL } from "../shared/types";
-import { getToken } from "./executor";
+import { api, getToken } from "./executor";
 import { getRecordingState, startRecording, stopRecording } from "./session";
 
 // match 结果缓存（host 级——同站导航不重复请求）
@@ -75,9 +75,21 @@ export async function reconcileAmbient(activeUrl: string | undefined): Promise<v
     }
     if (!onManagedSite && st.recording && isAmbient) {
       // 离开接管站 → 停 ambient 录制（用户显式会话不动）
+      const sid = st.sessionId;
       await stopRecording();
       await chrome.storage.local.remove("sl_ambient");
       await trace("stopped");
+      // AP4 后台分析自动化：停录即切分（过闸段进待发现——不弹 learn.html，
+      // 整会话 induce 会绕过 AP2 闸门）；面板经 sl_flows_updated 实时刷新
+      if (sid) {
+        try {
+          const r = await api(`/sessions/${sid}/segment`, { method: "POST" });
+          await trace("segmented", JSON.stringify(r).slice(0, 80));
+          await chrome.storage.local.set({ sl_flows_updated: Date.now() });
+        } catch (e: any) {
+          await trace("segment-error", String(e).slice(0, 100));
+        }
+      }
     }
   } catch (e) {
     await trace("error", String(e).slice(0, 120));

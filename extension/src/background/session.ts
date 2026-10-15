@@ -82,12 +82,16 @@ export async function stopRecording(): Promise<void> {
   // 读到 sessionId 为 null，缓冲事件全进 deferred 永久滞留（session 0 事件）。
   // 因此在清除标记之前，用当前 sid 做一次最终上报兜底。
   const st = await getRecordingState();
+  const isAmbient = (await chrome.storage.local.get("sl_ambient"))
+    .sl_ambient === true;
   await finalFlushWithSession(st.sessionId);
   // AI1 录制闭环：待学会话落 storage（不在 SW 内直接触发——CDP 托管浏览器
   // 的 SW 在 stop 消息处理路径上 fire-and-forget 任务被静默吞，验收多轮
   // 实锤：autoLearn 首行都不执行；改由 popup 打开时消费——页面上下文的
   // fetch 生命周期稳定，且用户停录后必然回看 popup，触发点自然）。
-  if (st.sessionId) {
+  // AP4：ambient 会话不走 learn.html（整会话 induce 会绕过 AP2 切分
+  // 闸门）——由 ambient.ts 停录后自动切分进待发现。
+  if (st.sessionId && !isAmbient) {
     await chrome.storage.local.set({ sl_pending_learn: { sid: st.sessionId, at: Date.now() } });
   }
   await chrome.storage.local.remove(["sl_recording", "sl_session", "sl_note",
