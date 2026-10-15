@@ -680,6 +680,25 @@ function mount(): void {
             await loadScenarios();
           } catch (e: any) { note(`确认失败：${e.message}`, "err"); }
         });
+        row.append(nm, ok, okc);
+        // 归并组链动作化：有相似技能时一键组双步场景（双录对照回归）
+        if (f.similar_skill_id) {
+          const okm = document.createElement("button");
+          okm.className = "run"; okm.textContent = "确认+组链";
+          okm.title = `与 ${f.similar_skill_name} 组双步场景（双录对照回归）`;
+          okm.addEventListener("click", async () => {
+            try {
+              const r = await api(
+                `/discovered-flows/${f.id}/confirm?chain_similar=true`,
+                { method: "POST" });
+              note(`已组链场景 #${r.scenario_id}（${f.similar_skill_name}+${r.skillName}）`, "ok");
+              await loadDiscovered();
+              await loadSkills();
+              await loadScenarios();
+            } catch (e: any) { note(`组链失败：${e.message}`, "err"); }
+          });
+          row.append(okm);
+        }
         const no = document.createElement("button");
         no.className = "del"; no.textContent = "丢弃";
         no.addEventListener("click", async () => {
@@ -688,7 +707,7 @@ function mount(): void {
             await loadDiscovered();
           } catch (e: any) { note(`丢弃失败：${e.message}`, "err"); }
         });
-        row.append(nm, ok, okc, no);
+        row.append(no);
         discEl.append(row);
       }
     } catch { /* 发现流加载失败不阻塞面板 */ }

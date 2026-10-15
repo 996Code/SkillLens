@@ -54,8 +54,15 @@ def _flow_signatures(events: list[dict]) -> set[str]:
 
 
 def _skill_signatures(skeleton: list[dict]) -> set[str]:
-    return {str(st.get("signature") or "") for st in skeleton or []
-            if st.get("signature")}
+    """骨架签名归一：窗口骨架的复合签名（click:确定|POST:/x）按 | 拆分
+    ——与流事件的细粒度签名同构可比（真机实证：不拆 Jaccard=0.2 漏检）。"""
+    out: set[str] = set()
+    for st in skeleton or []:
+        for part in str(st.get("signature") or "").split("|"):
+            part = part.strip()
+            if part:
+                out.add(part)
+    return out
 
 
 def _jaccard(a: set[str], b: set[str]) -> float:
@@ -200,9 +207,16 @@ async def _confirm_flow(db: Session, flow: DiscoveredFlow) -> DiscoveredFlow:
 
 @router.post("/discovered-flows/{flow_id}/confirm", dependencies=WRITE_GUARD)
 async def confirm_flow(flow_id: int, create_scenario: bool = False,
+                       chain_similar: bool = False,
                        db: Session = Depends(get_db)) -> dict:
-    """确认待发现流。create_scenario=true 时同步建单步场景（origin=learned）
-    ——AP 产出直接进 AR 主链可执行。"""
+    """确认待发现流。
+
+    - create_scenario=true：同步建单步场景（origin=learned）——AP 产出
+      直接进 AR 主链可执行。
+    - chain_similar=true：存在相似技能（Jaccard≥阈值）时组建链场景
+      [相似技能, 新技能]（双录对照回归——归并建议的动作化）；
+      无相似不凭空组链。
+    """
     flow = db.get(DiscoveredFlow, flow_id)
     if not flow:
         raise HTTPException(404, "flow not found")
@@ -216,20 +230,40 @@ async def confirm_flow(flow_id: int, create_scenario: bool = False,
     out = _summary(flow)
     skill = db.get(Skill, flow.skill_id) if flow.skill_id else None
     out["skill_name"] = skill.name if skill else None
-    if create_scenario and skill is not None:
+    if skill is not None:
         src = db.get(RecordingSession, flow.session_id)
         from app.system import skill_systems
         system = skill_systems(db, [skill.id]).get(skill.id, "")
-        scenario = Scenario(
-            name=skill.name, system=system or "未知系统",
-            steps=[{"skill_id": skill.id, "scenario_id": None,
-                    "overrides": {}, "setup": False, "enabled": True}],
-            status="active", definition_version=1, origin="learned")
-        db.add(scenario)
-        db.commit()
-        db.refresh(scenario)
-        out["scenario_id"] = scenario.id
-        out["scenario_origin"] = scenario.origin
+        if chain_similar:
+            # 组链动作化：相似技能在前+新技能在后（双录对照回归场景）
+            hit = _find_similar_skill(db, flow.events or [],
+                                      src.target_system if src else "")
+            if hit:
+                scenario = Scenario(
+                    name=f"{db.get(Skill, hit[0]).name}+{skill.name}",
+                    system=system or "未知系统",
+                    steps=[{"skill_id": hit[0], "scenario_id": None,
+                            "overrides": {}, "setup": False, "enabled": True},
+                           {"skill_id": skill.id, "scenario_id": None,
+                            "overrides": {}, "setup": False, "enabled": True}],
+                    status="active", definition_version=1, origin="learned")
+                db.add(scenario)
+                db.commit()
+                db.refresh(scenario)
+                out["scenario_id"] = scenario.id
+                out["scenario_origin"] = scenario.origin
+                out["chained_with"] = hit[0]
+        elif create_scenario:
+            scenario = Scenario(
+                name=skill.name, system=system or "未知系统",
+                steps=[{"skill_id": skill.id, "scenario_id": None,
+                        "overrides": {}, "setup": False, "enabled": True}],
+                status="active", definition_version=1, origin="learned")
+            db.add(scenario)
+            db.commit()
+            db.refresh(scenario)
+            out["scenario_id"] = scenario.id
+            out["scenario_origin"] = scenario.origin
     return out
 
 

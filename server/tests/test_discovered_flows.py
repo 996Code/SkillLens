@@ -196,3 +196,56 @@ async def test_pending_flow_carries_merge_suggestion(client: AsyncClient,
     assert flow.get("similar_skill_id") == existing_id, \
         f"应检测到相似技能，got {flow.get('similar_skill_id')}"
     assert flow.get("similar_skill_name") == "ExistingPostCreate"
+
+    # 组链动作化：确认+chain_similar → 相似技能+新技能双步场景
+    r = await client.post(f"/api/v1/discovered-flows/{flow['id']}/confirm",
+                          params={"chain_similar": "true"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["skill_id"]
+    assert body["scenario_id"], "组链应建场景"
+    assert body["chained_with"] == existing_id
+
+    from app.models import Scenario
+    db = SessionLocal()
+    try:
+        sc = db.get(Scenario, body["scenario_id"])
+        assert sc.origin == "learned"
+        assert [st["skill_id"] for st in sc.steps] == \
+            [existing_id, body["skill_id"]], "双步=相似技能在前+新技能在后"
+    finally:
+        db.close()
+
+
+async def test_chain_similar_without_match_creates_no_scenario(
+        client: AsyncClient, monkeypatch):
+    """无相似技能时 chain_similar 不建场景（不凭空组链）。"""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_FAKE_RESPONSE",
+                       json.dumps({"name": "LonelyFlow",
+                                   "description": "无相似"}))
+    events = [
+        {"seq": 0, "ts": 0, "kind": "navigation",
+         "payload": {"type": "page-load", "url": "http://t/unique/path"}},
+        {"seq": 1, "ts": 1000, "kind": "action",
+         "payload": {"type": "click", "target": {"label": "独有操作A"}}},
+        {"seq": 2, "ts": 2000, "kind": "action",
+         "payload": {"type": "input", "name": "独有字段", "value": "x"}},
+        {"seq": 3, "ts": 3000, "kind": "action",
+         "payload": {"type": "click", "target": {"label": "独有提交B"}}},
+        {"seq": 4, "ts": 3500, "kind": "network",
+         "payload": {"method": "POST", "url": "/unique/submit", "status": 200,
+                     "reqBody": "{}", "resBody": '{"code":200}'}},
+    ]
+    sid = await _seed_ambient_session(client, events)
+    await client.post(f"/api/v1/sessions/{sid}/segment")
+    lst = (await client.get("/api/v1/discovered-flows?status=pending")).json()
+    flow = next(f for f in lst if f["session_id"] == sid)
+    assert not flow.get("similar_skill_id"), "独特签名不应有相似"
+
+    r = await client.post(f"/api/v1/discovered-flows/{flow['id']}/confirm",
+                          params={"chain_similar": "true"})
+    body = r.json()
+    assert body["skill_id"]
+    assert "scenario_id" not in body, "无相似时组链不建场景"
+    assert not body.get("chained_with")
