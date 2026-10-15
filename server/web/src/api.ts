@@ -1152,6 +1152,28 @@ export function reviewReport(reportId: number, decision: string,
               jsonInit("POST", { decision, comment }));
 }
 
+// ---------- AR 收尾：场景期望绑定 ----------
+
+export interface ScenarioExpectationRow {
+  id: number; scenario_id: number; expected_delta_id: number;
+  step_index: number | null; active: boolean; requirement_id: string;
+}
+
+export function listScenarioExpectations(
+    scenarioId: number): Promise<ScenarioExpectationRow[]> {
+  return get<ScenarioExpectationRow[]>(
+    `/api/v1/scenarios/${scenarioId}/expectations`);
+}
+
+export function bindScenarioExpectation(
+    scenarioId: number, expectedDeltaId: number,
+    stepIndex: number | null): Promise<ScenarioExpectationRow> {
+  return send<ScenarioExpectationRow>(
+    `/api/v1/scenarios/${scenarioId}/expectations`,
+    jsonInit("POST", { expected_delta_id: expectedDeltaId,
+                       step_index: stepIndex }));
+}
+
 export async function updateScenario(id: number | string,
                                      definitionVersion: number,
                                      body: {

@@ -1,19 +1,28 @@
 <script setup lang="ts">
-// AQ1 测试场景列表（信息架构重设计）：链=用户工作层（业界 Case/Suite
+// AQ1 测试场景列表（信息架构重设计）：场景=用户工作层（业界 Case/Suite
 // 共识）——按系统分组卡片，业务名+步骤数+最近运行徽章。技术层（249
 // 技能）收进步骤库，此页不出现技术名。
+// AR 收尾：徽章改用 ScenarioRun 真数据（此前链首 skill run 近似）。
 import { computed, onMounted, ref } from "vue";
-import { listScenarios, listSkillRuns } from "../../api";
-import type { ScenarioListItem, SkillRunRow } from "../../api";
+import { listScenarios, listScenarioRuns } from "../../api";
+import type { ScenarioListItem, ScenarioRunRow } from "../../api";
 import { groupBySystem, systemColor } from "../../system-group";
 
 const scenarios = ref<ScenarioListItem[]>([]);
 const loading = ref(true);
 const error = ref("");
 
-// 每条链的最近一次运行（链执行=逐 skill 产生 run——取链首 skill 最新
-// run 作为链级状态近似；准确链级聚合留后续批）
-const lastRunByScenario = ref<Record<number, SkillRunRow | null>>({});
+// 每条场景的最近一次 ScenarioRun（一次拉全量列表按场景分组取最新——
+// 单请求替代此前 20 次首 skill 查询的 N+1 近似）
+const latestRunByScenario = computed(() => {
+  const by: Record<number, ScenarioRunRow> = {};
+  for (const r of allRuns.value) {
+    const cur = by[r.scenario_id];
+    if (!cur || r.id > cur.id) by[r.scenario_id] = r;
+  }
+  return by;
+});
+const allRuns = ref<ScenarioRunRow[]>([]);
 
 const grouped = computed(() => groupBySystem(scenarios.value));
 
@@ -21,17 +30,7 @@ async function load(): Promise<void> {
   loading.value = true;
   try {
     scenarios.value = await listScenarios();
-    // 链级最近 run（首 skill 近似）
-    await Promise.all(scenarios.value.slice(0, 20).map(async (c) => {
-      const first = c.steps.find((s) => s.skill_id);
-      if (!first) return;
-      try {
-        const runs = await listSkillRuns(first.skill_id!);
-        lastRunByScenario.value[c.id] = runs[0] ?? null;
-      } catch {
-        lastRunByScenario.value[c.id] = null;
-      }
-    }));
+    try { allRuns.value = await listScenarioRuns(); } catch { /* 徽章 fail-open */ }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -75,12 +74,12 @@ onMounted(load);
             <div class="scenario-name">{{ c.name }}</div>
             <div class="scenario-meta">
               <span class="muted">{{ c.steps.length }} 步</span>
-              <span v-if="lastRunByScenario[c.id]"
+              <span v-if="latestRunByScenario[c.id]"
                     class="badge"
-                    :class="`badge-${lastRunByScenario[c.id]!.status}`">
-                {{ lastRunByScenario[c.id]!.status }}
+                    :class="`badge-${latestRunByScenario[c.id]!.status}`">
+                {{ latestRunByScenario[c.id]!.status }}
                 <span class="muted scenario-ago">
-                  · {{ fmtAgo(lastRunByScenario[c.id]!.created_at) }}
+                  · {{ fmtAgo(latestRunByScenario[c.id]!.created_at) }}
                 </span>
               </span>
               <span v-else class="badge">未运行</span>

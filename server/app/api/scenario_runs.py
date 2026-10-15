@@ -49,6 +49,13 @@ async def list_scenario_runs(
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
 ) -> list[dict]:
+    # AR 收尾：陈旧 generating 报告收割（lazy 触发——列表查询顺带；
+    # 600s 前的 generating 有完整子 run 则幂等重算，否则标失败不挂起）
+    try:
+        from app.reports.service import reap_stale_generating
+        reap_stale_generating(db)
+    except Exception:
+        pass  # 收割失败不阻塞列表（C3：失败形态可查）
     q = db.query(ScenarioRun)
     if scenario_id is not None:
         q = q.filter(ScenarioRun.scenario_id == scenario_id)

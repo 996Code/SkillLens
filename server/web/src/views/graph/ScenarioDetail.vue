@@ -5,8 +5,11 @@
 // 技术下钻不断：步名链接技能详情（Katalon Manual/Script 双视图语义）。
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
-import { getScenario, updateScenario } from "../../api";
-import type { ScenarioDetail } from "../../api";
+import { getScenario, updateScenario, listScenarioRuns,
+         listScenarioExpectations, bindScenarioExpectation,
+         listConfirmedDeltas } from "../../api";
+import type { ScenarioDetail, ScenarioRunRow,
+              ScenarioExpectationRow, ConfirmedDeltaOption } from "../../api";
 import { toastOk, toastErr } from "../../toast";
 import { askConfirm } from "../../confirm";
 
@@ -27,6 +30,11 @@ async function load(): Promise<void> {
   try {
     scenario.value = await getScenario(scenarioId.value);
     editName.value = scenario.value.name;
+    const sid = scenario.value.id;
+    // 期望绑定与场景运行历史（新主链数据；失败不阻塞主视图）
+    try { expectations.value = await listScenarioExpectations(sid); } catch { /* 期望 fail-open */ }
+    try { deltaOptions.value = await listConfirmedDeltas(); } catch { /* 下拉 fail-open */ }
+    try { runs.value = await listScenarioRuns(sid); } catch { /* 运行历史 fail-open */ }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -101,6 +109,34 @@ function overrideEntries(st: { overrides: Record<string, string> }): Array<[stri
 
 function setOverride(st: { overrides: Record<string, string> }, key: string, val: string): void {
   st.overrides[key] = val;
+}
+
+// ---------- AR 收尾：期望绑定 + 场景运行历史 ----------
+const expectations = ref<ScenarioExpectationRow[]>([]);
+const deltaOptions = ref<ConfirmedDeltaOption[]>([]);
+const bindDeltaId = ref<number | "">("");
+const runs = ref<ScenarioRunRow[]>([]);
+
+const RUN_TONE: Record<string, string> = {
+  pass: "badge-success", fail: "badge-fail", error: "badge-error",
+  shadow: "badge-shadow", aborted: "badge-candidate",
+  running: "badge-info", queued: "badge-info",
+};
+
+async function bindExpectation(): Promise<void> {
+  if (!scenario.value || !bindDeltaId.value) return;
+  try {
+    await bindScenarioExpectation(scenario.value.id, Number(bindDeltaId.value), null);
+    toastOk("期望已绑定——下次运行将自动生成对照报告");
+    bindDeltaId.value = "";
+    expectations.value = await listScenarioExpectations(scenario.value.id);
+  } catch (e) {
+    toastErr(`绑定失败：${e instanceof Error ? e.message : e}`);
+  }
+}
+
+function fmtRunTime(ts: string | null): string {
+  return ts ? ts.replace("T", " ").slice(0, 16) : "—";
 }
 
 onMounted(load);
@@ -207,11 +243,72 @@ onMounted(load);
           </div>
         </div>
       </div>
+      <!-- 期望绑定（AR4：绑定期望后运行自动生成对照报告） -->
+      <div class="block" data-testid="scenario-expectations">
+        <h2>期望（{{ expectations.length }}）</h2>
+        <p v-if="!expectations.length" class="muted">
+          未绑定期望。绑定已确认的需求期望后，场景运行将自动生成四分类对照报告。
+        </p>
+        <table v-else class="tbl">
+          <thead><tr><th>需求</th><th>期望</th><th>范围</th></tr></thead>
+          <tbody>
+            <tr v-for="e in expectations" :key="e.id">
+              <td class="mono">{{ e.requirement_id }}</td>
+              <td>#{{ e.expected_delta_id }}</td>
+              <td>{{ e.step_index === null ? "场景级（全部业务步）" : `步骤 ${e.step_index + 1}` }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div v-if="deltaOptions.length" class="bind-row">
+          <select v-model="bindDeltaId" aria-label="选择期望"
+                  data-testid="expectation-select">
+            <option value="">选择已确认的期望…</option>
+            <option v-for="d in deltaOptions" :key="d.id" :value="d.id">
+              {{ d.requirement_id }}（{{ d.change_count }} 项变更）
+            </option>
+          </select>
+          <button class="btn btn-secondary" :disabled="!bindDeltaId"
+                  data-testid="expectation-bind" @click="bindExpectation">
+            绑定期望
+          </button>
+        </div>
+      </div>
+
+      <!-- 场景运行历史（AR2 真数据——替代链首 skill 近似） -->
+      <div class="block" data-testid="scenario-run-history">
+        <h2>运行历史（{{ runs.length }}）</h2>
+        <p v-if="!runs.length" class="muted">尚未运行。点「运行场景」开始第一次执行。</p>
+        <table v-else class="tbl">
+          <thead><tr><th>#</th><th>状态</th><th>通过</th><th>执行端</th><th>时间</th></tr></thead>
+          <tbody>
+            <tr v-for="r in runs.slice(0, 10)" :key="r.id">
+              <td>
+                <RouterLink :to="`/graph/scenario-run/${r.id}`">#{{ r.id }}</RouterLink>
+              </td>
+              <td>
+                <span class="badge" :class="RUN_TONE[r.status] || ''">{{ r.status }}</span>
+              </td>
+              <td>{{ r.pass_count }}/{{ r.total_count }}</td>
+              <td class="muted">{{ r.executor }}</td>
+              <td class="muted">{{ fmtRunTime(r.finished_at || r.created_at) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </template>
   </section>
 </template>
 
 <style scoped>
+.bind-row {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  align-items: center;
+}
+.bind-row select {
+  max-width: 360px;
+}
 .scenario-hero {
   display: flex;
   align-items: flex-start;
