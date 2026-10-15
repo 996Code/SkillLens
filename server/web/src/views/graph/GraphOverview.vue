@@ -3,8 +3,9 @@
 // 消费（"功能设计了但没用起来"体检首例），本页接上：指标卡带 + 14 天
 // 趋势 + 系统健康（trends）+ 最近运行 + 流水线图。假节点色条预览墙移除。
 import { computed, onMounted, ref } from "vue";
-import { getSkills, listSuites, getDashboard, getSystemTrends, listScenarios } from "../../api";
-import type { ScenarioListItem } from "../../api";
+import { getSkills, listSuites, getDashboard, getSystemTrends, listScenarios,
+         listScenarioRuns } from "../../api";
+import type { ScenarioListItem, ScenarioRunRow } from "../../api";
 import type { SkillListItem, SuiteItem, DashboardPayload, SystemTrend } from "../../api";
 import { systemColor } from "../../system-group";
 
@@ -14,6 +15,16 @@ const dash = ref<DashboardPayload | null>(null);
 const trends = ref<SystemTrend[]>([]);
 // AQ3：场景卡（替代流水线区）
 const scenarios = ref<ScenarioListItem[]>([]);
+// AR5：场景运行口径的指标（新主链分母）
+const scenarioRuns = ref<ScenarioRunRow[]>([]);
+const scenarioRunHealth = computed(() => {
+  const terminal = scenarioRuns.value.filter(
+    (r) => !["queued", "running"].includes(r.status));
+  if (!terminal.length) return null;
+  const pass = terminal.filter((r) => r.status === "pass").length;
+  return { pass, total: terminal.length,
+           rate: Math.round((pass / terminal.length) * 100) };
+});
 // S43-2：流水线卡片"批量测试"节点的子图展开态
 const expanded = ref<Record<number, boolean>>({});
 const loading = ref(true);
@@ -68,6 +79,7 @@ onMounted(async () => {
     dash.value = d;
     trends.value = t;
     scenarios.value = c;
+    try { scenarioRuns.value = await listScenarioRuns(); } catch { /* 新链 fail-open */ }
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -111,9 +123,20 @@ onMounted(async () => {
           </span>
         </div>
         <div class="metric-card">
-          <span class="metric-label">四分类报告</span>
-          <span class="metric-value">{{ dash?.reports.total ?? 0 }}</span>
-          <span class="metric-sub muted">流水线 {{ suites.length }} 组 · 技能 {{ skills.length }}</span>
+          <span class="metric-label">场景运行通过率</span>
+          <span class="metric-value"
+                :class="scenarioRunHealth === null ? '' : `tone-${rateTone(scenarioRunHealth.rate)}`">
+            {{ scenarioRunHealth === null ? "—" : `${scenarioRunHealth.rate}%` }}
+          </span>
+          <span class="metric-sub muted" data-testid="scenario-run-health-sub">
+            {{ scenarioRunHealth === null
+               ? "尚无场景运行" : `场景运行 ${scenarioRunHealth.pass}/${scenarioRunHealth.total}` }}
+          </span>
+        </div>
+        <div class="metric-card">
+          <span class="metric-label">测试场景</span>
+          <span class="metric-value">{{ scenarios.length }}</span>
+          <span class="metric-sub muted">技能库存 {{ dash?.skills.total ?? 0 }}</span>
         </div>
       </div>
 

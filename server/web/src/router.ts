@@ -6,6 +6,9 @@ import ReportsList from "./views/graph/ReportsList.vue";
 import FailuresView from "./views/graph/FailuresView.vue";
 import ScenarioList from "./views/graph/ScenarioList.vue";
 import ScenarioDetail from "./views/graph/ScenarioDetail.vue";
+import ScenarioRunsView from "./views/graph/ScenarioRunsView.vue";
+import ScenarioRunDetail from "./views/graph/ScenarioRunDetail.vue";
+import ScenarioReportsView from "./views/graph/ScenarioReportsView.vue";
 import LearningGraphView from "./views/graph/LearningGraphView.vue";
 import SuitesView from "./views/SuitesView.vue";
 import TimelineView from "./views/TimelineView.vue";
@@ -42,6 +45,10 @@ const router = createRouter({
         { path: "canvas", name: "canvas", component: CanvasView },
         { path: "scenarios", name: "scenarios", component: ScenarioList },
         { path: "scenario/:scenarioId", name: "scenario-detail", component: ScenarioDetail },
+        { path: "scenario-runs", name: "scenario-runs", component: ScenarioRunsView },
+        { path: "scenario-run/:runId", name: "scenario-run-detail", component: ScenarioRunDetail },
+        { path: "scenario-reports", name: "scenario-reports", component: ScenarioReportsView },
+        { path: "reviews-portal", redirect: "/graph/scenario-reports" },
         { path: "failures", name: "failures", component: FailuresView },
         { path: "reports", name: "reports-list", component: ReportsList },
         { path: "reports/:deltaId", name: "delta-report", component: DeltaReport },

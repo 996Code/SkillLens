@@ -1078,6 +1078,80 @@ export function getScenario(id: number | string): Promise<ScenarioDetail> {
   return get<ScenarioDetail>(`/api/v1/scenarios/${id}`);
 }
 
+// ---------- AR5：场景运行与场景报告 ----------
+
+export interface ScenarioRunRow {
+  id: number; scenario_id: number; trigger: string; executor: string;
+  mode: string; status: string; source_track: string;
+  confirm_side_effect: boolean | null;
+  pass_count: number; fail_count: number; error_count: number;
+  shadow_count: number; blocked_count: number; total_count: number;
+  started_at: string | null; finished_at: string | null; created_at: string;
+}
+
+export interface ScenarioRunChild {
+  id: number; skill_id: number; status: string; mode: string;
+  execution_index: number | null; attempt: number;
+  failure_class: string | null; duration_ms: number | null;
+}
+
+export interface ScenarioRunDetail extends ScenarioRunRow {
+  definition_snapshot: { root: { scenario_id: number; definition_version: number };
+                         steps: Array<{ execution_index: number; skill_id: number }> };
+  runs: ScenarioRunChild[];
+}
+
+export function listScenarioRuns(scenarioId?: number,
+                                 status?: string): Promise<ScenarioRunRow[]> {
+  const params = new URLSearchParams();
+  if (scenarioId) params.set("scenario_id", String(scenarioId));
+  if (status) params.set("status", status);
+  const qs = params.toString();
+  return get<ScenarioRunRow[]>(`/api/v1/scenario-runs${qs ? `?${qs}` : ""}`);
+}
+
+export function getScenarioRun(id: number): Promise<ScenarioRunDetail> {
+  return get<ScenarioRunDetail>(`/api/v1/scenario-runs/${id}`);
+}
+
+export interface ScenarioReportRow {
+  id: number; scenario_run_id: number; scenario_id: number | null;
+  status: string; coverage_state: string;
+  expected_count: number; missing_count: number;
+  unexpected_count: number; drift_count: number;
+  review_state?: string; created_at: string;
+}
+
+export function listScenarioReports(): Promise<ScenarioReportRow[]> {
+  return get<ScenarioReportRow[]>("/api/v1/scenario-reports");
+}
+
+export function getRunReport(runId: number): Promise<ScenarioReportRow & {
+  deltas: Array<{ expectation_key: string; expected: unknown[];
+                  missing: unknown[]; unexpected: unknown[]; drift: unknown[];
+                  evidence_replay_run_ids: number[] }>;
+}> {
+  return get(`/api/v1/scenario-runs/${runId}/report`);
+}
+
+export interface PendingReview {
+  report_id: number; scenario_run_id: number; scenario_id: number | null;
+  coverage_state: string; missing_count: number; unexpected_count: number;
+  drift_count: number; created_at: string;
+}
+
+export function getPendingReviews(): Promise<PendingReview[]> {
+  return get<PendingReview[]>("/api/v1/reviews/pending");
+}
+
+export function reviewReport(reportId: number, decision: string,
+                             comment?: string): Promise<{
+  id: number; report_id: number; decision: string;
+}> {
+  return send(`/api/v1/reports/${reportId}/review`,
+              jsonInit("POST", { decision, comment }));
+}
+
 export async function updateScenario(id: number | string,
                                      definitionVersion: number,
                                      body: {

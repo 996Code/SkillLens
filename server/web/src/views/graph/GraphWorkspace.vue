@@ -24,6 +24,8 @@ const search = ref("");
 const collapsed = ref<Set<string>>(new Set());
 // AQ2：步骤库默认收起（技术层降级）
 const libraryCollapsed = ref(true);
+// AR5：开发者工具默认收起（诊断资产）
+const devCollapsed = ref(true);
 const error = ref("");
 
 const currentSkillId = computed(() =>
@@ -94,10 +96,18 @@ async function doLogout(): Promise<void> {
         ⚡ 全部场景（{{ scenarioCount }}）
       </RouterLink>
 
-      <!-- ②运行历史 -->
-      <div class="gw-tree-group">运行历史</div>
+      <!-- ②运行与问题 -->
+      <div class="gw-tree-group">运行与问题</div>
+      <RouterLink to="/graph/scenario-runs" class="gw-tree-leaf"
+                  data-testid="gw-scenario-runs-link">▶ 场景运行</RouterLink>
       <RouterLink to="/graph/timeline" class="gw-tree-leaf">⌇ 时间线</RouterLink>
       <RouterLink to="/graph/failures" class="gw-tree-leaf">⚠ 失败分析</RouterLink>
+
+      <!-- AR5：报告与评审（新主链） -->
+      <div class="gw-tree-group">报告与评审</div>
+      <RouterLink to="/graph/scenario-reports" class="gw-tree-leaf"
+                  data-testid="gw-reports-link">⌕ 场景报告</RouterLink>
+      <RouterLink to="/graph/reviews-portal" class="gw-tree-leaf">✓ 评审队列</RouterLink>
 
       <!-- ③步骤库（技术层降级——默认收起） -->
       <div class="gw-tree-group">步骤库（{{ skills.length }}）</div>
@@ -133,16 +143,21 @@ async function doLogout(): Promise<void> {
       <!-- ④系统与环境 -->
       <div class="gw-tree-group">系统与环境</div>
       <RouterLink to="/graph/adapters" class="gw-tree-leaf">⚙ 系统接入</RouterLink>
-      <RouterLink to="/graph/suites" class="gw-tree-leaf">▤ 流水线分组</RouterLink>
 
-      <!-- 高级工具 -->
-      <div class="gw-tree-group">高级工具</div>
-      <RouterLink to="/graph/learning" class="gw-tree-leaf">↗ 学习图</RouterLink>
-      <RouterLink to="/graph/canvas" class="gw-tree-leaf">✎ 编排画布</RouterLink>
-      <RouterLink to="/graph/audit" class="gw-tree-leaf">⬡ 审计</RouterLink>
-      <RouterLink to="/graph/reports" class="gw-tree-leaf">⌕ 报告</RouterLink>
-      <RouterLink to="/graph/reviews-portal" class="gw-tree-leaf">✓ 评审</RouterLink>
-      <RouterLink to="/graph/field-types" class="gw-tree-leaf">⌗ 字段类型</RouterLink>
+      <!-- AR5 开发者模式（默认收起——诊断资产不与主链竞争） -->
+      <button class="gw-group-head gw-lib-toggle" data-testid="gw-dev-toggle"
+              @click="devCollapsed = !devCollapsed">
+        <span class="gw-toggle">{{ devCollapsed ? "▸" : "▾" }}</span>
+        <span class="gw-group-name">开发者工具</span>
+      </button>
+      <div v-show="!devCollapsed">
+        <RouterLink to="/graph/learning" class="gw-tree-leaf">↗ 学习图</RouterLink>
+        <RouterLink to="/graph/canvas" class="gw-tree-leaf">✎ 编排画布</RouterLink>
+        <RouterLink to="/graph/audit" class="gw-tree-leaf">⬡ 审计</RouterLink>
+        <RouterLink to="/graph/reports" class="gw-tree-leaf">▤ 旧版报告</RouterLink>
+        <RouterLink to="/graph/field-types" class="gw-tree-leaf">⌗ 字段类型</RouterLink>
+        <RouterLink to="/graph/suites" class="gw-tree-leaf">▤ 分组（legacy）</RouterLink>
+      </div>
 
       <div class="gw-tree-foot">
         <button class="logout-btn" data-testid="logout-btn" @click="doLogout">
