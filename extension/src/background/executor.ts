@@ -42,9 +42,14 @@ export async function api(path: string, init?: RequestInit): Promise<any> {
   const t = await getToken();
   // 超时保护用 Promise.race——SW+CDP 托管浏览器组合下 fetch 挂
   // AbortSignal 会整体挂死（AG3 实证：cursor 永不推进）
+  // AR3：合并调用方 headers（Idempotency-Key 等自定义头此前被覆盖丢弃）
   const fetcher = fetch(`${AGENT}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${t}`,
+      ...((init?.headers as Record<string, string>) || {}),
+    },
   });
   const res = await Promise.race([
     fetcher,
@@ -97,10 +102,23 @@ export async function runSkill(
   shouldStop?: () => boolean,
   hostTab?: number,
   rowAnchor?: string,
+  scenarioCtx?: { scenarioRunId: number; executionIndex: number; attempt?: number;
+                  confirmSideEffect: boolean },
 ): Promise<{ status: string; runId?: number; observed?: any[]; pickedRows?: string[] }> {
+  const planBody: Record<string, any> = {
+    overrides,
+    // AR3：场景模式下 confirm 以父 ScenarioRun 定格为准（服务端校验冲突
+    // 拒 409）；单技能模式维持调用方显式值
+    confirm_side_effect: scenarioCtx ? scenarioCtx.confirmSideEffect : true,
+  };
+  if (scenarioCtx) {
+    planBody.scenario_run_id = scenarioCtx.scenarioRunId;
+    planBody.execution_index = scenarioCtx.executionIndex;
+    planBody.attempt = scenarioCtx.attempt ?? 1;
+  }
   const plan = await api(`/executor/skills/${skillId}/plan`, {
     method: "POST",
-    body: JSON.stringify({ overrides, confirm_side_effect: true }),
+    body: JSON.stringify(planBody),
   });
   const runId: number = plan.run_id;
   // P1 交互画像（平台化组件化）：系统交互差异的声明式载体——执行器

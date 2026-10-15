@@ -84,6 +84,11 @@ async def list_executor_skills(db: Session = Depends(get_db)) -> list:
 class ExecutorPlanRequest(BaseModel):
     overrides: dict[str, str] = {}
     confirm_side_effect: bool = False
+    # AR3：场景运行上下文——服务端校验归属并锁定 C1/C2（父 ScenarioRun
+    # 是唯一事实源；插件不得用客户端值覆盖）
+    scenario_run_id: int | None = None
+    execution_index: int | None = None
+    attempt: int = 1
 
 
 def _load_plan_input(db: Session, skill: Skill) -> tuple[dict, list[dict]]:
@@ -290,6 +295,31 @@ async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
         raise HTTPException(404, "skill not found")
     if skill.status == "superseded":
         raise HTTPException(409, "该 Skill 版本已被取代")
+
+    # AR3：场景上下文校验——快照归属 + C1 父锁（confirm 只认父定格）
+    scenario_ctx = None
+    if body.scenario_run_id is not None:
+        from app.models import ScenarioRun
+        parent = db.get(ScenarioRun, body.scenario_run_id)
+        if not parent:
+            raise HTTPException(409, "scenario_run 不存在")
+        snapshot = parent.definition_snapshot or {}
+        snap_steps = snapshot.get("steps") or []
+        match = [s for s in snap_steps
+                 if s.get("skill_id") == skill_id
+                 and s.get("execution_index") == body.execution_index]
+        if not match:
+            raise HTTPException(
+                409, f"skill {skill_id}（execution_index={body.execution_index}）"
+                     " 不在 scenario_run 闭包快照内——拒绝挂靠")
+        if parent.status not in ("running", "queued"):
+            raise HTTPException(409, f"scenario_run 已终态（{parent.status}）")
+        if bool(parent.confirm_side_effect) != bool(body.confirm_side_effect):
+            raise HTTPException(
+                409, "C1 冲突：confirm_side_effect 以父 ScenarioRun 定格为准，"
+                     f"父={parent.confirm_side_effect}，客户端不得覆盖")
+        scenario_ctx = (parent, match[0], body.attempt)
+
     if requires_confirmation(skill.skeleton or []) and not body.confirm_side_effect:
         raise HTTPException(409, "含写操作，需 C1 确认（confirm_side_effect=true）")
 
@@ -377,6 +407,17 @@ async def executor_plan(skill_id: int, body: ExecutorPlanRequest,
                           "executor_instructions": instructions,
                           "executor_state": state},
                     executor="extension")
+    if scenario_ctx is not None:
+        parent, snap_step, attempt = scenario_ctx
+        run.scenario_run_id = parent.id
+        run.execution_index = snap_step["execution_index"]
+        run.attempt = max(1, attempt)
+        run.scope_kind = "scenario"
+        # mode 跟随真实语义：技能含写且父未确认才 shadow（查询技能
+        # 父 confirm=False 也照常 execute——C1 只闸写操作）
+        if parent.confirm_side_effect is False and requires_confirmation(
+                skill.skeleton or []):
+            run.mode = "shadow"
     db.add(run)
     db.commit()
     db.refresh(run)

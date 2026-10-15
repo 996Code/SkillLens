@@ -116,8 +116,10 @@ go.addEventListener("click", async () => {
   log("开始执行…");
   try {
     if (scenarioData) {
-      // ---- AH3 场景执行：整场景 C1 一次确认 → 逐步执行 → fail 即停 ----
+      // ---- AR3 场景执行：先建 ScenarioRun（服务端聚合+闭包快照）→
+      // 整场景 C1 一次确认 → 逐步带上下文执行 → finish 父运行 ----
       const steps = scenarioData.steps || [];
+      let confirmGrant = autoConfirm;
       if (skillWrites && !autoConfirm) {
         const names = steps.map((st: any) =>
           `#${st.skill_id} ${st.skill?.name ?? ""}`).join("\n  ");
@@ -125,38 +127,63 @@ go.addEventListener("click", async () => {
           `场景「${scenarioData.name}」含写操作，共 ${steps.length} 步：\n  ${names}\n` +
           "点击确定=授权在本机浏览器执行全部步骤（C1，整场景一次）。");
         if (!ok) { log("已取消（C1 未授权）"); running = false; go.disabled = false; stop.disabled = true; return; }
+        confirmGrant = true;
       } else if (skillWrites && autoConfirm) {
         log("auto 模式：整场景 C1 授权由调用方持有，跳过确认卡");
       }
-      // AI2 逐步解析：每步执行时带前序产出 ctx（${stepN.字段} 跨步绑定），
-      // unique 同轮共享时间戳。逐步而非整场景预解析——绑定值依赖执行期证据。
+      // 创建 ScenarioRun（幂等键防重复点击/刷新重放；服务端返回闭包快照
+      // 与 has_writes——C1 冲突时直接 shadow 短路不再触浏览器）
+      let srun: any = null;
+      try {
+        srun = await api(`/scenarios/${scenarioId}/runs`, {
+          method: "POST",
+          headers: { "Idempotency-Key": `exec-${scenarioId}-${Date.now()}` },
+          body: JSON.stringify({ executor: "extension",
+                                 confirm_side_effect: skillWrites ? (autoConfirm || confirmGrant) : false }),
+        });
+        log(`场景运行 #${srun.id} 已创建（v${srun.definition_version}，` +
+            `${(srun.definition_snapshot?.steps || []).length} 步闭包）`);
+        if (srun.status === "shadow") {
+          log("C1：场景含写操作且未授权——服务端已按 shadow 收敛（未启动浏览器）");
+          showResultCard("shadow", null);
+          running = false; go.disabled = false; stop.disabled = true;
+          return;
+        }
+      } catch (e: any) {
+        log(`场景运行创建失败：${e.message}`);
+        showResultCard("fail", null);
+        running = false; go.disabled = false; stop.disabled = true;
+        return;
+      }
+      const snapSteps = srun.definition_snapshot?.steps || steps;
       const runTs = Date.now();
       const stepCtx: any[][] = [];
       const results: Array<{ step: number; status: string; runId?: number }> = [];
-      for (let i = 0; i < steps.length; i++) {
+      for (let i = 0; i < snapSteps.length; i++) {
         if (stopRequested) { log(`已停止：第 ${i + 1} 步前中断`); break; }
-        // resolveStepOverrides 返回 overrides 字典本身（AI2 签名：step+ctx）
-        const ovr = resolveStepOverrides(steps[i], stepCtx, runTs);
-        // AN 跨步状态传递：row_anchor_from → 前序步 pickedRow 注入本步行锚
-        // （选择类输出→输入；未命中保留原锚——resolveRowAnchor 纪律）
-        const rowAnchor = steps[i].row_anchor_from
-          ? (resolveRowAnchor(steps[i].row_anchor_from, stepCtx) ?? undefined)
+        const st = snapSteps[i];
+        const ovr = resolveStepOverrides(st.step || {}, stepCtx, runTs);
+        const rowAnchor = st.step?.row_anchor_from
+          ? (resolveRowAnchor(st.step.row_anchor_from, stepCtx) ?? undefined)
           : undefined;
-        if (steps[i].row_anchor_from && !rowAnchor) {
-          log(`第 ${i + 1} 步行锚来源（步骤 ${steps[i].row_anchor_from}）无选择句柄——保留原锚`);
+        if (st.step?.row_anchor_from && !rowAnchor) {
+          log(`第 ${i + 1} 步行锚来源（步骤 ${st.step.row_anchor_from}）无选择句柄——保留原锚`);
         }
-        const nm = `#${steps[i].skill_id} ${steps[i].skill?.name ?? ""}`;
-        log(`步骤 ${i + 1}/${steps.length}：${nm} …`);
+        const nm = `#${st.skill_id} ${st.step?.overrides ? "" : ""}${steps[i]?.skill?.name ?? ""}`;
+        log(`步骤 ${i + 1}/${snapSteps.length}：${nm} …`);
         try {
-          const r = await runSkill(steps[i].skill_id, ovr, log, () => stopRequested,
-            undefined, rowAnchor);
-          // 本步产出供后续步骤绑定（observed 写证据 + pickedRow 行键句柄）
+          const r = await runSkill(st.skill_id, ovr, log, () => stopRequested,
+            undefined, rowAnchor, {
+              scenarioRunId: srun.id,
+              executionIndex: st.execution_index,
+              confirmSideEffect: !!srun.confirm_side_effect,
+            });
           stepCtx.push([...(r.observed || []),
             ...(r.pickedRows || []).map((p: string) => ({ pickedRow: p }))]);
           results.push({ step: i + 1, status: r.status, runId: r.runId });
           log(`步骤 ${i + 1} 完成：${r.status}`);
           if (r.status !== "pass") {
-            log(`场景在第 ${i + 1} 步未通过——停止后续步骤（已执行 ${i + 1}/${steps.length}）`);
+            log(`场景在第 ${i + 1} 步未通过——停止后续步骤（已执行 ${i + 1}/${snapSteps.length}）`);
             break;
           }
         } catch (e: any) {
@@ -167,8 +194,18 @@ go.addEventListener("click", async () => {
         }
       }
       const npass = results.filter((r) => r.status === "pass").length;
-      const overall = npass === steps.length && steps.length > 0 ? "pass" : "fail";
-      log(`场景执行结束：${npass}/${steps.length} 步通过（${overall}）`);
+      const executed = results.length;
+      const overall = stopRequested && executed < snapSteps.length
+        ? "aborted"
+        : npass === snapSteps.length && snapSteps.length > 0 ? "pass" : "fail";
+      // finish 父运行（幂等：相同终态重放安全）
+      try {
+        await api(`/scenario-runs/${srun.id}/finish`, {
+          method: "POST",
+          body: JSON.stringify({ status: overall }),
+        });
+      } catch { /* finish 失败不掩盖本地结果展示 */ }
+      log(`场景执行结束：${npass}/${snapSteps.length} 步通过（${overall}）`);
       showResultCard(overall, results.find((r) => r.runId)?.runId ?? null);
     } else {
       // ---- 单技能模式（原有路径） ----

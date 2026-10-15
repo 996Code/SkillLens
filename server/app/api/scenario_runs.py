@@ -88,7 +88,10 @@ class FinishIn(BaseModel):
              dependencies=[Depends(auth.require_role("reviewer", "admin"))])
 async def finish_scenario_run(run_id: int, body: FinishIn,
                               db: Session = Depends(get_db)) -> dict:
-    """extension 通道终态上报：相同终态幂等；冲突终态 409。"""
+    """extension 通道终态上报：相同终态幂等；冲突终态 409。
+
+    计数由服务端从子 ReplayRun 推导（不信任插件汇总）。
+    """
     from app.scenario import service
 
     run = db.get(ScenarioRun, run_id)
@@ -98,4 +101,19 @@ async def finish_scenario_run(run_id: int, body: FinishIn,
         run = service.finish_scenario_run(db, run, body.status)
     except service.ConflictError as e:
         raise HTTPException(409, str(e))
+    # 服务端推导计数：有效结果=每 execution_index 的最高 attempt
+    children = db.query(ReplayRun).filter(
+        ReplayRun.scenario_run_id == run_id).all()
+    best: dict[int, ReplayRun] = {}
+    for c in children:
+        idx = c.execution_index if c.execution_index is not None else -1
+        cur = best.get(idx)
+        if cur is None or c.attempt > cur.attempt:
+            best[idx] = c
+    statuses = [c.status for c in best.values()]
+    snap_steps = (run.definition_snapshot or {}).get("steps") or []
+    blocked = max(0, len(snap_steps) - len(statuses))
+    service.recompute_counts(db, run, blocked, statuses)
+    db.commit()
+    db.refresh(run)
     return _summary(run)
