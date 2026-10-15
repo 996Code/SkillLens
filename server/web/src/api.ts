@@ -41,6 +41,28 @@ export function clearSession(): void {
   localStorage.removeItem(USER_KEY);
 }
 
+// ---------- 用户管理（admin——多账号基础） ----------
+
+export function listUsers(): Promise<AuthUser[]> {
+  return get<AuthUser[]>("/api/v1/auth/users");
+}
+
+export function createUser(username: string, password: string,
+                           role: AuthUser["role"]): Promise<AuthUser> {
+  return send<AuthUser>("/api/v1/auth/users",
+                       jsonInit("POST", { username, password, role }));
+}
+
+export function updateUser(id: number, body: {
+  role?: AuthUser["role"]; password?: string;
+}): Promise<AuthUser> {
+  return send<AuthUser>(`/api/v1/auth/users/${id}`, jsonInit("PATCH", body));
+}
+
+export function deleteUser(id: number): Promise<{ ok: boolean }> {
+  return send(`/api/v1/auth/users/${id}`, { method: "DELETE" });
+}
+
 /** 登录：成功存 token+user；失败抛 ApiError(401)。 */
 export async function login(username: string, password: string): Promise<AuthUser> {
   const resp = await fetch(BASE + "/api/v1/auth/login", {

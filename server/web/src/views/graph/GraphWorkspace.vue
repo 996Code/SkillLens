@@ -4,12 +4,14 @@
 // 顶部搜索框实时过滤。
 import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { getSkills, listScenarios, listSuites, logout } from "../../api";
+import { getSkills, listScenarios, listSuites, logout, currentUser } from "../../api";
 import type { SkillListItem, SuiteItem } from "../../api";
 import { groupBySystem } from "../../system-group";
 import { useToasts } from "../../toast";
 import { useConfirmReq, answerConfirm } from "../../confirm";
 const confirmReq = useConfirmReq();
+
+const user = currentUser();
 
 const toasts = useToasts();
 
@@ -143,6 +145,8 @@ async function doLogout(): Promise<void> {
       <!-- ④系统与环境 -->
       <div class="gw-tree-group">系统与环境</div>
       <RouterLink to="/graph/adapters" class="gw-tree-leaf">⚙ 系统接入</RouterLink>
+      <RouterLink v-if="user?.role === 'admin'" to="/graph/users"
+                  class="gw-tree-leaf" data-testid="gw-users-link">☰ 用户管理</RouterLink>
 
       <!-- AR5 开发者模式（默认收起——诊断资产不与主链竞争） -->
       <button class="gw-group-head gw-lib-toggle" data-testid="gw-dev-toggle"

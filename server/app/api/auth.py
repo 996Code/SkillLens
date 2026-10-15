@@ -10,13 +10,13 @@
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import (create_user, hash_password, issue_token, logout,
                       resolve_token, verify_password)
 from app.db import SessionLocal
-from app.models import User
+from app.models import AuthToken, User
 
 router = APIRouter()
 
@@ -67,8 +67,8 @@ _DUMMY_HASH = hash_password("skilllens-timing-equalizer")
 
 
 class UserIn(BaseModel):
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=8, max_length=200)
     role: ROLES = "viewer"
 
 
@@ -122,3 +122,56 @@ async def create_user_ep(body: UserIn, db: Session = Depends(get_db),
     except ValueError:
         raise HTTPException(status_code=409, detail="username already exists")
     return _user_out(user)
+
+
+@router.get("/auth/users")
+async def list_users(db: Session = Depends(get_db),
+                     admin: User = Depends(require_role("admin"))):
+    """多账号基础：admin 可列全部账号（密码哈希不外泄）。"""
+    return [_user_out(u) for u in db.query(User).order_by(User.id).all()]
+
+
+class UserUpdateIn(BaseModel):
+    role: ROLES | None = None
+    password: str | None = None
+
+
+@router.patch("/auth/users/{user_id}")
+async def update_user(user_id: int, body: UserUpdateIn,
+                      db: Session = Depends(get_db),
+                      admin: User = Depends(require_role("admin"))):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, detail="user not found")
+    if body.password is not None:
+        if len(body.password) < 8:
+            raise HTTPException(422, detail="password too short (min 8)")
+        user.password_hash = hash_password(body.password)
+        # 密码重置后吊销该用户全部既有 token（旧会话失效）
+        db.query(AuthToken).filter(AuthToken.user_id == user_id).delete()
+    if body.role is not None:
+        # 最后一个 admin 不得降级（锁死自己锁死系统）
+        if (user.role == "admin" and body.role != "admin"
+                and db.query(User).filter(User.role == "admin").count() <= 1):
+            raise HTTPException(409, detail="cannot demote the last admin")
+        user.role = body.role
+    db.commit()
+    db.refresh(user)
+    return _user_out(user)
+
+
+@router.delete("/auth/users/{user_id}")
+async def delete_user_ep(user_id: int, db: Session = Depends(get_db),
+                         admin: User = Depends(require_role("admin"))):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, detail="user not found")
+    if user.id == admin.id:
+        raise HTTPException(409, detail="cannot delete yourself")
+    if (user.role == "admin"
+            and db.query(User).filter(User.role == "admin").count() <= 1):
+        raise HTTPException(409, detail="cannot delete the last admin")
+    db.query(AuthToken).filter(AuthToken.user_id == user_id).delete()
+    db.delete(user)
+    db.commit()
+    return {"ok": True}

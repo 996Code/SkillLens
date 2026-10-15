@@ -19,6 +19,7 @@ import CanvasView from "./views/CanvasView.vue";
 import DeltaReport from "./views/DeltaReport.vue";
 import ReviewPortal from "./views/ReviewPortal.vue";
 import FieldTypesView from "./views/FieldTypesView.vue";
+import UsersView from "./views/UsersView.vue";
 import AdaptersView from "./views/graph/AdaptersView.vue";
 import LoginView from "./views/LoginView.vue";
 import { getToken } from "./api";
@@ -54,6 +55,7 @@ const router = createRouter({
         { path: "reports/:deltaId", name: "delta-report", component: DeltaReport },
         { path: "reviews-portal", name: "reviews-portal", component: ReviewPortal },
         { path: "field-types", name: "field-types", component: FieldTypesView },
+        { path: "users", name: "users", component: UsersView },
         { path: "adapters", name: "adapters", component: AdaptersView },
       ],
     },
