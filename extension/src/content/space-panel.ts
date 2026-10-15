@@ -133,6 +133,8 @@ function mount(): void {
         </div>
         <div class="sec-t">已保存的链</div>
         <div id="chs"><div class="empty">无</div></div>
+        <div class="sec-t" id="disc-t" style="display:none">发现的流程（待确认）</div>
+        <div id="disc" style="display:none"></div>
       </div>
       <div class="note" id="nt"></div>
       <div class="prog" id="pg" style="display:none">
@@ -627,6 +629,53 @@ function mount(): void {
       window.open(chrome.runtime.getURL(`learn.html?sid=${encodeURIComponent(p.sid)}`), "_blank");
     }
   }).catch(() => {});
+
+  // AP3 发现流卡片：待确认的 ambient 任务流（人审关口——确认转技能）
+  const discEl = root.getElementById("disc")!;
+  const discTEl = root.getElementById("disc-t")!;
+  async function loadDiscovered(): Promise<void> {
+    try {
+      const flows = await api("/discovered-flows?status=pending");
+      if (!Array.isArray(flows) || !flows.length) {
+        discEl.style.display = "none";
+        discTEl.style.display = "none";
+        return;
+      }
+      discEl.style.display = "block";
+      discTEl.style.display = "block";
+      discTEl.textContent = `发现的流程（待确认 ${flows.length}）`;
+      discEl.replaceChildren();
+      for (const f of flows.slice(0, 5)) {
+        const row = document.createElement("div");
+        row.className = "ch";
+        const nm = document.createElement("span");
+        nm.className = "nm";
+        nm.textContent = `任务流 #${f.id}（${f.event_count} 步${f.has_write ? "·含写" : ""}）`;
+        const ok = document.createElement("button");
+        ok.className = "run"; ok.textContent = "确认";
+        ok.addEventListener("click", async () => {
+          try {
+            const r = await api(`/discovered-flows/${f.id}/confirm`,
+                                { method: "POST" });
+            note(`已入库：${r.skillName ?? "技能"}（#${r.skill_id}）`, "ok");
+            await loadDiscovered();
+            await loadSkills();
+          } catch (e: any) { note(`确认失败：${e.message}`, "err"); }
+        });
+        const no = document.createElement("button");
+        no.className = "del"; no.textContent = "丢弃";
+        no.addEventListener("click", async () => {
+          try {
+            await api(`/discovered-flows/${f.id}/discard`, { method: "POST" });
+            await loadDiscovered();
+          } catch (e: any) { note(`丢弃失败：${e.message}`, "err"); }
+        });
+        row.append(nm, ok, no);
+        discEl.append(row);
+      }
+    } catch { /* 发现流加载失败不阻塞面板 */ }
+  }
+  void loadDiscovered();
 
   // 恢复历史执行进度（goto 导航销毁页面后，面板重开仍可见全程日志）
   void chrome.storage.local.get("sl_exec_log").then(({ sl_exec_log: log }) => {

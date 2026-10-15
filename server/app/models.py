@@ -340,6 +340,24 @@ class ReplayRun(Base):
     last_step_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
+class DiscoveredFlow(Base):
+    """AP3 待发现流：ambient 会话切分出的过闸任务段（人审关口——
+    TrueTest 模式：确认前不进正式技能库）。
+
+    status: pending（待审）/ confirmed（已转技能）/ discarded（人工丢弃）
+    / auto_discarded（闸门拦截——C3 留痕）。
+    """
+    __tablename__ = "discovered_flow"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    events: Mapped[list] = mapped_column(JSON)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    discard_reason: Mapped[str] = mapped_column(String(100), default="")
+    has_write: Mapped[bool] = mapped_column(default=False)
+    skill_id: Mapped[int | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
 class ScenarioExpectation(Base):
     """AR4 场景期望绑定：人工确认的 expected_delta 与场景的活性关系。
 

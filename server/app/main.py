@@ -16,6 +16,7 @@ from app.api import (
     cards,
     change,
     discoveries,
+    discovered_flows,
     field_types,
     dev_plans,
     events,
@@ -134,6 +135,7 @@ app.include_router(timeline.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(suites.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(scenarios.router, prefix=API_PREFIX, dependencies=_GUARDED)
 app.include_router(scenario_runs.router, prefix=API_PREFIX, dependencies=_GUARDED)
+app.include_router(discovered_flows.router, prefix=API_PREFIX, dependencies=_GUARDED)
 
 
 @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
