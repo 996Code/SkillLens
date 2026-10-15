@@ -119,10 +119,11 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
   通道新鲜度闸+健壮性体检 🔴🟡 全清（39f4044+edb439b）——均已收口。
 
 下一步方向（按优先级）：
-0. **AJ2 已全闭环**（9865f2b）：插件端登录态自动恢复落地（守卫触发→
+0. **AR 管理平台闭环重构（已立项，AR1 已落地）**：AQ 只完成场景展示层，数据主链尚未贯通。按 `docs/specs/2026-10-15-ar-management-closed-loop-redesign.md` 分六批实施。**AR1 完成（2026-10-15）**：chain→scenario 一次性改名（16 ID 保留/24 JSON 键迁移）；PATCH If-Match 版本锁（428/409/200 三态）；archive 替代删除；Suite/旧报告/旧评审写端点 410 冻结；混合系统 Suite 记 legacy_mixed_system 不猜迁；`/api/{path}` JSON 404 兜底（根治 SPA 假绿）；web/extension/scripts 调用方零残留切换（executor.html 用 `?scenario=`）；架构契约 `docs/arch/2026-10-15-ar1-scenario-identity.md`。**下一步 AR2**：ScenarioRun 服务端聚合（`app/scenario/service.py`+`api/scenario_runs.py`+replay_run 归属列+迁移）——规格 §AR2 的 RED 清单先行。
+1. **AJ2 已全闭环**（9865f2b）：插件端登录态自动恢复落地（守卫触发→
    服务端跑适配器登录例程→cookie 注入常驻浏览器→重试当前步）——
    禅道容器重启丢态场景端到端验证（session_recovered=true→pass）。
-1. **链回归 8/8 全绿收官**（ebc6e67）：六系统八链全 pass——
+2. **链回归 8/8 全绿收官**（ebc6e67）：六系统八链全 pass——
    2/3/11（JeecG）+7（禅道）+17（Dolibarr 订单全链 4/4）+19
    （Snipe 生命周期 3/3）+20（AN 行锚）+21（Odoo 报价 m2o 适配）。
    Odoo 双根治：action id 漂移（XML ID 稳定形态）+m2o 关系字段
@@ -130,7 +131,7 @@ C3 全链路落库（含失败 LLM 调用，URL 脱敏）。LLM 只做命名/归
    2026-10-13 收口：296 标 superseded→321、旧链 10 删除（重录
    实际由 321+链 21 满足——induce 产新行非原地更新）；宿主重启
    后零改动复跑 8/8（重启韧性实证）。
-2. 多账号并发与生产部署（容器保活/会话保活属此域）。
+3. 多账号并发与生产部署（容器保活/会话保活属此域）。
 
 ### 中
 4. ERPNext 技能深录（当前 2/3；SO 转单状态依赖已归档待跨步传递解锁）

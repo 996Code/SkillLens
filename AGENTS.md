@@ -83,6 +83,7 @@
 | `docs/specs/2026-10-09-ak-exception-convergence-design.md` | AK 执行引擎异常收敛层（四码/预算/熔断/swallow，含批次落地记录） |
 | `docs/specs/2026-10-10-am-expectation-anomaly-detection.md` | AM 期望-观测对比异常检测（写水位/登录守卫/三态呈现） |
 | `docs/specs/2026-10-10-an-cross-step-state.md` | AN 跨步状态传递（pickedRow/${stepN.row}/row_anchor_from，含两轮 E2E 记录） |
+| `docs/specs/2026-10-15-ar-management-closed-loop-redesign.md` | **AR 下一冲刺**：Scenario→ScenarioRun→自动报告→评审闭环；高级工具上下文化；六批执行计划 |
 | 其余 specs | 各历史块设计（AA 图基座/AE 多角度闭环/AH 空间面板/AI 日常化/AJ 异常分类学等） |
 
 ### 6.4 架构契约（arch/，25 篇——改模块前读对应篇）
