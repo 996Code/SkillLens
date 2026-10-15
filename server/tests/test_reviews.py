@@ -51,13 +51,33 @@ async def test_legacy_reviews_remain_readable(client):
     assert item["agent_run"]["status"] == "finished"
 
 
-async def test_pending_agent_runs_remain_readable(client):
-    pending_id = _add_agent_run(
-        graph_name="canvas",
-        node_outputs=[{"node": "review_output", "output": {"review": "摘要"}}],
-    )
+async def test_pending_queue_targets_ready_unreviewed_reports(client):
+    """AR4：待评审队列 = ready 且未评审的场景报告（AgentRun 队列退役）。"""
+    from app.db import SessionLocal
+    from app.models import ScenarioReport, ScenarioRun
+
+    db = SessionLocal()
+    try:
+        run = ScenarioRun(scenario_id=1, definition_version=1,
+                          definition_snapshot={"root": {}, "steps": []},
+                          executor="server", mode="execute", status="pass",
+                          confirm_side_effect=True,
+                          idempotency_key="ar4-pending-1",
+                          request_fingerprint="f" * 64)
+        db.add(run)
+        db.flush()
+        rep = ScenarioReport(scenario_run_id=run.id, status="ready",
+                             coverage_state="no_expectation")
+        db.add(rep)
+        db.commit()
+        db.refresh(rep)
+        rep_id, run_id = rep.id, run.id
+    finally:
+        db.close()
+
     items = (await client.get("/api/v1/reviews/pending")).json()
-    assert any(item["id"] == pending_id for item in items)
+    match = [i for i in items if i["report_id"] == rep_id]
+    assert match and match[0]["scenario_run_id"] == run_id
 
 
 async def test_viewer_cannot_call_frozen_review_write(client):

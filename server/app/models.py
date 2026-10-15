@@ -340,6 +340,79 @@ class ReplayRun(Base):
     last_step_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
+class ScenarioExpectation(Base):
+    """AR4 场景期望绑定：人工确认的 expected_delta 与场景的活性关系。
+
+    SQLite NULL 不参与 UNIQUE——场景级/步骤级分别用部分唯一索引（迁移建）。
+    """
+    __tablename__ = "scenario_expectation"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    scenario_id: Mapped[int] = mapped_column(index=True)
+    expected_delta_id: Mapped[int] = mapped_column(index=True)
+    # null=场景级（聚合全部业务步）；有值=步骤级（该场景局部索引）
+    step_index: Mapped[int | None] = mapped_column(nullable=True)
+    active: Mapped[bool] = mapped_column(default=True)
+    confirmed_by_user_id: Mapped[int | None] = mapped_column(nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class ScenarioReport(Base):
+    """AR4 场景运行自动报告：一 run 一报告（unique）。
+
+    无期望不是失败——coverage_state=no_expectation 显式标记未覆盖。
+    """
+    __tablename__ = "scenario_report"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    scenario_run_id: Mapped[int] = mapped_column(unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="generating")
+    coverage_state: Mapped[str] = mapped_column(String(20),
+                                                default="no_expectation")
+    source_track: Mapped[str] = mapped_column(String(20), default="demo")
+    expected_count: Mapped[int] = mapped_column(default=0)
+    missing_count: Mapped[int] = mapped_column(default=0)
+    unexpected_count: Mapped[int] = mapped_column(default=0)
+    drift_count: Mapped[int] = mapped_column(default=0)
+    attempt_count: Mapped[int] = mapped_column(default=1)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    error_summary: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
+
+class ReportDelta(Base):
+    """AR4 单期望绑定的四分类明细（expectation_key 防重）。"""
+    __tablename__ = "report_delta"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    scenario_report_id: Mapped[int] = mapped_column(index=True)
+    expectation_key: Mapped[str] = mapped_column(String(64))
+    expected_delta_id: Mapped[int] = mapped_column()
+    observed_delta_ids: Mapped[list] = mapped_column(JSON, default=list)
+    evidence_replay_run_ids: Mapped[list] = mapped_column(JSON, default=list)
+    expected: Mapped[list] = mapped_column(JSON, default=list)
+    missing: Mapped[list] = mapped_column(JSON, default=list)
+    unexpected: Mapped[list] = mapped_column(JSON, default=list)
+    drift: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    __table_args__ = (
+        UniqueConstraint("scenario_report_id", "expectation_key",
+                         name="uq_report_delta_key"),
+    )
+
+
+class ReportReview(Base):
+    """AR4 报告评审：一报告一评审（unique），决策不可变。"""
+    __tablename__ = "report_review"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    report_id: Mapped[int] = mapped_column(unique=True, index=True)
+    reviewer: Mapped[str] = mapped_column(String(100))
+    user_id: Mapped[int | None] = mapped_column(nullable=True)
+    decision: Mapped[str] = mapped_column(String(20))
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
 class ScenarioRun(Base):
     """AR2 场景级聚合运行：一次场景执行 = 递归闭包快照 + 有序子 ReplayRun。
 

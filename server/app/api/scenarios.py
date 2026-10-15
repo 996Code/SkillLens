@@ -332,8 +332,62 @@ async def create_scenario_run(
     return out
 
 
-def _run_summary(run) -> dict:
-    return {
+class ExpectationIn(BaseModel):
+    expected_delta_id: int
+    step_index: int | None = Field(default=None, ge=0)
+
+
+@router.post("/scenarios/{scenario_id}/expectations", status_code=201,
+             dependencies=WRITE_GUARD)
+async def bind_expectation(scenario_id: int, body: ExpectationIn,
+                           db: Session = Depends(get_db),
+                           user=Depends(auth.require_user)) -> dict:
+    """AR4 场景期望绑定（人工确认关系——只有绑定驱动差异报告）。"""
+    from app.models import ExpectedDelta, ScenarioExpectation, utcnow
+    if not db.get(Scenario, scenario_id):
+        raise HTTPException(404, "scenario not found")
+    delta = db.get(ExpectedDelta, body.expected_delta_id)
+    if not delta or delta.status != "confirmed":
+        raise HTTPException(422, "expected_delta 不存在或未确认")
+    dup = db.query(ScenarioExpectation).filter(
+        ScenarioExpectation.scenario_id == scenario_id,
+        ScenarioExpectation.expected_delta_id == body.expected_delta_id,
+        ScenarioExpectation.step_index == body.step_index).first()
+    if dup:
+        raise HTTPException(409, "该期望已绑定到场景（同步骤索引）")
+    row = ScenarioExpectation(
+        scenario_id=scenario_id, expected_delta_id=body.expected_delta_id,
+        step_index=body.step_index, active=True,
+        confirmed_by_user_id=user.id, confirmed_at=utcnow())
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {"id": row.id, "scenario_id": row.scenario_id,
+            "expected_delta_id": row.expected_delta_id,
+            "step_index": row.step_index, "active": row.active,
+            "requirement_id": delta.requirement_id}
+
+
+@router.get("/scenarios/{scenario_id}/expectations")
+async def list_expectations(scenario_id: int,
+                            db: Session = Depends(get_db)) -> list[dict]:
+    from app.models import ExpectedDelta, ScenarioExpectation
+    if not db.get(Scenario, scenario_id):
+        raise HTTPException(404, "scenario not found")
+    rows = db.query(ScenarioExpectation).filter(
+        ScenarioExpectation.scenario_id == scenario_id).order_by(
+        ScenarioExpectation.id).all()
+    deltas = {d.id: d for d in db.query(ExpectedDelta).filter(
+        ExpectedDelta.id.in_([r.expected_delta_id for r in rows] or [0]))}
+    return [{"id": r.id, "scenario_id": r.scenario_id,
+             "expected_delta_id": r.expected_delta_id,
+             "step_index": r.step_index, "active": r.active,
+             "requirement_id": deltas[r.expected_delta_id].requirement_id
+             if r.expected_delta_id in deltas else ""}
+            for r in rows]
+
+
+def _run_summary(run) -> dict:    return {
         "id": run.id,
         "scenario_id": run.scenario_id,
         "definition_version": run.definition_version,

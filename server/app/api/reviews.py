@@ -79,17 +79,28 @@ async def list_reviews(decision: DECISIONS | None = None,
 
 @router.get("/reviews/pending")
 async def list_pending_runs(db: Session = Depends(get_db)) -> list:
-    """未评审的 agent_run 队列（评审门户首页数据源）。
+    """AR4：待评审队列 = ready 且未评审的场景报告（新主链）。
 
-    node_outputs 摘要透传（含 review_output 段若有）；graph_name 前缀
-    canvas:/nightly 均含——夜间图与画布运行统一进评审队列。
+    旧 AgentRun 队列已冻结（AR1 写冻结+AR4 评审对象切换）。
     """
-    reviewed_ids = {rid for (rid,) in db.query(Review.agent_run_id).all()}
-    runs = db.query(AgentRun).order_by(AgentRun.id.desc()).all()
-    return [{
-        "id": r.id,
-        "graph_name": r.graph_name,
-        "status": r.status,
-        "started_at": r.started_at.isoformat(),
-        "node_outputs": r.node_outputs or [],
-    } for r in runs if r.id not in reviewed_ids]
+    from app.models import ReportReview, ScenarioReport, ScenarioRun
+    reviewed = {rid for (rid,) in db.query(ReportReview.report_id).all()}
+    rows = db.query(ScenarioReport).filter(
+        ScenarioReport.status == "ready"
+    ).order_by(ScenarioReport.id.desc()).limit(100).all()
+    out = []
+    for r in rows:
+        if r.id in reviewed:
+            continue
+        run = db.get(ScenarioRun, r.scenario_run_id)
+        out.append({
+            "report_id": r.id,
+            "scenario_run_id": r.scenario_run_id,
+            "scenario_id": run.scenario_id if run else None,
+            "coverage_state": r.coverage_state,
+            "missing_count": r.missing_count,
+            "unexpected_count": r.unexpected_count,
+            "drift_count": r.drift_count,
+            "created_at": r.created_at.isoformat(),
+        })
+    return out

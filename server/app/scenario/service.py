@@ -132,11 +132,12 @@ def create_scenario_run(
     if not closure["steps"]:
         raise ValueError("场景闭包为空（无启用步骤）")
     has_writes = _skill_writes(db, closure["steps"])
+    from app.reports.service import snapshot_expectations
     run = ScenarioRun(
         scenario_id=scenario.id,
         definition_version=scenario.definition_version,
         definition_snapshot=closure,
-        expectation_snapshot=[],
+        expectation_snapshot=snapshot_expectations(db, scenario.id, closure),
         trigger=trigger,
         executor=executor,
         mode="execute" if confirm_side_effect else "shadow",
@@ -162,6 +163,10 @@ def create_scenario_run(
             return again, False
         raise
     db.refresh(run)
+    if auto_status in TERMINAL:
+        from app.reports.service import generate_report
+        generate_report(db, run)
+        db.refresh(run)
     return run, True
 
 
@@ -169,12 +174,20 @@ class ConflictError(Exception):
     pass
 
 
-def finish_scenario_run(db: Session, run: ScenarioRun, status: str) -> ScenarioRun:
-    """终态收敛：相同终态幂等；冲突终态 409（由 API 层转）。"""
+def finish_scenario_run(db: Session, run: ScenarioRun, status: str,
+                        auto_report: bool = False) -> ScenarioRun:
+    """终态收敛：相同终态幂等；冲突终态 409（由 API 层转）。
+
+    AR4：auto_report=True 时终态后自动生成场景报告（幂等）。
+    """
     if status not in TERMINAL:
         raise ValueError(f"非法终态：{status}")
-    if run.status in TERMINAL:
+    was_terminal = run.status in TERMINAL
+    if was_terminal:
         if run.status == status:
+            if auto_report:
+                from app.reports.service import generate_report
+                generate_report(db, run)
             return run
         raise ConflictError(
             f"scenario_run {run.id} 已终态 {run.status}，拒绝改为 {status}")
@@ -182,6 +195,10 @@ def finish_scenario_run(db: Session, run: ScenarioRun, status: str) -> ScenarioR
     run.finished_at = utcnow()
     db.commit()
     db.refresh(run)
+    if auto_report:
+        from app.reports.service import generate_report
+        generate_report(db, run)
+        db.refresh(run)
     return run
 
 
@@ -222,7 +239,7 @@ async def execute_scenario_run(db: Session, run: ScenarioRun) -> ScenarioRun:
             statuses.append("shadow")
         db.commit()
         recompute_counts(db, run, 0, statuses)
-        return finish_scenario_run(db, run, "shadow")
+        return finish_scenario_run(db, run, "shadow", auto_report=True)
 
     import time as _time
     run_ts = int(_time.time() * 1000)
@@ -263,4 +280,4 @@ async def execute_scenario_run(db: Session, run: ScenarioRun) -> ScenarioRun:
         final = "error"
     else:
         final = "fail"
-    return finish_scenario_run(db, run, final)
+    return finish_scenario_run(db, run, final, auto_report=True)

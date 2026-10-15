@@ -98,7 +98,8 @@ async def finish_scenario_run(run_id: int, body: FinishIn,
     if not run:
         raise HTTPException(404, "scenario_run not found")
     try:
-        run = service.finish_scenario_run(db, run, body.status)
+        run = service.finish_scenario_run(db, run, body.status,
+                                          auto_report=True)
     except service.ConflictError as e:
         raise HTTPException(409, str(e))
     # 服务端推导计数：有效结果=每 execution_index 的最高 attempt
