@@ -119,3 +119,80 @@ async def test_noise_session_segments_to_discard_only(client: AsyncClient):
     r = await client.post(f"/api/v1/sessions/{sid}/segment")
     assert r.json()["flows"] == 0, "纯浏览零待发现"
     assert r.json()["discarded"] >= 1
+
+
+async def test_confirm_creates_scenario_when_requested(client: AsyncClient,
+                                                          monkeypatch):
+    """AP×AR 衔接：确认+create_scenario=true → 技能+场景（origin=learned）
+    一次产出——发现流直接进 AR 主链可执行。"""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("LLM_FAKE_RESPONSE",
+                       json.dumps({"name": "PostCreate2",
+                                   "description": "用户创建岗位"}))
+    sid = await _seed_ambient_session(client, _task_events())
+    await client.post(f"/api/v1/sessions/{sid}/segment")
+    lst = (await client.get("/api/v1/discovered-flows?status=pending")).json()
+    flow = next(f for f in lst if f["session_id"] == sid)
+
+    r = await client.post(f"/api/v1/discovered-flows/{flow['id']}/confirm",
+                          params={"create_scenario": "true"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["skill_id"], "技能已产出"
+    assert body["scenario_id"], "场景应同步创建"
+    assert body["scenario_origin"] == "learned"
+
+    from app.models import Scenario
+    db = SessionLocal()
+    try:
+        sc = db.get(Scenario, body["scenario_id"])
+        assert sc.origin == "learned"
+        assert sc.steps and sc.steps[0]["skill_id"] == body["skill_id"]
+    finally:
+        db.close()
+
+
+async def test_pending_flow_carries_merge_suggestion(client: AsyncClient,
+                                                       monkeypatch):
+    """归并建议：同系统存在相似骨架技能（Jaccard≥阈值）时，待发现流
+    附 similar_skill 提示——只建议不自动执行。"""
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    # 先造一个同系统已有技能（骨架与任务流同签名+参考会话派生系统）
+    from app.models import Alignment, RawEvent, Skill
+    db = SessionLocal()
+    try:
+        import uuid as _uuid
+        ref = f"merge-ref-{_uuid.uuid4().hex[:8]}"
+        al = Alignment(session_ids=[ref], skeleton=[], buckets=[],
+                       input_variables=[], param_variables=[], window_params={})
+        db.add(al)
+        db.flush()
+        db.add(RawEvent(session_id=ref, seq=0, ts=0, kind="navigation",
+                         payload={"type": "page-load",
+                                  "url": "http://127.0.0.1:8093/system/post"}))
+        existing = Skill(alignment_id=al.id, name="ExistingPostCreate",
+                          description="已有技能", status="learned",
+                          skeleton=[{"signature": "click:新增"},
+                                    {"signature": "input:名称"},
+                                    {"signature": "click:确定"},
+                                    {"signature": "POST:/system/post"}],
+                          param_variables=[], input_variables=[],
+                          confidence=0.9, evidence_count=1)
+        db.add(existing)
+        db.commit()
+        db.refresh(existing)
+        existing_id = existing.id
+    finally:
+        db.close()
+
+    monkeypatch.setenv("LLM_FAKE_RESPONSE",
+                       json.dumps({"name": "PostCreate3",
+                                   "description": "用户创建岗位"}))
+    sid = await _seed_ambient_session(client, _task_events())
+    await client.post(f"/api/v1/sessions/{sid}/segment")
+    lst = (await client.get("/api/v1/discovered-flows?status=pending")).json()
+    flow = next(f for f in lst if f["session_id"] == sid)
+    # 待发现流带相似提示（同系统已有相似技能）
+    assert flow.get("similar_skill_id") == existing_id, \
+        f"应检测到相似技能，got {flow.get('similar_skill_id')}"
+    assert flow.get("similar_skill_name") == "ExistingPostCreate"

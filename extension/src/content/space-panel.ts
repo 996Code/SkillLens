@@ -650,7 +650,11 @@ function mount(): void {
         row.className = "ch";
         const nm = document.createElement("span");
         nm.className = "nm";
-        nm.textContent = `任务流 #${f.id}（${f.event_count} 步${f.has_write ? "·含写" : ""}）`;
+        nm.textContent = `任务流 #${f.id}（${f.event_count} 步${f.has_write ? "·含写" : ""}）`
+          + (f.similar_skill_id ? ` ≈${f.similar_skill_name}` : "");
+        nm.title = f.similar_skill_id
+          ? `与技能 ${f.similar_skill_name}（#${f.similar_skill_id}）骨架相似——可考虑归并或组链`
+          : "";
         const ok = document.createElement("button");
         ok.className = "run"; ok.textContent = "确认";
         ok.addEventListener("click", async () => {
@@ -662,6 +666,20 @@ function mount(): void {
             await loadSkills();
           } catch (e: any) { note(`确认失败：${e.message}`, "err"); }
         });
+        // AP×AR 衔接：确认并一键建场景（origin=learned——直接进主链可执行）
+        const okc = document.createElement("button");
+        okc.className = "run"; okc.textContent = "确认+场景";
+        okc.addEventListener("click", async () => {
+          try {
+            const r = await api(
+              `/discovered-flows/${f.id}/confirm?create_scenario=true`,
+              { method: "POST" });
+            note(`已入库并建场景 #${r.scenario_id}：${r.skillName}`, "ok");
+            await loadDiscovered();
+            await loadSkills();
+            await loadScenarios();
+          } catch (e: any) { note(`确认失败：${e.message}`, "err"); }
+        });
         const no = document.createElement("button");
         no.className = "del"; no.textContent = "丢弃";
         no.addEventListener("click", async () => {
@@ -670,7 +688,7 @@ function mount(): void {
             await loadDiscovered();
           } catch (e: any) { note(`丢弃失败：${e.message}`, "err"); }
         });
-        row.append(nm, ok, no);
+        row.append(nm, ok, okc, no);
         discEl.append(row);
       }
     } catch { /* 发现流加载失败不阻塞面板 */ }
