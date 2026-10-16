@@ -12,6 +12,9 @@ import { useConfirmReq, answerConfirm } from "../../confirm";
 const confirmReq = useConfirmReq();
 
 const user = currentUser();
+const ROLE_LABEL: Record<string, string> = {
+  admin: "管理员", reviewer: "评审员", viewer: "只读",
+};
 
 const toasts = useToasts();
 
@@ -76,11 +79,15 @@ async function doLogout(): Promise<void> {
 
 <template>
   <div class="gw-shell" data-testid="graph-workspace">
-    <!-- 左：导航树（分组折叠+搜索） -->
     <aside class="gw-tree">
-      <div class="gw-brand">SkillLens</div>
+      <RouterLink to="/graph" class="gw-brand" data-testid="gw-overview-link">
+        <span class="gw-brand-logo">SL</span>
+        <span class="gw-brand-text">
+          <span class="gw-brand-name">SkillLens</span>
+          <span class="gw-brand-sub">测试工作台</span>
+        </span>
+      </RouterLink>
 
-      <!-- 搜索框 -->
       <div class="gw-search">
         <input
           v-model="search"
@@ -91,52 +98,54 @@ async function doLogout(): Promise<void> {
         />
       </div>
 
-      <RouterLink to="/graph" class="gw-tree-root" data-testid="gw-overview-link">
-        ◈ 系统总览
-      </RouterLink>
+      <nav class="gw-nav">
+        <!-- 主链：场景 → 运行 → 报告评审 -->
+        <RouterLink to="/graph/scenarios" class="gw-item gw-item-primary"
+                    data-testid="gw-scenarios-link">
+          测试场景 <span class="gw-count">{{ scenarioCount }}</span>
+        </RouterLink>
+        <RouterLink to="/graph/scenario-runs" class="gw-item"
+                    :class="{ 'router-link-active': isScenarioRunDeep }"
+                    data-testid="gw-scenario-runs-link">
+          场景运行
+        </RouterLink>
+        <RouterLink to="/graph/scenario-reports" class="gw-item"
+                    data-testid="gw-reports-link">
+          报告与评审
+        </RouterLink>
 
-      <!-- AQ2 四区导航：①测试场景（用户工作层——一等入口） -->
-      <div class="gw-tree-group">测试场景</div>
-      <RouterLink to="/graph/scenarios" class="gw-tree-leaf gw-nav-scenario"
-                  data-testid="gw-scenarios-link">
-        ⚡ 全部场景（{{ scenarioCount }}）
-      </RouterLink>
+        <div class="gw-sep"></div>
+        <div class="gw-section-label">分析</div>
+        <RouterLink to="/graph/timeline" class="gw-item">时间线</RouterLink>
+        <RouterLink to="/graph/failures" class="gw-item">失败分析</RouterLink>
 
-      <!-- ②运行与问题 -->
-      <div class="gw-tree-group">运行与问题</div>
-      <RouterLink to="/graph/scenario-runs" class="gw-tree-leaf"
-                  :class="{ 'section-active': isScenarioRunDeep }"
-                  data-testid="gw-scenario-runs-link">▶ 场景运行</RouterLink>
-      <RouterLink to="/graph/timeline" class="gw-tree-leaf">⌇ 时间线</RouterLink>
-      <RouterLink to="/graph/failures" class="gw-tree-leaf">⚠ 失败分析</RouterLink>
+        <div class="gw-sep"></div>
+        <div class="gw-section-label">管理</div>
+        <RouterLink to="/graph/adapters" class="gw-item">系统接入</RouterLink>
+        <RouterLink v-if="user?.role === 'admin'" to="/graph/users"
+                    class="gw-item" data-testid="gw-users-link">用户管理</RouterLink>
+      </nav>
 
-      <!-- AR5：报告与评审（新主链） -->
-      <div class="gw-tree-group">报告与评审</div>
-      <RouterLink to="/graph/scenario-reports" class="gw-tree-leaf"
-                  data-testid="gw-reports-link">⌕ 场景报告</RouterLink>
-      <RouterLink to="/graph/reviews-portal" class="gw-tree-leaf">✓ 评审队列</RouterLink>
-
-      <!-- ③步骤库（技术层降级——默认收起） -->
-      <div class="gw-tree-group">步骤库（{{ skills.length }}）</div>
-      <button class="gw-group-head gw-lib-toggle" data-testid="gw-lib-toggle"
+      <!-- 步骤库（技术层——默认收起） -->
+      <button class="gw-lib-head" data-testid="gw-lib-toggle"
               @click="libraryCollapsed = !libraryCollapsed">
         <span class="gw-toggle">{{ libraryCollapsed ? "▸" : "▾" }}</span>
-        <span class="gw-group-name">按系统浏览</span>
-        <span class="gw-group-count">{{ skills.length }}</span>
+        步骤库
+        <span class="gw-count">{{ skills.length }}</span>
       </button>
       <div v-show="!libraryCollapsed" class="gw-tree-scroll">
         <div v-for="[sys, list] in grouped" :key="sys" class="gw-group">
           <button class="gw-group-head" @click="toggleGroup(sys)">
             <span class="gw-toggle">{{ isCollapsed(sys) ? "▸" : "▾" }}</span>
             <span class="gw-group-name">{{ sys }}</span>
-            <span class="gw-group-count">{{ list.length }}</span>
+            <span class="gw-count">{{ list.length }}</span>
           </button>
           <div v-if="!isCollapsed(sys)" class="gw-group-body">
             <RouterLink
               v-for="s in list"
               :key="s.id"
               :to="`/graph/skill/${s.id}`"
-              class="gw-tree-leaf"
+              class="gw-skill"
               :class="{ active: currentSkillId === String(s.id) }"
               :data-testid="`gw-skill-${s.id}`"
             >
@@ -147,32 +156,30 @@ async function doLogout(): Promise<void> {
         <p v-if="grouped.length === 0 && !loading" class="gw-empty">无匹配流程</p>
       </div>
 
-      <!-- ④系统与环境 -->
-      <div class="gw-tree-group">系统与环境</div>
-      <RouterLink to="/graph/adapters" class="gw-tree-leaf">⚙ 系统接入</RouterLink>
-      <RouterLink v-if="user?.role === 'admin'" to="/graph/users"
-                  class="gw-tree-leaf" data-testid="gw-users-link">☰ 用户管理</RouterLink>
-
-      <!-- AR5 开发者模式（默认收起——诊断资产不与主链竞争） -->
-      <button class="gw-group-head gw-lib-toggle" data-testid="gw-dev-toggle"
+      <!-- 开发者工具（默认收起） -->
+      <button class="gw-lib-head" data-testid="gw-dev-toggle"
               @click="devCollapsed = !devCollapsed">
         <span class="gw-toggle">{{ devCollapsed ? "▸" : "▾" }}</span>
-        <span class="gw-group-name">开发者工具</span>
+        开发者工具
       </button>
-      <div v-show="!devCollapsed">
-        <RouterLink to="/graph/learning" class="gw-tree-leaf">↗ 学习图</RouterLink>
-        <RouterLink to="/graph/canvas" class="gw-tree-leaf">✎ 编排画布</RouterLink>
-        <RouterLink to="/graph/audit" class="gw-tree-leaf">⬡ 审计</RouterLink>
-        <RouterLink to="/graph/reports" class="gw-tree-leaf">▤ 旧版报告</RouterLink>
-        <RouterLink to="/graph/field-types" class="gw-tree-leaf">⌗ 字段类型</RouterLink>
-        <RouterLink to="/graph/suites" class="gw-tree-leaf">▤ 分组（legacy）</RouterLink>
+      <div v-show="!devCollapsed" class="gw-dev-body">
+        <RouterLink to="/graph/learning" class="gw-item">学习图</RouterLink>
+        <RouterLink to="/graph/canvas" class="gw-item">编排画布</RouterLink>
+        <RouterLink to="/graph/audit" class="gw-item">审计</RouterLink>
+        <RouterLink to="/graph/reports" class="gw-item">旧版报告</RouterLink>
+        <RouterLink to="/graph/field-types" class="gw-item">字段类型</RouterLink>
+        <RouterLink to="/graph/suites" class="gw-item">分组（legacy）</RouterLink>
       </div>
 
       <div class="gw-tree-foot">
+        <div class="gw-user" v-if="user">
+          <span class="gw-user-avatar">{{ user.username.slice(0, 1).toUpperCase() }}</span>
+          <span class="gw-user-name">{{ user.username }}</span>
+          <span class="gw-user-role">{{ ROLE_LABEL[user.role] }}</span>
+        </div>
         <button class="logout-btn" data-testid="logout-btn" @click="doLogout">
           登出
         </button>
-        <div class="tagline">变更智能工作台</div>
       </div>
     </aside>
 
@@ -209,39 +216,61 @@ async function doLogout(): Promise<void> {
   overflow: hidden;
 }
 .gw-tree {
-  width: 244px;
+  width: 232px;
   flex-shrink: 0;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
   background: var(--color-sidebar);
   overflow-y: auto;
-  padding: var(--space-3) var(--space-2) var(--space-2);
+  padding: var(--space-3) var(--space-2);
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
+
+/* 品牌头：logo 方块 + 双行字 */
 .gw-brand {
-  font-weight: 800;
-  font-size: 16px;
-  letter-spacing: -0.01em;
-  color: #fff;
-  padding: var(--space-2) var(--space-2) var(--space-3);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  margin-bottom: var(--space-2);
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  padding: var(--space-1) var(--space-2) var(--space-3);
+  margin-bottom: var(--space-1);
+  text-decoration: none;
 }
-.gw-brand::before {
-  content: "";
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
+.gw-brand-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
   background: linear-gradient(135deg, var(--color-primary) 0%,
     var(--color-sidebar-accent) 100%);
-  box-shadow: 0 2px 8px rgba(109, 90, 230, 0.45);
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex: none;
+  box-shadow: 0 2px 8px rgba(109, 90, 230, 0.4);
 }
+.gw-brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+.gw-brand-name {
+  color: #fff;
+  font-weight: 700;
+  font-size: 14.5px;
+  letter-spacing: -0.01em;
+}
+.gw-brand-sub {
+  color: var(--color-sidebar-text);
+  font-size: 11px;
+  opacity: 0.75;
+}
+.gw-brand:hover .gw-brand-name { color: #fff; }
+
+/* 搜索 */
 .gw-search {
-  padding: var(--space-1) var(--space-1) var(--space-2);
+  padding: 0 var(--space-1) var(--space-2);
 }
 .gw-search input {
   width: 100%;
@@ -254,53 +283,118 @@ async function doLogout(): Promise<void> {
 }
 .gw-search input::placeholder {
   color: var(--color-sidebar-text);
+  opacity: 0.7;
 }
 .gw-search input:focus {
   outline: none;
   border-color: var(--color-sidebar-accent);
-  box-shadow: 0 0 0 3px rgba(139, 123, 243, 0.18);
+  box-shadow: 0 0 0 3px rgba(139, 123, 243, 0.16);
 }
-.gw-tree-root {
-  display: block;
-  padding: 7px var(--space-2);
+
+/* 主导航：去图标——纯文字，靠字重/背景区分 */
+.gw-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.gw-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
   border-radius: var(--radius-md);
   font-size: 13.5px;
-  font-weight: 600;
-  color: #fff;
-  text-decoration: none;
-}
-.gw-tree-root:hover {
-  background: var(--color-sidebar-hover);
-  text-decoration: none;
-}
-.gw-tree-root.router-link-exact-active {
-  background: var(--color-sidebar-active);
-  box-shadow: inset 2px 0 0 var(--color-sidebar-accent);
-  color: #fff;
-}
-.gw-tree-group {
-  font-size: 10.5px;
+  font-weight: 500;
   color: var(--color-sidebar-text);
-  opacity: 0.7;
-  padding: var(--space-3) var(--space-2) var(--space-1);
+  text-decoration: none;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.gw-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  text-decoration: none;
+}
+.gw-item.router-link-active {
+  background: var(--color-sidebar-active);
+  color: #fff;
+  font-weight: 650;
+  box-shadow: inset 3px 0 0 var(--color-sidebar-accent);
+}
+.gw-item-primary {
+  font-weight: 650;
+  font-size: 14px;
+  color: #fff;
+}
+.gw-count {
+  font-size: 11px;
+  color: var(--color-sidebar-text);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-variant-numeric: tabular-nums;
+}
+.gw-sep {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.07);
+  margin: var(--space-2) var(--space-1);
+}
+.gw-section-label {
+  font-size: 10px;
   font-weight: 700;
+  color: var(--color-sidebar-text);
+  opacity: 0.55;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  padding: 0 12px var(--space-1);
 }
+
+/* 折叠区头（步骤库/开发者） */
+.gw-lib-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  margin-top: var(--space-2);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--color-sidebar-text);
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.gw-lib-head:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+.gw-dev-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.gw-dev-body .gw-item {
+  font-size: 12.5px;
+  padding: 5px 12px;
+}
+
+/* 步骤库滚动区 */
 .gw-tree-scroll {
   flex: 1;
   overflow-y: auto;
-  min-height: 0;
+  min-height: 60px;
 }
 .gw-group {
-  margin-bottom: 2px;
+  margin-bottom: 1px;
 }
 .gw-group-head {
   display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 5px var(--space-2);
+  padding: 5px 12px;
   border: none;
   background: transparent;
   border-radius: var(--radius-sm);
@@ -310,31 +404,28 @@ async function doLogout(): Promise<void> {
   cursor: pointer;
 }
 .gw-group-head:hover {
-  background: var(--color-sidebar-hover);
+  background: rgba(255, 255, 255, 0.05);
   color: #fff;
 }
 .gw-toggle {
-  width: 14px;
-  font-size: 10px;
+  width: 12px;
+  font-size: 9px;
   color: var(--color-gray-5);
+  flex: none;
 }
 .gw-group-name {
   flex: 1;
   text-align: left;
-}
-.gw-group-count {
-  font-size: 10px;
-  color: var(--color-sidebar-text);
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 999px;
-  padding: 1px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .gw-group-body {
-  padding-left: 14px;
+  padding-left: 10px;
 }
-.gw-tree-leaf {
+.gw-skill {
   display: block;
-  padding: 4px var(--space-2);
+  padding: 3.5px 12px;
   border-radius: var(--radius-sm);
   font-size: 12px;
   color: var(--color-sidebar-text);
@@ -342,19 +433,19 @@ async function doLogout(): Promise<void> {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+  opacity: 0.85;
 }
-.gw-tree-leaf:hover {
-  background: var(--color-sidebar-hover);
+.gw-skill:hover {
+  background: rgba(255, 255, 255, 0.06);
   color: #fff;
+  opacity: 1;
   text-decoration: none;
 }
-.gw-tree-leaf.active,
-.gw-tree-leaf.router-link-active,
-.gw-tree-leaf.section-active {
+.gw-skill.active {
   background: var(--color-sidebar-active);
-  color: var(--color-sidebar-text-active);
+  color: #fff;
   font-weight: 600;
+  opacity: 1;
   box-shadow: inset 2px 0 0 var(--color-sidebar-accent);
 }
 .gw-empty {
@@ -364,17 +455,58 @@ async function doLogout(): Promise<void> {
   padding: var(--space-2);
   text-align: center;
 }
+
+/* 底部：用户信息 + 登出 */
 .gw-tree-foot {
-  margin-top: auto;
-  padding: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.gw-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--space-1);
+}
+.gw-user-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(139, 123, 243, 0.25);
+  color: #c4b5fd;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.gw-user-name {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gw-user-role {
+  font-size: 10.5px;
+  color: var(--color-sidebar-text);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 1px 7px;
+  flex: none;
 }
 .logout-btn {
   width: 100%;
   padding: 5px 0;
   background: transparent;
   color: var(--color-sidebar-text);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
@@ -384,13 +516,6 @@ async function doLogout(): Promise<void> {
   color: #ff8f93;
   border-color: rgba(229, 72, 77, 0.5);
   background: rgba(229, 72, 77, 0.08);
-}
-.tagline {
-  font-size: 10px;
-  color: var(--color-sidebar-text);
-  opacity: 0.5;
-  text-align: center;
-  margin-top: var(--space-1);
 }
 .gw-canvas {
   flex: 1;
@@ -447,22 +572,4 @@ async function doLogout(): Promise<void> {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
-}
-
-/* AQ2：场景一级入口强调 */
-.gw-nav-scenario {
-  font-weight: 650;
-  color: var(--color-sidebar-text-active);
-  background: rgba(139, 123, 243, 0.14);
-  border: 1px solid rgba(139, 123, 243, 0.25);
-  margin: 0 var(--space-1) var(--space-2);
-  padding: 6px var(--space-2);
-  border-radius: var(--radius-md);
-}
-.gw-nav-scenario:hover {
-  background: rgba(139, 123, 243, 0.22);
-}
-.gw-lib-toggle {
-  margin: 0 var(--space-1) var(--space-1);
-  width: calc(100% - 8px);
 }
