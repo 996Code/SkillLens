@@ -3,7 +3,7 @@
 //   ① 会话列表（行点击展开链路下钻） ② 链路下钻（窗口→语义动作→对齐→Skill→回放）
 //   ③ 证据图（type/src 过滤）        ④ LLM 调用日志（行点击展开 prompt/response 摘要）
 // 全只读；LLM 日志只展示 200 字符界面摘要（完整审计走 DB 直查，不外泄全量）。
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { fmtTime } from "../run-format";
 import {
   getAuditSessions,
@@ -22,6 +22,10 @@ import type {
 const sessions = ref<AuditSession[]>([]);
 const sessionsLoading = ref(true);
 const sessionsError = ref("");
+// 收尾批：分页（首屏 50，加载更多）——千行会话全铺不可用
+const sessionLimit = ref(50);
+const visibleSessions = computed(() =>
+  sessions.value.slice(0, sessionLimit.value));
 
 // ---------- ② 链路下钻 ----------
 const selectedSid = ref("");
@@ -130,39 +134,39 @@ onMounted(async () => {
 
     <!-- ① 会话列表 -->
     <div class="block">
-      <h2>会话列表</h2>
+      <h2>会话列表 <span v-if="sessions.length" class="muted h2-sub">共 {{ sessions.length }} 个</span></h2>
       <p v-if="sessionsLoading" class="muted">加载中…</p>
       <p v-else-if="sessionsError" class="error">加载失败：{{ sessionsError }}</p>
       <p v-else-if="sessions.length === 0" class="muted empty-line">暂无会话，先录制一轮操作</p>
       <table v-else class="tbl" data-testid="session-table">
         <thead>
           <tr>
-            <th>会话</th><th>来源</th><th>备注</th><th>时间</th>
-            <th>事件数</th><th>过滤数</th><th>语义动作数</th>
+            <th>会话</th><th>备注</th><th>时间</th>
+            <th>事件数</th><th>语义动作</th>
           </tr>
         </thead>
         <tbody>
           <tr
-            v-for="s in sessions"
+            v-for="s in visibleSessions"
             :key="s.session_id"
             :class="{ 'row-selected': s.session_id === selectedSid }"
             class="row-click"
             @click="selectSession(s)"
           >
-            <td class="mono" :title="s.session_id">{{ sidShort(s.session_id) }}</td>
-            <td>
-              <span class="badge" :class="sourceCls(s.source)" data-testid="source-badge">
-                {{ sourceLabel(s.source) }}
-              </span>
-            </td>
+            <td class="mono" :title="`${s.session_id}（来源：${sourceLabel(s.source)}，过滤 ${s.filtered_count}）`">{{ sidShort(s.session_id) }}</td>
             <td>{{ s.note || "—" }}</td>
             <td>{{ fmtTime(s.created_at) }}</td>
             <td>{{ s.event_count }}</td>
-            <td>{{ s.filtered_count }}</td>
             <td>{{ s.semantic_action_count }}</td>
           </tr>
         </tbody>
       </table>
+      <div v-if="sessions.length > sessionLimit" class="load-more">
+        <button class="btn" data-testid="audit-load-more"
+                @click="sessionLimit += 50">
+          加载更多（已显示 {{ visibleSessions.length }}/{{ sessions.length }}）
+        </button>
+      </div>
       <p v-if="sessions.length" class="muted hint">点击行查看该会话的链路下钻。</p>
     </div>
 
@@ -355,6 +359,15 @@ onMounted(async () => {
 .hint {
   font-size: 12px;
   margin: var(--space-1) 0 0;
+}
+.h2-sub {
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: var(--space-1);
+}
+.load-more {
+  margin-top: var(--space-2);
+  text-align: center;
 }
 .empty-line {
   margin: var(--space-2) 0;

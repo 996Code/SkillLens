@@ -118,15 +118,10 @@ describe("AuditView", () => {
     expect(root.textContent).toContain("sess-ccc");
     expect(root.textContent).toContain("真实采集");
     expect(root.textContent).toContain("42");
-    expect(root.textContent).toContain("2"); // filtered_count
-    // source 徽标：real_traffic 绿 / demo 灰
-    const badges = Array.from(
-      root.querySelectorAll("[data-testid='source-badge']"));
-    expect(badges.length).toBe(2);
-    expect(badges[0]?.textContent).toContain("真实流量");
-    expect(badges[0]?.className).toContain("badge-real");
-    expect(badges[1]?.textContent).toContain("演示");
-    expect(badges[1]?.className).toContain("badge-demo");
+    // 收尾批：来源/过滤数合并进会话 id 的 title（列裁剪——零方差列去除）
+    const firstCell = root.querySelector("[data-testid='session-table'] tbody tr td");
+    expect(firstCell?.getAttribute("title")).toContain("真实流量");
+    expect(firstCell?.getAttribute("title")).toContain("过滤 2");
     // 未选中会话时下钻区块不出现
     expect(root.querySelector("[data-testid='trace-block']")).toBeNull();
     // 证据边 + LLM 日志同屏（三区块单页）

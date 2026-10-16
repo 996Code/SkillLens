@@ -37,16 +37,27 @@ const passRate = computed(() => {
 });
 
 // 14 天趋势柱图（纯确定性渲染——无图表库依赖）
+// 收尾批：柱高扩到 120（撑满卡片）+ 纵轴刻度线（max/半值）+ 红色尖峰图例
+const TREND_H = 120;
+const trendMax = computed(() =>
+  Math.max(1, ...(dash.value?.trend ?? []).map((d) => d.total)));
+const trendTicks = computed(() => {
+  const m = trendMax.value;
+  return [m, Math.round(m / 2)];
+});
 const trendView = computed(() => {
   const t = dash.value?.trend ?? [];
-  const max = Math.max(1, ...t.map((d) => d.total));
+  const max = trendMax.value;
   return t.map((d) => ({
     ...d,
-    h: Math.max(2, Math.round((d.total / max) * 56)),
-    ph: Math.max(1, Math.round((d.pass / max) * 56)),
+    h: Math.max(2, Math.round((d.total / max) * TREND_H)),
+    ph: Math.max(1, Math.round((d.pass / max) * TREND_H)),
     label: d.date.slice(5),
   }));
 });
+const hasSpike = computed(() =>
+  (dash.value?.trend ?? []).some((d) => d.total > trendMax.value * 0.8
+    && d.pass < d.total / 2));
 
 // trends API 的 rate 是 0-1 小数，展示层换算为百分数
 const pct = (r: number) => Math.round(r * 100);
@@ -148,16 +159,29 @@ onMounted(async () => {
         <div class="block dash-trend">
           <h2>近 14 天执行趋势</h2>
           <p v-if="!trendView.length" class="muted">暂无回放数据</p>
-          <div v-else class="trend-chart" data-testid="overview-trend">
-            <div v-for="d in trendView" :key="d.date" class="trend-col"
-                 :title="`${d.date}：${d.total} 次（pass ${d.pass}）`">
-              <div class="trend-bar-wrap">
-                <div class="trend-bar" :style="{ height: `${d.h}px` }"></div>
-                <div class="trend-bar pass" :style="{ height: `${d.ph}px` }"></div>
-              </div>
-              <span class="trend-label">{{ d.label }}</span>
+          <template v-else>
+            <div class="trend-legend muted">
+              <span class="quad-chip"><i class="quad-dot expected"></i>通过</span>
+              <span class="quad-chip"><i class="quad-dot drift"></i>失败/异常</span>
             </div>
-          </div>
+            <div class="trend-frame">
+              <div class="trend-axis" aria-hidden="true">
+                <span>{{ trendTicks[0] }}</span>
+                <span>{{ trendTicks[1] }}</span>
+                <span>0</span>
+              </div>
+              <div class="trend-chart" data-testid="overview-trend">
+                <div v-for="d in trendView" :key="d.date" class="trend-col"
+                     :title="`${d.date}：${d.total} 次（通过 ${d.pass}）`">
+                  <div class="trend-bar-wrap">
+                    <div class="trend-bar" :style="{ height: `${d.h}px` }"></div>
+                    <div class="trend-bar pass" :style="{ height: `${d.ph}px` }"></div>
+                  </div>
+                  <span class="trend-label">{{ d.label }}</span>
+                </div>
+              </div>
+            </div>
+          </template>
         </div>
         <div class="block dash-systems">
           <h2>系统健康（近 30 天）</h2>
@@ -302,12 +326,31 @@ onMounted(async () => {
 @media (max-width: 1000px) {
   .dash-row { grid-template-columns: 1fr; }
 }
+.trend-legend {
+  font-size: 12px;
+  margin-bottom: var(--space-1);
+}
+.trend-frame {
+  display: flex;
+  gap: var(--space-2);
+}
+.trend-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  font-size: 10px;
+  color: var(--color-gray-4);
+  padding: 0 0 18px 0;
+  border-right: 1px solid var(--color-gray-2);
+  padding-right: 4px;
+  height: 138px;
+}
 .trend-chart {
   display: flex;
   align-items: flex-end;
   gap: 6px;
-  height: 84px;
-  padding-top: var(--space-2);
+  flex: 1;
 }
 .trend-col {
   flex: 1;
@@ -321,7 +364,7 @@ onMounted(async () => {
   display: flex;
   align-items: flex-end;
   gap: 2px;
-  height: 60px;
+  height: 120px;
 }
 .trend-bar {
   width: 10px;
